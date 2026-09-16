@@ -1,0 +1,61 @@
+# anvilkit-agent-workflow configuration (reviewed, secret-free). Loaded by
+# internal/config with precedence defaults < this file < allowed environment
+# overrides (ANVILKIT_WORKFLOW_TEMPORAL_ADDRESS, ANVILKIT_WORKFLOW_CONTROL_ADDRESS,
+# ANVILKIT_WORKFLOW_KUBECONFIG, ANVILKIT_WORKFLOW_LAUNCH_BACKEND,
+# ANVILKIT_WORKFLOW_BUILD_ID, ANVILKIT_WORKFLOW_IMAGE_REGISTRY,
+# ANVILKIT_WORKFLOW_SIDECAR_CONTROL_ADDRESS, ANVILKIT_WORKFLOW_HEALTH_LISTEN).
+# Unknown keys fail startup. The execution section is frozen into each
+# Workflow run's history at its start.
+temporal:
+  address: 127.0.0.1:27233
+  namespace: anvilkit
+  task_queue: anvilkit-workflow
+  control_task_queue: anvilkit-workflow-control
+  worker_identity: anvilkit-agent-workflow
+  build_id: dev
+control:
+  address: 127.0.0.1:9101
+# kubernetes.kubeconfig (the launcher identity of a worker outside the
+# cluster; empty selects the Pod's in-cluster ServiceAccount identity) and
+# kubernetes.launch_backend are deployment placements supplied through the
+# environment.
+kubernetes:
+  namespace: anvilkit-components
+  # enabled_profiles: the reviewed profiles this environment may launch. A
+  # harness profile joins this list only after its negative tests passed on
+  # the target runtime (delivery.md P09); codegen-fixed-v1 (gVisor) stays
+  # disabled here. harness-wiring-dev-v1 is DEVELOPMENT_ONLY and is enabled
+  # by the integration scenarios' launcher, not by this file.
+  enabled_profiles: [local-check-v1]
+  # image_registry completes profile images that name no registry (the
+  # development registry of deploy/dev, ANVILKIT_WORKFLOW_IMAGE_REGISTRY).
+  # sidecar.control_address is the Control placement the access sidecar of a
+  # Job Pod uses (ANVILKIT_WORKFLOW_SIDECAR_CONTROL_ADDRESS); identity_mode
+  # development is the plaintext identity of the development foundation.
+  sidecar:
+    identity_mode: development
+  candidate_seccomp_profile: anvilkit/candidate.json
+execution:
+  control_activity_timeout: 30s
+  control_retry_initial: 1s
+  control_retry_max_interval: 30s
+  control_retry_max_attempts: 6
+  launch_window: 2m
+  observe_heartbeat_timeout: 30s
+  observe_max_attempts: 3
+  cleanup:
+    timeout: 3m
+    max_attempts: 2
+    unresolved_settle_window: 60s
+    reconcile_initial_interval: 5s
+    reconcile_max_interval: 1m
+    reconcile_max_duration: 24h
+# development: DEVELOPMENT_ONLY fault injection; never enable outside the
+# integration scenarios (see docs/architecture/delivery.md P05).
+development:
+  enabled: false
+# health: the worker's only HTTP surface (ANVILKIT_WORKFLOW_HEALTH_LISTEN):
+# /healthz while the process runs, /readyz while both pollers are started.
+health:
+  listen: 127.0.0.1:9102
+shutdown_timeout: 30s

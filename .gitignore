@@ -31,5 +31,5 @@ go.work.sum
 .idea/
 .vscode/
 
-# Contracts
-internal/contracts/ 
+# Machine-local state (kubeconfigs, scratch)
+/.local/

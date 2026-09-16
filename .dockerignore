@@ -1,0 +1,10 @@
+# Only the module sources and the reviewed configuration enter the image build.
+.git
+.github
+.local
+deploy
+README.md
+LICENSE
+Dockerfile
+.dockerignore
+**/*_test.go

@@ -1,165 +1,51 @@
 # anvilkit-agent-workflow
 
-A standalone Go Temporal Worker for the approved `local-check-v1` profile.
-`LocalCheckWorkflow` schedules one `ComputeLocalCheck` Activity, which computes
-the byte length and SHA-256 of the exact UTF-8 text retained in its start input.
-It preserves the operation, request, fixture, profile and generation fields in
-the typed result. `plain-v1` hashes `AnvilKit` (8 bytes); `newline-v1` hashes
-`AnvilKit\n` (9 bytes). It performs no trimming or Unicode normalization.
+The Workflow worker of the AnvilKit Agent platform: the Temporal Worker Deployment that runs the fixed business Workflows (the LocalCheck fixture and the recovery reconciliation in this stage), their bounded Activities against Control, and the fixed-template Kubernetes Job launcher with its trusted observation. It has no public business RPC, no database and no credential other than its launcher identity; every business decision is Control's and only Temporal advances a run. The architecture that owns this service is the parent repository `anvilkit-services` (`docs/architecture/`: the service catalog, `execution.md` DD-01 for the Workflows, leases and Continue-As-New rules, DD-03 for the launcher, isolation and the trusted Job boundary, `delivery.md` P05–P09 for what is implemented and verified); the parent mounts this repository as the submodule `services/agent/workflow`.
 
-Control owns durable admission, the original Workflow/Run identity and terminal
-result acceptance. This Worker has no Agent database connection, HTTP listener,
-Control result RPC, Runner, authored graph, Job or paid/external business effect.
-It registers only these two fixed types on
-`anvilkit-agent-workflow-local-check`.
+This repository holds the replacement implementation (Temporal Go SDK, Fx, koanf configuration, client-go). The previous implementation that lived here (Connect RPC, the retained contracts) is outside the build closure of the replacement and is not a starting point; its last worktree is preserved by the parent's cleanup record, not here.
 
-## Build and test
+## Layout
 
-Use Go 1.27.0. The service owns its module and lock file, including Temporal Go
-SDK 1.48.0. JSON Schema validation reuses `jsonschema/v6` 6.0.3; the SDK test
-suite uses its existing Testify dependency. No parent checkout or workspace is
-needed for these commands:
-
-```sh
-GOWORK=off go build -mod=readonly ./...
-GOWORK=off go test -mod=readonly -race ./...
-GOWORK=off go build -mod=readonly -o anvilkit-agent-workflow ./cmd/anvilkit-agent-workflow
-```
-
-The parent generates `internal/contracts/localcheck.gen.go` from the canonical
-local-check schema/profile and retains their exact schemas, fixtures and source
-digests beside it. Runtime startup verifies embedded bytes. Temporal JSON
-conversion rejects duplicates, unknown fields, nulls, malformed Unicode,
-unsupported profiles and overflowing counters. Generations and byte lengths
-remain decimal strings; numeric schema version forms such as `1.0` are accepted
-without allowing a rounded fraction or a string version.
-
-Do not edit generated files. From the parent checkout, regenerate and check:
-
-```sh
-python3 tools/generate-proto-bindings.py --consumer anvilkit-agent-workflow
-python3 tools/generate-proto-bindings.py --consumer anvilkit-agent-workflow --check
-```
-
-## Run against the controlled Temporal environment
-
-The executable requires all six settings below. TLS verifies the server name
-and retained CA, requires a client certificate, and uses TLS 1.3 or newer.
-There is no plaintext fallback. Use the dedicated Workflow certificate; the
-Worker does not need the Control starter certificate or database credentials.
-
-| Environment variable | Value |
+| Path | Content |
 | --- | --- |
-| `ANVILKIT_WORKFLOW_TEMPORAL_ENDPOINT` | Temporal `host:port` |
-| `ANVILKIT_WORKFLOW_TEMPORAL_NAMESPACE` | Existing controlled namespace, with at least 24-hour retention |
-| `ANVILKIT_WORKFLOW_TEMPORAL_TLS_SERVER_NAME` | Certificate server name, `temporal.local` in the retained handoff |
-| `ANVILKIT_WORKFLOW_TEMPORAL_TLS_CA` | Path to the Temporal CA certificate |
-| `ANVILKIT_WORKFLOW_TEMPORAL_TLS_CERT` | Path to the Workflow client certificate |
-| `ANVILKIT_WORKFLOW_TEMPORAL_TLS_KEY` | Path to its private key |
+| `cmd/anvilkit-agent-workflow` | `main`: `fx.New(bootstrap.Module()).Run()` |
+| `internal/bootstrap` | Fx assembly: configuration snapshot, logger, Temporal client, Control client, launcher, the two pollers (`anvilkit-workflow`, `anvilkit-workflow-control`) with stable Workflow/Activity names, the health listener, DEVELOPMENT_ONLY fault interceptors |
+| `internal/config`, `config.yaml` | One typed, validated configuration snapshot (defaults < the reviewed file < the allowlisted `ANVILKIT_WORKFLOW_*` overrides; unknown keys, ranges and cross-field rules reject the candidate); the `execution` bounds are frozen into each run's history |
+| `internal/workflows` | `LocalCheckWorkflow` (attempt, launch, one create request per ordinal with its ledger, observation, registration, verification, acceptance, protected cleanup and reconciliation of an unconfirmed stop) and `RecoveryWorkflow`; Temporal time and Activities only |
+| `internal/activities` | The Activity implementations and their stable names: Control calls (`OpenAttempt`, `PrepareLaunch`, `RegisterInstance`, `ObserveInstance`, `AcceptResult`, `CloseAttempt`, recovery), the launcher calls (`CreateJob`, `ObserveJob`, `ObserveLaunch`, `DeleteJob`) and the trusted result verification |
+| `internal/adapters/control` | gRPC client of `anvilkit.control.v1` (Execution, Recovery) |
+| `internal/adapters/kubernetes` | The fixed-template launcher (reviewed profiles only, digest-pinned images, no ServiceAccount token on any Job Pod, one HTTP request per create ordinal, UID-bound deletes, the Job's own Pod as physical owner), its policy-fixture renderer and the integration test against a real cluster |
+| `deploy/chart` | The service's Helm chart (Deployment, ServiceAccount, the launcher's Role and RoleBinding, ConfigMap, PodDisruptionBudget) |
+| `Dockerfile`, `.dockerignore` | Image build from this repository root alone |
+| `.github/workflows/ci.yml` | Build, vet, test, race check of the Workflows and Activities, image build, chart lint and render |
 
-After setting these variables, run `./anvilkit-agent-workflow`. Startup fails
-closed if configuration, retained contracts or the Temporal connection is
-unavailable. SIGINT/SIGTERM stops polling and gives the Worker a 10-second drain
-window. The executable reports service startup, stopping and drain completion.
-Build with `-ldflags '-X main.version=<retained-build-identity>'` to identify the
-binary in logs; the acceptance driver supplies its source-tree digest.
+Dependency direction: `cmd -> bootstrap(Fx) -> workflows/activities -> adapters`; Workflow code imports Temporal only. The generated contract (`github.com/ancyloce/anvilkit-agent-contracts/go`: `anvilkit/control/v1`, `jobschema`) is an ordinary versioned module requirement, resolved through GOPROXY. There is no replace directive, no workspace file and nothing read from a sibling checkout.
 
-## Fixed execution contract
+## Configuration
 
-The immutable input/result definitions and exact fixture values are in
-`internal/contracts/retained/local-check-v1.schema.json`,
-`local-check-v1.fixtures.json` and `local-check-v1.json`.
+The worker reads one reviewed, secret-free file (`config.yaml`, path from `ANVILKIT_WORKFLOW_CONFIG`, default `./config.yaml`) with the sections `temporal` (address, namespace, the two Task Queues, worker identity, build id), `control.address`, `kubernetes` (namespace, enabled profiles, sidecar placement, the candidate seccomp profile), `execution` (the frozen bounds), `development` (file-only fault injection), `health.listen` and `shutdown_timeout`. The only environment overrides are `ANVILKIT_WORKFLOW_TEMPORAL_ADDRESS`, `ANVILKIT_WORKFLOW_CONTROL_ADDRESS`, `ANVILKIT_WORKFLOW_KUBECONFIG`, `ANVILKIT_WORKFLOW_LAUNCH_BACKEND`, `ANVILKIT_WORKFLOW_BUILD_ID`, `ANVILKIT_WORKFLOW_IMAGE_REGISTRY`, `ANVILKIT_WORKFLOW_SIDECAR_CONTROL_ADDRESS` and `ANVILKIT_WORKFLOW_HEALTH_LISTEN`; any other `ANVILKIT_WORKFLOW_*` variable stops the process.
 
-| Bound | Value |
-| --- | --- |
-| Workflow execution timeout | 5 minutes |
-| Activity StartToClose / ScheduleToClose | 10 seconds / 60 seconds |
-| Activity maximum attempts | 3 |
-| Retry initial interval / coefficient / maximum interval | 1 second / 2 / 5 seconds |
-| Workflow ID | `local-check:<operationId>` |
-| Workflow retries, children, Continue-as-New, authored steps | Absent |
+The launcher identity is client-go's REST configuration from one of two sources: a kubeconfig file (`ANVILKIT_WORKFLOW_KUBECONFIG`, a worker outside the cluster such as the parent's development runs) or, when no kubeconfig is named, the Pod's mounted ServiceAccount token and CA (in-cluster). No token or kubeconfig is baked into the image. The health listener is the worker's only HTTP surface: `/healthz` answers while the process runs, `/readyz` between the start of both pollers and the beginning of the shutdown; a stopping worker reports not ready, drains its pollers for up to `shutdown_timeout`, then closes its clients.
 
-The starter must use `REJECT_DUPLICATE`, `FAIL` and
-`WorkflowExecutionErrorWhenAlreadyStarted=true`. The Workflow checks its input,
-identity, queue, timeout and absence of a Workflow retry policy before
-scheduling the Activity. Control retains responsibility for the original
-15-minute start window, history retention and original-identity reconciliation.
-No replacement Workflow is started here. An observed cancellation returns a
-canceled execution without a successful result. Activity attempts may repeat;
-physical exactly-once execution is not claimed.
-
-Workflow code uses only deterministic SDK operations and its retained input.
-It returns the Activity's recorded result. Schema compilation happens once at
-process startup; execution consults no file, database or mutable latest record.
-Control verifies the fixture/input binding and current generations before
-accepting a terminal result; computation alone grants no business authority.
-
-## Real acceptance and replay
-
-Unit tests cover both fixtures, strict conversion, large counters, exact UTF-8,
-three-attempt exhaustion and observed cancellation. Real Temporal acceptance
-requires the parent-owned driver and the persistent environment handoff:
+## Build and verify from this repository alone
 
 ```sh
-ANVILKIT_WORKFLOW_TEST_ENVIRONMENT=/path/to/environment.json \
-  python3 tools/run-verification.py --only workflow-local
+export GOWORK=off GOFLAGS=-mod=readonly
+go build ./... && go vet ./... && go vet -tags integration ./... && go test -count=1 ./...
+go test -race -count=1 ./internal/workflows/... ./internal/activities/...
+docker build -t anvilkit-agent-workflow:dev .                   # --build-arg GOPROXY=... GONOSUMDB=... only for a private module proxy
+helm lint deploy/chart --set temporal.address=temporal:7233 --set control.address=control:9101 \
+  --set launcher.backend=cluster --set launcher.imageRegistry=registry.example --set launcher.sidecarControlAddress=control:9101
 ```
 
-Run that command from the parent checkout. It copies this clone outside the
-parent, builds and tests it, then launches the canonical Worker binary with
-only Temporal connection settings. The starter uses a separate client
-certificate. Against Temporal Server 1.31.2, the proof checks both fixture
-results, recorded input and execution bounds, pre-recorded cancellation,
-closed-ID duplicate rejection and rejection of a Workflow retry policy. The
-SDK unit environment omits that last metadata, so its rejection is tested on
-the real server.
+The unit suites use the Temporal test environment and fake clientsets. The in-cluster scenario (`internal/adapters/kubernetes/harness_integration_test.go`, build tag `integration`) needs a real development cluster with the parent's admission, syscall and network policies and a running Control that a Job Pod's sidecar can reach; it reads them from the environment (`KUBECONFIG`, `ANVILKIT_DEV_KIND_GATEWAY`, `ANVILKIT_DEV_REGISTRY`, `ANVILKIT_INTEGRATION_CONTROL_ADDRESS`, `ANVILKIT_INTEGRATION_SIDECAR_CONTROL_ADDRESS`) and skips when they are absent. The parent repository's verification chain prepares that Control from the Control repository and names it; this repository builds nothing but itself. `TestRenderPolicyFixtures` writes the launcher's rendered Jobs into the directory named by `ANVILKIT_RENDER_POLICY_FIXTURES` (the parent's `deploy/policies/tests/resources`, which owns the policies) and is otherwise a no-op.
 
-The driver retains source/binary digests, four real histories, Worker logs and
-an evidence summary under its printed `/tmp/anvilkit-workflow01-proof-*` path.
-Both successful histories replay without an Activity execution or execution
-log. Replay must supply `ReplayWorkflowHistoryOptions.OriginalExecution` with
-the retained Workflow and Run IDs; the SDK's default placeholder ID does not
-match this flow's identity binding. The driver stops only its Worker process
-and leaves the existing persistent infrastructure running.
+The contract module is an ordinary published dependency. This build requires `github.com/ancyloce/anvilkit-agent-contracts/go v0.1.2-0.20260916181159-a397fee37c16`: the pseudo-version of commit `a397fee` on `main` of the `anvilkit-agent-contracts` repository (pushed 2026-09-16; it carries `ExecutionService.GetInstance` with the attempt's `operation` in its answer and `profile.expectedResult.resultSizeBytes`), served by `proxy.golang.org` and verified against the checksum database (`go.sum`: `h1:Z0/y7RKUi3G95MAHVAv4dMyf5hivJ47v1R4tzsFpNug=`). No tag names that commit yet; once the contracts repository tags it (`go/v0.1.2`), the `require` line changes to the tag and nothing else does. No replace directive, workspace or local proxy is involved.
 
-Activity records use the approved local logging exception: `operationId`,
-actual Temporal Workflow/Run IDs, `activityAttempt` and
-`attributes.profileRef=local-check-v1`. They carry no fabricated StepExecution,
-Attempt or instance ID. Workflow logging uses the SDK's replay-aware logger;
-SDK free-form messages/errors and input/result contents are excluded. Every
-real Worker log is checked against the retained log schema.
+## Deploy
 
-WORKFLOW-01 establishes this controlled local Worker. The subsequent WORKFLOW-02
-acceptance, described below, completes CONTROL-04/05 and API-03's real flow. This proof does not qualify business Workflows, external
-effects, production tracing, namespace authorization or restore targets.
+`deploy/chart` carries only what this worker needs. Required values: `temporal.address`, `control.address`, `launcher.backend` (the launch backend identity Control records), `launcher.imageRegistry` and `launcher.sidecarControlAddress` (Control as a Job Pod's access sidecar reaches it). The chart is the single owner of the launcher's RBAC: with `rbac.create` it creates the Role and RoleBinding in `launcher.namespace` (`anvilkit-components`) that grant its ServiceAccount exactly Jobs create/get/list/watch/delete and Pods get/list/watch; the ServiceAccount token is mounted into the worker Pod and into nothing else (every Job Pod the launcher renders has `automountServiceAccountToken: false`). The Worker Build ID is the pinned image digest unless `buildId` names one. `image.digest` pins the exact image; `config` renders the reviewed file into a ConfigMap; `resources`, HTTP probes on the health listener, the security context and a PodDisruptionBudget are declared. Environment values (addresses, the backend, the registry, replica counts, digests) and the pinned deployment combination belong to the deploying repository (`anvilkit-services`, `deploy/dev` for the development foundation), never to this chart. Plaintext gRPC and the development sidecar identity are development inputs; runtime qualification (the parent's G gates) is not claimed by any check here.
 
-### WORKFLOW-02 integrated recovery
+## License
 
-The parent `workflow-recovery` verification step now covers API -> Control ->
-Temporal/Worker -> Control -> API using the same retained persistent environment.
-CONTROL-04/05 and API-03's real acceptance are included. Test-only authenticated
-transport boundaries withhold a successful start reply, hold Activity completion
-until Worker process loss, or return NotFound for an already bound history read.
-Three lost Activity completions exercise the actual server retry ceiling.
-No fault API or fault setting is included in the Worker executable.
-
-The driver also covers intake persistence interruptions, reserved cancellation,
-Control downtime after Temporal completion, a lost PostgreSQL COMMIT reply,
-individual service restarts, and PostgreSQL/Temporal restart. Ten original real
-histories replay with their exact Workflow/Run IDs and no execution logs or SQL
-result/event writes. The history-read fault preserves upstream history for
-replay; it does not qualify retention expiry or disaster recovery.
-
-Run from the parent:
-
-```sh
-ANVILKIT_WORKFLOW_TEST_ENVIRONMENT=/path/to/environment.json \
-  python3 tools/run-verification.py --only workflow-recovery
-```
-
-The 2026-09-10 controlled run passed 84 integrated assertions and the eleven
-PostgreSQL transaction cases, with ten successful history replays and all 1,594
-service records schema-valid. The parent task acceptance record retains exact
-source/binary/contract hashes, commands, process exits and evidence paths.
-Business Workflows, paid effects, production authorization and restore targets
-remain outside this qualification.
+MIT, see `LICENSE`.
