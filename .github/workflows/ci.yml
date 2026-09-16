@@ -1,0 +1,44 @@
+# Independent verification of anvilkit-agent-workflow from this repository
+# alone: build, vet, test (the Temporal test environment, fake clientsets),
+# the race check of the Workflows and Activities, the image from the
+# repository root, and the chart's lint and render. GOWORK=off: the contract
+# module is a versioned requirement. The integration test against a real
+# cluster (internal/adapters/kubernetes, tag integration) needs the parent
+# repository's development foundation and a Control it prepares; it is not
+# run here.
+name: ci
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+env:
+  GOWORK: "off"
+  GOFLAGS: "-mod=readonly"
+jobs:
+  go:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.0"
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go vet -tags integration ./...
+      - run: go test -count=1 ./...
+      - run: go test -race -count=1 ./internal/workflows/... ./internal/activities/...
+  image:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t anvilkit-agent-workflow:ci .
+  chart:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: "v3.19.0"
+      - run: helm lint deploy/chart --set temporal.address=temporal:7233 --set control.address=control:9101 --set launcher.backend=cluster --set launcher.imageRegistry=registry.example --set launcher.sidecarControlAddress=control:9101
+      - run: helm template anvilkit-agent-workflow deploy/chart --set temporal.address=temporal:7233 --set control.address=control:9101 --set launcher.backend=cluster --set launcher.imageRegistry=registry.example --set launcher.sidecarControlAddress=control:9101 > /dev/null
