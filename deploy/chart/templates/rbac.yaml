@@ -1,0 +1,36 @@
+{{- if .Values.rbac.create }}
+# The launcher's least-privilege permissions (DD-03 §4, DD-10 §4), owned by
+# this chart: Jobs create/get/list/watch/delete and Pods read in the
+# components namespace only; no exec, no ephemeral containers, no secrets,
+# no token minting. The binding names the worker's ServiceAccount.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "anvilkit-agent-workflow.fullname" . }}-launcher
+  namespace: {{ .Values.launcher.namespace }}
+  labels:
+    {{- include "anvilkit-agent-workflow.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "anvilkit-agent-workflow.fullname" . }}-launcher
+  namespace: {{ .Values.launcher.namespace }}
+  labels:
+    {{- include "anvilkit-agent-workflow.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "anvilkit-agent-workflow.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: Role
+  name: {{ include "anvilkit-agent-workflow.fullname" . }}-launcher
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

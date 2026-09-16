@@ -1,0 +1,147 @@
+# Chart values of anvilkit-agent-workflow. Only what this worker needs: its
+# image, its reviewed configuration file, the allowlisted placement
+# overrides, the launcher identity and its least-privilege permissions,
+# probes and resources. Environment values (addresses, the launch backend,
+# the registry, replica counts, the pinned image digest) are supplied by the
+# deploying repository per environment; no secret enters this chart and the
+# worker reads none.
+
+image:
+  repository: anvilkit-agent-workflow
+  # tag defaults to the chart's appVersion; digest, when set, pins the exact
+  # image (repository@sha256:...) and takes precedence over the tag.
+  tag: ""
+  digest: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+replicaCount: 2
+
+# The launcher identity: the worker's ServiceAccount, whose mounted token
+# is the only Kubernetes credential the worker uses (no kubeconfig in the
+# image or the chart). This chart is the single owner of the launcher's
+# RBAC: the Role and RoleBinding in launcher.namespace grant exactly what
+# internal/adapters/kubernetes does - Jobs create/get/list/watch/delete and
+# Pods get/list/watch - and nothing else (no exec, no secrets, no token
+# minting). Candidate Jobs never receive a ServiceAccount token: the
+# launcher's template disables automount on every Job Pod.
+serviceAccount:
+  create: true
+  name: ""
+  automountServiceAccountToken: true
+rbac:
+  create: true
+
+# The launcher's placements (ANVILKIT_WORKFLOW_LAUNCH_BACKEND,
+# ANVILKIT_WORKFLOW_IMAGE_REGISTRY, ANVILKIT_WORKFLOW_SIDECAR_CONTROL_ADDRESS)
+# and the namespace the Jobs run in (the reviewed file's kubernetes.namespace).
+launcher:
+  namespace: anvilkit-components
+  backend: ""
+  imageRegistry: ""
+  sidecarControlAddress: ""
+
+# The Temporal frontend (ANVILKIT_WORKFLOW_TEMPORAL_ADDRESS) and the Control
+# gRPC endpoint (ANVILKIT_WORKFLOW_CONTROL_ADDRESS). Required.
+temporal:
+  address: ""
+control:
+  address: ""
+
+# The Worker Build ID (ANVILKIT_WORKFLOW_BUILD_ID): the image digest when
+# one is pinned, else the tag; set buildId to name it explicitly.
+buildId: ""
+
+# The health listener inside the Pod (ANVILKIT_WORKFLOW_HEALTH_LISTEN):
+# /healthz while the process runs, /readyz while both pollers are started.
+health:
+  port: 9102
+
+# The reviewed, secret-free configuration file (config.yaml sections):
+# rendered into a ConfigMap and mounted at ANVILKIT_WORKFLOW_CONFIG. The
+# placement values above override it through the allowlisted environment;
+# the execution bounds are frozen into each Workflow run at its start.
+config:
+  temporal:
+    address: 127.0.0.1:27233
+    namespace: anvilkit
+    task_queue: anvilkit-workflow
+    control_task_queue: anvilkit-workflow-control
+    worker_identity: anvilkit-agent-workflow
+    build_id: dev
+  control:
+    address: 127.0.0.1:9101
+  kubernetes:
+    namespace: anvilkit-components
+    enabled_profiles: [local-check-v1]
+    sidecar:
+      identity_mode: development
+    candidate_seccomp_profile: anvilkit/candidate.json
+  execution:
+    control_activity_timeout: 30s
+    control_retry_initial: 1s
+    control_retry_max_interval: 30s
+    control_retry_max_attempts: 6
+    launch_window: 2m
+    observe_heartbeat_timeout: 30s
+    observe_max_attempts: 3
+    cleanup:
+      timeout: 3m
+      max_attempts: 2
+      unresolved_settle_window: 60s
+      reconcile_initial_interval: 5s
+      reconcile_max_interval: 1m
+      reconcile_max_duration: 24h
+  development:
+    enabled: false
+  health:
+    listen: 127.0.0.1:9102
+  shutdown_timeout: 30s
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 64Mi
+  limits:
+    cpu: 1000m
+    memory: 256Mi
+
+probes:
+  startup:
+    periodSeconds: 2
+    failureThreshold: 60
+  readiness:
+    periodSeconds: 5
+    failureThreshold: 3
+  liveness:
+    periodSeconds: 10
+    failureThreshold: 3
+
+# Shutdown: the worker reports not ready, then drains its pollers for up
+# to shutdown_timeout from the configuration; the grace period must exceed it.
+terminationGracePeriodSeconds: 60
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+topologySpreadConstraints: []
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}
+podLabels: {}

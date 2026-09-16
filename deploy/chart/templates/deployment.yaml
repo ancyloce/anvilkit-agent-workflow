@@ -1,0 +1,116 @@
+{{- include "anvilkit-agent-workflow.require" . -}}
+{{- $cfg := deepCopy .Values.config -}}
+{{- $_ := set $cfg.kubernetes "namespace" .Values.launcher.namespace -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "anvilkit-agent-workflow.fullname" . }}
+  labels:
+    {{- include "anvilkit-agent-workflow.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "anvilkit-agent-workflow.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "anvilkit-agent-workflow.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        # A changed configuration file rolls the Pods.
+        checksum/config: {{ toYaml $cfg | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      # The worker's ServiceAccount token is its launcher identity (in-cluster
+      # client-go configuration); the Jobs it creates never mount one.
+      serviceAccountName: {{ include "anvilkit-agent-workflow.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      # No injected service-link variables: the configuration loader rejects
+      # any ANVILKIT_WORKFLOW_* variable outside its allowlist.
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: workflow
+          image: {{ include "anvilkit-agent-workflow.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          # The allowlisted environment overrides of internal/config: the file
+          # path and the placement values. No kubeconfig: the launcher uses
+          # the mounted ServiceAccount identity.
+          env:
+            - name: ANVILKIT_WORKFLOW_CONFIG
+              value: /etc/anvilkit/anvilkit-agent-workflow/config.yaml
+            - name: ANVILKIT_WORKFLOW_TEMPORAL_ADDRESS
+              value: {{ .Values.temporal.address | quote }}
+            - name: ANVILKIT_WORKFLOW_CONTROL_ADDRESS
+              value: {{ .Values.control.address | quote }}
+            - name: ANVILKIT_WORKFLOW_LAUNCH_BACKEND
+              value: {{ .Values.launcher.backend | quote }}
+            - name: ANVILKIT_WORKFLOW_IMAGE_REGISTRY
+              value: {{ .Values.launcher.imageRegistry | quote }}
+            - name: ANVILKIT_WORKFLOW_SIDECAR_CONTROL_ADDRESS
+              value: {{ .Values.launcher.sidecarControlAddress | quote }}
+            - name: ANVILKIT_WORKFLOW_BUILD_ID
+              value: {{ include "anvilkit-agent-workflow.buildId" . | quote }}
+            - name: ANVILKIT_WORKFLOW_HEALTH_LISTEN
+              value: {{ printf "0.0.0.0:%d" (int .Values.health.port) | quote }}
+          ports:
+            - name: health
+              containerPort: {{ .Values.health.port }}
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/anvilkit/anvilkit-agent-workflow
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "anvilkit-agent-workflow.fullname" . }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

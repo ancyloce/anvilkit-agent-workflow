@@ -1,0 +1,12 @@
+{{- include "anvilkit-agent-workflow.require" . -}}
+{{- $cfg := deepCopy .Values.config -}}
+{{- $_ := set $cfg.kubernetes "namespace" .Values.launcher.namespace -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "anvilkit-agent-workflow.fullname" . }}
+  labels:
+    {{- include "anvilkit-agent-workflow.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    {{- toYaml $cfg | nindent 4 }}
