@@ -126,19 +126,33 @@ type Development struct {
 }
 
 // Health is the worker's health listener: /healthz answers while the
-// process runs, /readyz while both pollers are started and not stopping.
+// process runs, /readyz while both pollers are started and neither the shutdown
+// nor a fatal worker error has ended readiness.
 // It is the only HTTP surface of the worker and serves no business route.
 type Health struct {
 	Listen string `koanf:"listen"`
 }
 
+// The supported range of shutdown_timeout, the worker's drain bound. The
+// bootstrap's own stop ceiling and the chart's termination grace period are
+// derived from it, so no accepted value outlives the process or the Pod.
+const (
+	MinShutdownTimeout = time.Second
+	MaxShutdownTimeout = 5 * time.Minute
+)
+
 type Config struct {
-	Temporal        Temporal      `koanf:"temporal"`
-	Control         Control       `koanf:"control"`
-	Kubernetes      Kubernetes    `koanf:"kubernetes"`
-	Execution       Execution     `koanf:"execution"`
-	Development     Development   `koanf:"development"`
-	Health          Health        `koanf:"health"`
+	Temporal    Temporal    `koanf:"temporal"`
+	Control     Control     `koanf:"control"`
+	Kubernetes  Kubernetes  `koanf:"kubernetes"`
+	Execution   Execution   `koanf:"execution"`
+	Development Development `koanf:"development"`
+	Health      Health      `koanf:"health"`
+	// ShutdownTimeout is the service-level drain bound: once the shutdown
+	// begins, both Task Queues stop accepting work at once and their
+	// in-flight Activities have this long, together, to finish before they
+	// are abandoned to Temporal's retries; the clients and the health
+	// listener close after it within the bootstrap's fixed allowance.
 	ShutdownTimeout time.Duration `koanf:"shutdown_timeout"`
 }
 
@@ -293,9 +307,7 @@ func (c Config) validate() error {
 	within("execution.cleanup.reconcile_max_interval", cl.ReconcileMaxInterval, time.Second, time.Hour)
 	within("execution.cleanup.reconcile_max_duration", cl.ReconcileMaxDuration, time.Minute, 7*24*time.Hour)
 	req("health.listen", c.Health.Listen)
-	if c.ShutdownTimeout < time.Second || c.ShutdownTimeout > 5*time.Minute {
-		errs = append(errs, fmt.Errorf("shutdown_timeout %s outside [1s, 5m]", c.ShutdownTimeout))
-	}
+	within("shutdown_timeout", c.ShutdownTimeout, MinShutdownTimeout, MaxShutdownTimeout)
 	// Cross-field rules: one observation of an unresolved create lasts at
 	// least the create Activity's bound, so a request in flight at that
 	// bound can land and be stopped within the same call; a cleanup round
