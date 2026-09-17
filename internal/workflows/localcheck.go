@@ -195,7 +195,7 @@ func LocalCheck(q Queues, b Bounds) func(ctx workflow.Context, in Input) error {
 		// createJob), and a cancellation waits for the request's real result
 		// so the cleanup knows what the launch key may hold.
 		launched = true
-		if _, err := createJob(ctx, q, bounds, launch, deadline, &creates); err != nil {
+		if _, err := createJob(ctx, q, bounds, jobSpec{ProfileID: profileID}, launch, deadline, &creates); err != nil {
 			outcome, failureCode = settle(ctx, err, "OBSERVER_FAILED")
 			return nil
 		}
@@ -292,6 +292,16 @@ func (l *createLedger) account(requests []int) {
 // settled reports whether every request the run issued is accounted for.
 func (l *createLedger) settled() bool { return len(l.unaccounted) == 0 }
 
+// jobSpec is what a create request carries beside the launch: the reviewed
+// profile and, for a harness profile, the envelope facts (operation,
+// epochs, typed inputs). The LocalCheck fixture carries the profile only.
+type jobSpec struct {
+	ProfileID      string
+	OperationID    string
+	ExecutionEpoch string
+	Inputs         []activities.LaunchInput
+}
+
 // createJob issues create requests for the launch, one at a time under the
 // same launch key, until one is answered with the Job or the requests are
 // exhausted. Each request is a single Activity execution (no SDK retries)
@@ -303,7 +313,7 @@ func (l *createLedger) settled() bool { return len(l.unaccounted) == 0 }
 // refusal or a cancellation ends the requests. The answer that carries the
 // Job names the request that committed it, which accounts for that request
 // even when its own answer was lost.
-func createJob(ctx workflow.Context, q Queues, b Bounds, launch activities.LaunchRef, deadline time.Time, ledger *createLedger) (activities.JobRef, error) {
+func createJob(ctx workflow.Context, q Queues, b Bounds, spec jobSpec, launch activities.LaunchRef, deadline time.Time, ledger *createLedger) (activities.JobRef, error) {
 	logger := workflow.GetLogger(ctx)
 	createCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 		TaskQueue: q.Business, StartToCloseTimeout: b.ControlActivityTimeout, WaitForCancellation: true,
@@ -315,7 +325,8 @@ func createJob(ctx workflow.Context, q Queues, b Bounds, launch activities.Launc
 		request := ledger.issued
 		var job activities.JobRef
 		err := workflow.ExecuteActivity(createCtx, activities.NameCreateJob, activities.CreateJobInput{
-			Launch: launch, ProfileID: profileID, Deadline: deadline, Request: request,
+			Launch: launch, ProfileID: spec.ProfileID, Deadline: deadline, Request: request,
+			OperationID: spec.OperationID, ExecutionEpoch: spec.ExecutionEpoch, LaunchEpoch: launch.LaunchEpoch, Inputs: spec.Inputs,
 		}).Get(ctx, &job)
 		if err == nil {
 			ledger.account([]int{job.Request})
