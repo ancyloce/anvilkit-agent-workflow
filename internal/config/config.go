@@ -11,6 +11,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -40,6 +41,27 @@ type Temporal struct {
 
 type Control struct {
 	Address string `koanf:"address"`
+}
+
+// ModelProxy is the Model Proxy placement of the controlled model call
+// Activities (P11): the base URL, the request bound, and the identity the
+// worker presents to the Proxy — development is a DEVELOPMENT_ONLY bearer
+// token supplied only through ANVILKIT_WORKFLOW_MODEL_PROXY_TOKEN, mtls the
+// workload certificate files. Without an address the Activities answer
+// DEPENDENCY_UNAVAILABLE and reach no network.
+type ModelProxy struct {
+	Address  string        `koanf:"address"`
+	Timeout  time.Duration `koanf:"timeout"`
+	Token    string        `koanf:"token"`
+	Identity struct {
+		Mode string `koanf:"mode"`
+		MTLS struct {
+			CertFile   string `koanf:"cert_file"`
+			KeyFile    string `koanf:"key_file"`
+			CAFile     string `koanf:"ca_file"`
+			ServerName string `koanf:"server_name"`
+		} `koanf:"mtls"`
+	} `koanf:"identity"`
 }
 
 type Kubernetes struct {
@@ -144,6 +166,7 @@ const (
 type Config struct {
 	Temporal    Temporal    `koanf:"temporal"`
 	Control     Control     `koanf:"control"`
+	ModelProxy  ModelProxy  `koanf:"model_proxy"`
 	Kubernetes  Kubernetes  `koanf:"kubernetes"`
 	Execution   Execution   `koanf:"execution"`
 	Development Development `koanf:"development"`
@@ -162,6 +185,8 @@ var defaults = map[string]any{
 	"temporal.control_task_queue":                  "anvilkit-workflow-control",
 	"temporal.worker_identity":                     "anvilkit-agent-workflow",
 	"temporal.build_id":                            "dev",
+	"model_proxy.timeout":                          "5m",
+	"model_proxy.identity.mode":                    "development",
 	"kubernetes.namespace":                         "anvilkit-components",
 	"kubernetes.enabled_profiles":                  []string{"local-check-v1"},
 	"kubernetes.sidecar.identity_mode":             "disabled",
@@ -190,6 +215,8 @@ var defaults = map[string]any{
 var envOverrides = map[string]string{
 	"ANVILKIT_WORKFLOW_TEMPORAL_ADDRESS":        "temporal.address",
 	"ANVILKIT_WORKFLOW_CONTROL_ADDRESS":         "control.address",
+	"ANVILKIT_WORKFLOW_MODEL_PROXY_ADDRESS":     "model_proxy.address",
+	"ANVILKIT_WORKFLOW_MODEL_PROXY_TOKEN":       "model_proxy.token",
 	"ANVILKIT_WORKFLOW_KUBECONFIG":              "kubernetes.kubeconfig",
 	"ANVILKIT_WORKFLOW_LAUNCH_BACKEND":          "kubernetes.launch_backend",
 	"ANVILKIT_WORKFLOW_BUILD_ID":                "temporal.build_id",
@@ -214,6 +241,9 @@ func LoadFrom(path string, environ []string) (Config, error) {
 	}
 	if err := k.Load(file.Provider(path), yaml.Parser()); err != nil {
 		return Config{}, fmt.Errorf("config file %s: %w", path, err)
+	}
+	if k.Exists("model_proxy.token") {
+		return Config{}, fmt.Errorf("config file %s: model_proxy.token is a secret and is supplied only through ANVILKIT_WORKFLOW_MODEL_PROXY_TOKEN", path)
 	}
 	if err := applyEnv(k, environ); err != nil {
 		return Config{}, err
@@ -274,16 +304,39 @@ func (c Config) validate() error {
 	default:
 		errs = append(errs, fmt.Errorf("kubernetes.sidecar.identity_mode %q is not one of disabled, development, mtls", c.Kubernetes.Sidecar.IdentityMode))
 	}
+	within := func(name string, v, lo, hi time.Duration) {
+		if v < lo || v > hi {
+			errs = append(errs, fmt.Errorf("%s %s outside [%s, %s]", name, v, lo, hi))
+		}
+	}
+	mp := c.ModelProxy
+	within("model_proxy.timeout", mp.Timeout, time.Second, time.Hour)
+	switch mp.Identity.Mode {
+	case "development":
+		if mp.Address != "" && mp.Token == "" {
+			errs = append(errs, errors.New("ANVILKIT_WORKFLOW_MODEL_PROXY_TOKEN (model_proxy.token) is required with a model_proxy.address under identity mode development"))
+		}
+	case "mtls":
+		m := mp.Identity.MTLS
+		if mp.Address != "" && (m.CertFile == "" || m.KeyFile == "" || m.CAFile == "") {
+			errs = append(errs, errors.New("model_proxy.identity.mtls.cert_file, key_file and ca_file are required with a model_proxy.address under identity mode mtls"))
+		}
+		if mp.Token != "" {
+			errs = append(errs, errors.New("model_proxy.token is not used under identity mode mtls"))
+		}
+	default:
+		errs = append(errs, fmt.Errorf("model_proxy.identity.mode %q is not one of development, mtls", mp.Identity.Mode))
+	}
+	if mp.Address != "" {
+		if u, err := url.Parse(mp.Address); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
+			errs = append(errs, errors.New("model_proxy.address must be an absolute http(s) URL without credentials"))
+		}
+	}
 	if len(c.Kubernetes.EnabledProfiles) == 0 {
 		errs = append(errs, errors.New("kubernetes.enabled_profiles must name at least one reviewed profile"))
 	}
 	if c.Temporal.TaskQueue == c.Temporal.ControlTaskQueue {
 		errs = append(errs, errors.New("temporal.task_queue and temporal.control_task_queue must differ"))
-	}
-	within := func(name string, v, lo, hi time.Duration) {
-		if v < lo || v > hi {
-			errs = append(errs, fmt.Errorf("%s %s outside [%s, %s]", name, v, lo, hi))
-		}
 	}
 	e := c.Execution
 	within("execution.control_activity_timeout", e.ControlActivityTimeout, time.Second, 5*time.Minute)

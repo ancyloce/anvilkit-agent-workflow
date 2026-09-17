@@ -81,3 +81,21 @@ func TestRequiredValuesRangesAndCrossFieldRules(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"CreateJob"}, c.Development.HoldUntilCanceledOnce)
 }
+
+func TestModelProxyPlacementAndSecret(t *testing.T) {
+	c, err := config.LoadFrom(write(t, minimal), env)
+	require.NoError(t, err)
+	require.Empty(t, c.ModelProxy.Address, "no placement: the model Activities answer DEPENDENCY_UNAVAILABLE")
+	require.Equal(t, 5*time.Minute, c.ModelProxy.Timeout)
+	_, err = config.LoadFrom(write(t, minimal), append(env, "ANVILKIT_WORKFLOW_MODEL_PROXY_ADDRESS=http://127.0.0.1:9103"))
+	require.ErrorContains(t, err, "ANVILKIT_WORKFLOW_MODEL_PROXY_TOKEN")
+	c, err = config.LoadFrom(write(t, minimal), append(env, "ANVILKIT_WORKFLOW_MODEL_PROXY_ADDRESS=http://127.0.0.1:9103", "ANVILKIT_WORKFLOW_MODEL_PROXY_TOKEN=secret"))
+	require.NoError(t, err)
+	require.Equal(t, "secret", c.ModelProxy.Token)
+	_, err = config.LoadFrom(write(t, minimal+"model_proxy:\n  token: in-file\n"), env)
+	require.ErrorContains(t, err, "model_proxy.token is a secret")
+	_, err = config.LoadFrom(write(t, minimal), append(env, "ANVILKIT_WORKFLOW_MODEL_PROXY_ADDRESS=ftp://x", "ANVILKIT_WORKFLOW_MODEL_PROXY_TOKEN=secret"))
+	require.ErrorContains(t, err, "model_proxy.address must be an absolute http(s) URL")
+	_, err = config.LoadFrom(write(t, minimal+"model_proxy:\n  identity:\n    mode: mtls\n"), append(env, "ANVILKIT_WORKFLOW_MODEL_PROXY_ADDRESS=https://proxy"))
+	require.ErrorContains(t, err, "model_proxy.identity.mtls.cert_file, key_file and ca_file are required")
+}
