@@ -58,6 +58,9 @@ type LaunchRef struct {
 	AttemptID   string
 	LaunchKey   string
 	ImageDigest string
+	// LaunchEpoch is the launch epoch Control recorded; the envelope of a
+	// harness profile carries it.
+	LaunchEpoch string
 }
 
 // CreateJobInput is one create request for the launch. Request is its
