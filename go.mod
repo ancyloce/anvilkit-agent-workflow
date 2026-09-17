@@ -1,9 +1,10 @@
 module github.com/ancyloce/anvilkit-agent-workflow
 
-go 1.26.8
+go 1.27.0
 
 require (
-	github.com/ancyloce/anvilkit-agent-contracts/go v0.1.2
+	github.com/ancyloce/anvilkit-agent-contracts/go v0.1.3-0.20260917133639-1e7cb5d5c537
+	github.com/getkin/kin-openapi v0.149.0
 	github.com/go-viper/mapstructure/v2 v2.4.0
 	github.com/knadh/koanf/parsers/yaml v1.1.0
 	github.com/knadh/koanf/providers/confmap v1.0.0
@@ -30,7 +31,6 @@ require (
 	github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.1 // indirect
-	github.com/getkin/kin-openapi v0.149.0 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-openapi/jsonpointer v1.0.0 // indirect
 	github.com/go-openapi/jsonreference v1.0.0 // indirect
