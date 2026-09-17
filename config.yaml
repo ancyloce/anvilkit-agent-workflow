@@ -55,7 +55,13 @@ execution:
 development:
   enabled: false
 # health: the worker's only HTTP surface (ANVILKIT_WORKFLOW_HEALTH_LISTEN):
-# /healthz while the process runs, /readyz while both pollers are started.
+# /healthz while the process runs, /readyz while both pollers are started
+# and neither the shutdown nor a fatal worker error has ended it.
 health:
   listen: 127.0.0.1:9102
+# shutdown_timeout: the drain bound of the whole worker ([1s, 5m]). On stop
+# both Task Queues stop accepting work at once and their in-flight
+# Activities share this bound before they are abandoned to Temporal's
+# retries; the clients and the health listener close after it. The chart
+# derives the Pod's termination grace period from this value.
 shutdown_timeout: 30s
