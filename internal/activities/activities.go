@@ -17,6 +17,7 @@ type Activities struct {
 	Control  Control
 	Recovery RecoveryControl
 	Launcher Launcher
+	Model    ModelCaller
 	Observer string // observer identity recorded on accepted results
 }
 
