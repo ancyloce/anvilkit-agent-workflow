@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -169,6 +170,7 @@ type Config struct {
 	ModelProxy  ModelProxy  `koanf:"model_proxy"`
 	Kubernetes  Kubernetes  `koanf:"kubernetes"`
 	Execution   Execution   `koanf:"execution"`
+	Lifecycle   Lifecycle   `koanf:"lifecycle"`
 	Development Development `koanf:"development"`
 	Health      Health      `koanf:"health"`
 	// ShutdownTimeout is the service-level drain bound: once the shutdown
@@ -179,34 +181,90 @@ type Config struct {
 	ShutdownTimeout time.Duration `koanf:"shutdown_timeout"`
 }
 
+// Lifecycle bounds the P13 business workflows: the Preparation analysis
+// call (route, output and exposure bounds, the Activity bound, the frozen
+// content-repair allowance) and the Generation admission and lease
+// supervision (the permit poll interval, the lease TTL asked of the port,
+// the renewal lead, the lease call bound, the definition activations this
+// worker registers) plus the placements of the trusted artifact port and
+// the DEVELOPMENT_ONLY Pagix/Knowledge doubles.
+type Lifecycle struct {
+	Preparation struct {
+		RouteID                string        `koanf:"route_id"`
+		MaxOutputTokens        int           `koanf:"max_output_tokens"`
+		MaxExposureCurrency    string        `koanf:"max_exposure_currency"`
+		MaxExposureAmount      string        `koanf:"max_exposure_amount"`
+		CallTimeout            time.Duration `koanf:"call_timeout"`
+		ContentRepairAllowance int           `koanf:"content_repair_allowance"`
+		MaxInputBytes          int64         `koanf:"max_input_bytes"`
+	} `koanf:"preparation"`
+	Generation struct {
+		PermitPollInterval time.Duration `koanf:"permit_poll_interval"`
+		LeaseTTL           time.Duration `koanf:"lease_ttl"`
+		LeaseRenewLead     time.Duration `koanf:"lease_renew_lead"`
+		LeaseCallTimeout   time.Duration `koanf:"lease_call_timeout"`
+		Definitions        []Definition  `koanf:"definitions"`
+	} `koanf:"generation"`
+	Artifacts struct {
+		TransferWindow time.Duration `koanf:"transfer_window"`
+	} `koanf:"artifacts"`
+	// PagixDoubleDir is the directory of the DEVELOPMENT_ONLY lease,
+	// source and content-digest doubles (ANVILKIT_WORKFLOW_PAGIX_DOUBLE_DIR);
+	// empty leaves the Generation ports unavailable (every generation
+	// fails at bootstrap with DEPENDENCY_UNAVAILABLE) until ENV-07.
+	PagixDoubleDir string `koanf:"pagix_double_dir"`
+}
+
+// Definition is one reviewed definition activation this worker registers
+// for the Generation profile (its id must be one Control's profile lists).
+type Definition struct {
+	ID               string `koanf:"id"`
+	CodegenProfile   string `koanf:"codegen_profile"`
+	ValidatorProfile string `koanf:"validator_profile"`
+	MaxRepairs       int64  `koanf:"max_repairs"`
+}
+
 var defaults = map[string]any{
-	"temporal.namespace":                           "anvilkit",
-	"temporal.task_queue":                          "anvilkit-workflow",
-	"temporal.control_task_queue":                  "anvilkit-workflow-control",
-	"temporal.worker_identity":                     "anvilkit-agent-workflow",
-	"temporal.build_id":                            "dev",
-	"model_proxy.timeout":                          "5m",
-	"model_proxy.identity.mode":                    "development",
-	"kubernetes.namespace":                         "anvilkit-components",
-	"kubernetes.enabled_profiles":                  []string{"local-check-v1"},
-	"kubernetes.sidecar.identity_mode":             "disabled",
-	"kubernetes.candidate_seccomp_profile":         "anvilkit/candidate.json",
-	"execution.control_activity_timeout":           "30s",
-	"execution.control_retry_initial":              "1s",
-	"execution.control_retry_max_interval":         "30s",
-	"execution.control_retry_max_attempts":         6,
-	"execution.launch_window":                      "2m",
-	"execution.observe_heartbeat_timeout":          "30s",
-	"execution.observe_max_attempts":               3,
-	"execution.cleanup.timeout":                    "3m",
-	"execution.cleanup.max_attempts":               2,
-	"execution.cleanup.unresolved_settle_window":   "60s",
-	"execution.cleanup.reconcile_initial_interval": "5s",
-	"execution.cleanup.reconcile_max_interval":     "1m",
-	"execution.cleanup.reconcile_max_duration":     "24h",
-	"development.enabled":                          false,
-	"health.listen":                                "127.0.0.1:9102",
-	"shutdown_timeout":                             "30s",
+	"lifecycle.preparation.route_id":                 "controlled-openai-v1",
+	"lifecycle.preparation.max_output_tokens":        2048,
+	"lifecycle.preparation.max_exposure_currency":    "USD",
+	"lifecycle.preparation.max_exposure_amount":      "100000",
+	"lifecycle.preparation.call_timeout":             "5m",
+	"lifecycle.preparation.content_repair_allowance": 1,
+	"lifecycle.preparation.max_input_bytes":          262144,
+	"lifecycle.generation.permit_poll_interval":      "30s",
+	"lifecycle.generation.lease_ttl":                 "10m",
+	"lifecycle.generation.lease_renew_lead":          "3m",
+	"lifecycle.generation.lease_call_timeout":        "20s",
+	"lifecycle.generation.definitions":               []map[string]any{{"id": "generation-v1:def-1", "max_repairs": -1}, {"id": "generation-v1:def-2", "max_repairs": 0}},
+	"lifecycle.artifacts.transfer_window":            "15m",
+	"temporal.namespace":                             "anvilkit",
+	"temporal.task_queue":                            "anvilkit-workflow",
+	"temporal.control_task_queue":                    "anvilkit-workflow-control",
+	"temporal.worker_identity":                       "anvilkit-agent-workflow",
+	"temporal.build_id":                              "dev",
+	"model_proxy.timeout":                            "5m",
+	"model_proxy.identity.mode":                      "development",
+	"kubernetes.namespace":                           "anvilkit-components",
+	"kubernetes.enabled_profiles":                    []string{"local-check-v1"},
+	"kubernetes.sidecar.identity_mode":               "disabled",
+	"kubernetes.candidate_seccomp_profile":           "anvilkit/candidate.json",
+	"execution.control_activity_timeout":             "30s",
+	"execution.control_retry_initial":                "1s",
+	"execution.control_retry_max_interval":           "30s",
+	"execution.control_retry_max_attempts":           6,
+	"execution.launch_window":                        "2m",
+	"execution.observe_heartbeat_timeout":            "30s",
+	"execution.observe_max_attempts":                 3,
+	"execution.cleanup.timeout":                      "3m",
+	"execution.cleanup.max_attempts":                 2,
+	"execution.cleanup.unresolved_settle_window":     "60s",
+	"execution.cleanup.reconcile_initial_interval":   "5s",
+	"execution.cleanup.reconcile_max_interval":       "1m",
+	"execution.cleanup.reconcile_max_duration":       "24h",
+	"development.enabled":                            false,
+	"health.listen":                                  "127.0.0.1:9102",
+	"shutdown_timeout":                               "30s",
 }
 
 // envOverrides is the complete set of accepted environment variables:
@@ -223,6 +281,7 @@ var envOverrides = map[string]string{
 	"ANVILKIT_WORKFLOW_IMAGE_REGISTRY":          "kubernetes.image_registry",
 	"ANVILKIT_WORKFLOW_SIDECAR_CONTROL_ADDRESS": "kubernetes.sidecar.control_address",
 	"ANVILKIT_WORKFLOW_HEALTH_LISTEN":           "health.listen",
+	"ANVILKIT_WORKFLOW_PAGIX_DOUBLE_DIR":        "lifecycle.pagix_double_dir",
 }
 
 func Load() (Config, error) {
@@ -282,6 +341,11 @@ func applyEnv(k *koanf.Koanf, environ []string) error {
 	}
 	return nil
 }
+
+var (
+	moneyPattern    = regexp.MustCompile(`^(0|[1-9][0-9]{0,29})$`)
+	currencyPattern = regexp.MustCompile(`^[A-Z]{3}$`)
+)
 
 func (c Config) validate() error {
 	var errs []error
@@ -361,6 +425,37 @@ func (c Config) validate() error {
 	within("execution.cleanup.reconcile_max_duration", cl.ReconcileMaxDuration, time.Minute, 7*24*time.Hour)
 	req("health.listen", c.Health.Listen)
 	within("shutdown_timeout", c.ShutdownTimeout, MinShutdownTimeout, MaxShutdownTimeout)
+	lp, lg := c.Lifecycle.Preparation, c.Lifecycle.Generation
+	req("lifecycle.preparation.route_id", lp.RouteID)
+	if lp.MaxOutputTokens < 1 || lp.MaxOutputTokens > 1<<20 {
+		errs = append(errs, fmt.Errorf("lifecycle.preparation.max_output_tokens %d outside [1, 1048576]", lp.MaxOutputTokens))
+	}
+	if !moneyPattern.MatchString(lp.MaxExposureAmount) || !currencyPattern.MatchString(lp.MaxExposureCurrency) {
+		errs = append(errs, errors.New("lifecycle.preparation.max_exposure_currency/amount must be a currency and a canonical scale-6 amount"))
+	}
+	within("lifecycle.preparation.call_timeout", lp.CallTimeout, 10*time.Second, time.Hour)
+	if lp.ContentRepairAllowance < 0 || lp.ContentRepairAllowance > 8 {
+		errs = append(errs, fmt.Errorf("lifecycle.preparation.content_repair_allowance %d outside [0, 8]", lp.ContentRepairAllowance))
+	}
+	if lp.MaxInputBytes < 1024 || lp.MaxInputBytes > 16<<20 {
+		errs = append(errs, fmt.Errorf("lifecycle.preparation.max_input_bytes %d outside [1024, 16777216]", lp.MaxInputBytes))
+	}
+	within("lifecycle.generation.permit_poll_interval", lg.PermitPollInterval, time.Second, time.Hour)
+	within("lifecycle.generation.lease_ttl", lg.LeaseTTL, 30*time.Second, 24*time.Hour)
+	within("lifecycle.generation.lease_renew_lead", lg.LeaseRenewLead, 5*time.Second, 12*time.Hour)
+	within("lifecycle.generation.lease_call_timeout", lg.LeaseCallTimeout, time.Second, 10*time.Minute)
+	if lg.LeaseRenewLead >= lg.LeaseTTL {
+		errs = append(errs, fmt.Errorf("lifecycle.generation.lease_renew_lead %s must be shorter than lease_ttl %s", lg.LeaseRenewLead, lg.LeaseTTL))
+	}
+	if len(lg.Definitions) == 0 {
+		errs = append(errs, errors.New("lifecycle.generation.definitions needs at least one activation"))
+	}
+	for i, d := range lg.Definitions {
+		if d.ID == "" {
+			errs = append(errs, fmt.Errorf("lifecycle.generation.definitions[%d] needs an id", i))
+		}
+	}
+	within("lifecycle.artifacts.transfer_window", c.Lifecycle.Artifacts.TransferWindow, time.Minute, 24*time.Hour)
 	// Cross-field rules: one observation of an unresolved create lasts at
 	// least the create Activity's bound, so a request in flight at that
 	// bound can land and be stopped within the same call; a cleanup round
