@@ -23,11 +23,15 @@ const (
 )
 
 // ModelMessage is one message of the frozen contract (roles system, user,
-// assistant, tool).
+// assistant, tool). An assistant message carries the tool calls the model
+// made (ModelToolCall as the tool_call frames delivered them); a tool
+// message names the call it answers, so the next request replays the round
+// trip the model produced and the Proxy forwards it as such.
 type ModelMessage struct {
 	Role       string
 	Content    string
 	ToolCallID string
+	ToolCalls  []ModelToolCall
 }
 
 // ModelTool names a reviewed tool of the route by the digest of its
