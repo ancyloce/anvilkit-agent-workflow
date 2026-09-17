@@ -26,12 +26,12 @@ import (
 // these files. Without the variable it only checks that the render works.
 func TestRenderPolicyFixtures(t *testing.T) {
 	l := k8s.NewWithClient(fake.NewClientset(), namespace, k8s.Options{
-		Backend: "kind-anvilkit-dev", ImageRegistry: "localhost:5001", EnabledProfiles: []string{"local-check-v1", "harness-wiring-dev-v1", "codegen-fixed-v1"},
+		Backend: "kind-anvilkit-dev", ImageRegistry: "localhost:5001", EnabledProfiles: []string{"local-check-v1", "harness-wiring-dev-v1", "codegen-fixed-v1", "validator-fixed-dev-v1"},
 		SidecarControlAddress: "172.22.0.1:9101", SidecarIdentityMode: "development", CandidateSeccompProfile: "anvilkit/candidate.json",
 	})
 	now := time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC)
 	out := os.Getenv("ANVILKIT_RENDER_POLICY_FIXTURES")
-	for _, id := range []string{"local-check-v1", "harness-wiring-dev-v1", "codegen-fixed-v1"} {
+	for _, id := range []string{"local-check-v1", "harness-wiring-dev-v1", "codegen-fixed-v1", "validator-fixed-dev-v1"} {
 		profile, err := jobschema.ProfileByID(id)
 		require.NoError(t, err)
 		in := activities.CreateJobInput{

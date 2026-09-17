@@ -35,6 +35,7 @@ const (
 	clusterNamespace = "anvilkit-components"
 	clusterBackend   = "kind-anvilkit-dev"
 	wiringProfile    = "harness-wiring-dev-v1"
+	validatorProfile = "validator-fixed-dev-v1"
 	fixtureDigest    = "sha256:abeb263b000189efdd8206ff39eeb4f2f7f3217f1c480491868b46da4a21c6a8"
 )
 
@@ -97,6 +98,7 @@ type summary struct {
 	ResultHandle  string                              `json:"resultHandle"`
 	Evidence      string                              `json:"evidenceHandle"`
 	Duplicate     *struct{ Existing, SameStage bool } `json:"duplicateSubmission"`
+	CandidateStop string                              `json:"candidateStop"`
 	CandidateExit *int                                `json:"candidateExit"`
 	Probes        map[string]string                   `json:"probes"`
 	Error         string                              `json:"error"`
@@ -128,7 +130,7 @@ func TestHarnessOnTheDevelopmentCluster(t *testing.T) {
 	cs, err := kubernetes.NewForConfig(cfg)
 	require.NoError(t, err)
 	launcher, err := k8s.New(c.kubeconfig, clusterNamespace, k8s.Options{
-		Backend: clusterBackend, ImageRegistry: c.registry, EnabledProfiles: []string{wiringProfile},
+		Backend: clusterBackend, ImageRegistry: c.registry, EnabledProfiles: []string{wiringProfile, validatorProfile},
 		SidecarControlAddress: c.sidecarControlAddr, SidecarIdentityMode: "development", CandidateSeccompProfile: "anvilkit/candidate.json",
 	})
 	require.NoError(t, err)
@@ -224,6 +226,20 @@ func TestHarnessOnTheDevelopmentCluster(t *testing.T) {
 		var s summary
 		require.NoError(t, json.Unmarshal([]byte(ownerPod.TerminationMessage), &s), ownerPod.TerminationMessage)
 		require.Equal(t, "completed", s.Outcome, s.Error)
+		require.Equal(t, "exited", s.CandidateStop, "acceptance follows a confirmed stop")
+		pods, err := cs.CoreV1().Pods(clusterNamespace).List(ctx, metav1.ListOptions{LabelSelector: "batch.kubernetes.io/job-name=" + in.Launch.LaunchKey})
+		require.NoError(t, err)
+		require.NotEmpty(t, pods.Items)
+		running := pods.Items[0]
+		require.Equal(t, ownerPod.PodUID, string(running.UID))
+		for _, status := range append(running.Status.ContainerStatuses, running.Status.InitContainerStatuses...) {
+			expected := profile.Image.Digest
+			if status.Name == "access-sidecar" {
+				expected = profile.SidecarImage.Digest
+			}
+			require.Contains(t, status.ImageID, expected, "actual running artifact for %s", status.Name)
+			t.Logf("profile=%s revision=%s container=%s imageID=%s node=%s", profile.ProfileID, profile.Revision, status.Name, status.ImageID, running.Spec.NodeName)
+		}
 		require.Equal(t, "certified", s.Verdict)
 		require.NotEmpty(t, s.StageID)
 		require.True(t, s.Duplicate != nil && s.Duplicate.Existing && s.Duplicate.SameStage)
@@ -273,6 +289,89 @@ func TestHarnessOnTheDevelopmentCluster(t *testing.T) {
 		require.Equal(t, stage.GetStageId(), again.GetStageId(), "still the one stage")
 	})
 
+	t.Run("the fixed validator Job certifies its component in the cluster and Control binds npm, browser, css and evidence", func(t *testing.T) {
+		// P10d: the anvilkit-validator image (validator-fixed-dev-v1) under
+		// the same harness layout, admission and sidecar; the chain runs on
+		// the reviewed fixed component baked into the image, the deliverables
+		// reach the foundation's store through the kind network and Control
+		// accepts the stage binding their exact object versions.
+		vprofile, err := jobschema.ProfileByID(validatorProfile)
+		require.NoError(t, err)
+		deadline := time.Now().Add(10 * time.Minute)
+		created, err := ops.CreateOperation(ctx, &controlv1.CreateOperationRequest{
+			Command: cmdID("op-validator"), Scope: &controlv1.Scope{TenantId: "tenant_a", ProjectId: "proj_a", ActorId: "user_a"},
+			Kind: controlv1.OperationKind_OPERATION_KIND_LOCAL_CHECK, Subject: &controlv1.OperationSubject{ProfileId: "local-check-v1", SubjectDigest: "sha256:0dc7fa9db7237a2b5c96f70f59bb00f73bb86a0ca5554e91c312f9ada26e18b3"},
+		})
+		require.NoError(t, err)
+		opID := created.GetOperation().GetOperationId()
+		opened, err := execSvc.OpenAttempt(ctx, &controlv1.OpenAttemptRequest{Command: cmdID("open-validator"), OperationId: opID, StepId: "validator", VisitOrdinal: "0", ProfileId: validatorProfile})
+		require.NoError(t, err)
+		attempt := opened.GetAttempt()
+		key := "hv-" + strings.ToLower(run[len(run)-6:])
+		launch, err := execSvc.PrepareLaunch(ctx, &controlv1.PrepareLaunchRequest{Command: cmdID("launch-validator"), AttemptId: attempt.GetAttemptId(), LaunchKey: key, Backend: clusterBackend, ImageDigest: vprofile.Image.Digest, Deadline: timestamppb.New(deadline)})
+		require.NoError(t, err)
+		in := activities.CreateJobInput{
+			Launch:    activities.LaunchRef{LaunchID: launch.GetLaunchId(), AttemptID: attempt.GetAttemptId(), LaunchKey: key, ImageDigest: vprofile.Image.Digest},
+			ProfileID: validatorProfile, Deadline: deadline, Request: 1, OperationID: opID, ExecutionEpoch: attempt.GetExecutionEpoch(), LaunchEpoch: launch.GetLaunchEpoch(),
+		}
+		defer cleanup(in)
+		_, err = launcher.CreateJob(ctx, in)
+		require.NoError(t, err)
+		obs, err := launcher.AwaitOwner(ctx, activities.ObserveJobInput{Launch: in.Launch, Deadline: deadline}, func() {})
+		require.NoError(t, err)
+		require.NotEmpty(t, obs.Pods, "%+v", obs)
+		reg, err := execSvc.RegisterInstance(ctx, &controlv1.RegisterInstanceRequest{
+			Command: cmdID("reg-validator"), AttemptId: attempt.GetAttemptId(), LaunchKey: key, Backend: clusterBackend, JobUid: obs.JobUID, PodUid: obs.Pods[0].PodUID, ImageDigest: vprofile.Image.Digest,
+		})
+		require.NoError(t, err)
+		require.True(t, reg.GetInstance().GetCurrent())
+		final, err := launcher.ObserveJob(ctx, activities.ObserveJobInput{Launch: in.Launch, Deadline: deadline}, func() {})
+		require.NoError(t, err)
+		require.NotEmpty(t, final.Pods)
+		ownerPod := final.Pods[0]
+		require.Equal(t, "succeeded", ownerPod.Phase, "termination message: %s", ownerPod.TerminationMessage)
+		var vs struct {
+			Outcome      string                              `json:"outcome"`
+			Verdict      string                              `json:"verdict"`
+			FailureCode  string                              `json:"failureCode"`
+			StageID      string                              `json:"stageId"`
+			Handles      map[string][]string                 `json:"handles"`
+			Duplicate    *struct{ Existing, SameStage bool } `json:"duplicateSubmission"`
+			StepIdentity string                              `json:"stepIdentity"`
+			Detail       string                              `json:"detail"`
+			Error        string                              `json:"error"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(ownerPod.TerminationMessage), &vs), ownerPod.TerminationMessage)
+		require.Equal(t, "completed", vs.Outcome, vs.Error)
+		require.Equal(t, "certified", vs.Verdict, "%s %s", vs.FailureCode, vs.Detail)
+		require.Equal(t, "setpriv", vs.StepIdentity, "the build and SSR steps ran under the candidate identity")
+		require.True(t, vs.Duplicate != nil && vs.Duplicate.Existing && vs.Duplicate.SameStage)
+		pods, err := cs.CoreV1().Pods(clusterNamespace).List(ctx, metav1.ListOptions{LabelSelector: "batch.kubernetes.io/job-name=" + key})
+		require.NoError(t, err)
+		require.NotEmpty(t, pods.Items)
+		for _, status := range append(pods.Items[0].Status.ContainerStatuses, pods.Items[0].Status.InitContainerStatuses...) {
+			expected := vprofile.Image.Digest
+			if status.Name == "access-sidecar" {
+				expected = vprofile.SidecarImage.Digest
+			}
+			require.Contains(t, status.ImageID, expected, "actual running artifact for %s", status.Name)
+			t.Logf("profile=%s revision=%s container=%s imageID=%s", vprofile.ProfileID, vprofile.Revision, status.Name, status.ImageID)
+		}
+		stage, ok := stagesOf(attempt.GetAttemptId())
+		require.True(t, ok)
+		require.Equal(t, vs.StageID, stage.GetStageId())
+		require.Equal(t, reg.GetInstance().GetInstanceId(), stage.GetInstanceId())
+		classes := map[string][]string{}
+		for _, a := range stage.GetArtifacts() {
+			require.NotEmpty(t, a.GetObjectVersion())
+			classes[a.GetClass()] = append(classes[a.GetClass()], a.GetHandle())
+		}
+		for _, class := range []string{"npm", "browser", "css", "evidence"} {
+			require.Len(t, classes[class], 1, "%v", classes)
+			require.Equal(t, vs.Handles[class], classes[class], "the stage binds the handles the validator finalized")
+		}
+	})
+
 	t.Run("a canceled launch stops with its Pods gone and nothing accepted", func(t *testing.T) {
 		deadline := time.Now().Add(6 * time.Minute)
 		_, attempt, _, in := newLaunch("cancel", deadline)
@@ -296,6 +395,34 @@ func TestHarnessOnTheDevelopmentCluster(t *testing.T) {
 		require.Equal(t, controlv1.AttemptState_ATTEMPT_STATE_CLOSED, closed.GetAttempt().GetState())
 		_, ok := stagesOf(attempt.GetAttemptId())
 		require.False(t, ok, "nothing was accepted for the canceled attempt")
+	})
+
+	t.Run("live cancellation fence refuses the repaired sidecar scope", func(t *testing.T) {
+		deadline := time.Now().Add(6 * time.Minute)
+		opID, attempt, _, in := newLaunch("fenced", deadline)
+		defer cleanup(in)
+		_, err := launcher.CreateJob(ctx, in)
+		require.NoError(t, err)
+		obs, err := launcher.AwaitOwner(ctx, activities.ObserveJobInput{Launch: in.Launch, Deadline: deadline}, func() {})
+		require.NoError(t, err)
+		require.NotEmpty(t, obs.Pods)
+		// Install the real Control fence before registration unblocks the
+		// supervisor. No older scope can confer authority on this instance.
+		view, err := ops.GetOperation(ctx, &controlv1.GetOperationRequest{Scope: &controlv1.Scope{TenantId: "tenant_a", ProjectId: "proj_a", ActorId: "user_a"}, OperationId: opID})
+		require.NoError(t, err)
+		_, err = ops.SubmitCommand(ctx, &controlv1.SubmitCommandRequest{Command: cmdID("fence"), Scope: &controlv1.Scope{TenantId: "tenant_a", ProjectId: "proj_a", ActorId: "user_a"}, OperationId: opID, Kind: controlv1.CommandKind_COMMAND_KIND_CANCEL, ExpectedRevision: view.GetOperation().GetRevision()})
+		require.NoError(t, err)
+		register(attempt, in.Launch.LaunchKey, obs.JobUID, obs.Pods[0].PodUID)
+		final, err := launcher.ObserveJob(ctx, activities.ObserveJobInput{Launch: in.Launch, Deadline: deadline}, func() {})
+		require.NoError(t, err)
+		require.NotEmpty(t, final.Pods)
+		var stopped summary
+		require.NoError(t, json.Unmarshal([]byte(final.Pods[0].TerminationMessage), &stopped))
+		require.Equal(t, "infrastructure_failed", stopped.Outcome)
+		require.Contains(t, stopped.Error, "STALE_EXECUTION")
+		require.Nil(t, stopped.CandidateExit)
+		_, accepted := stagesOf(attempt.GetAttemptId())
+		require.False(t, accepted, "no candidate or observer ran after the fence")
 	})
 
 	t.Run("template substitutions are refused by the cluster's admission", func(t *testing.T) {
