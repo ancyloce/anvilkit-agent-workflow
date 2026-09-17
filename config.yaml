@@ -61,6 +61,38 @@ execution:
     reconcile_initial_interval: 5s
     reconcile_max_interval: 1m
     reconcile_max_duration: 24h
+# lifecycle (P13): the Preparation analysis call (the controlled route the
+# analysis uses, its output and exposure bounds, the frozen content-repair
+# allowance) and the Generation admission and lease supervision (the permit
+# poll interval, the lease TTL asked of the port, the renewal lead, the lease
+# call bound, the definition activations this worker registers: an id must
+# be one Control's generation profile lists; an empty profile or a negative
+# max_repairs inherits Control's value). pagix_double_dir
+# (ANVILKIT_WORKFLOW_PAGIX_DOUBLE_DIR) places the DEVELOPMENT_ONLY lease,
+# source and content-digest doubles; without it every generation fails at
+# bootstrap with DEPENDENCY_UNAVAILABLE and no preparation freezes a brief
+# (ENV-07 supplies the real declarations).
+lifecycle:
+  preparation:
+    route_id: controlled-openai-v1
+    max_output_tokens: 2048
+    max_exposure_currency: USD
+    max_exposure_amount: "100000"
+    call_timeout: 5m
+    content_repair_allowance: 1
+    max_input_bytes: 262144
+  generation:
+    permit_poll_interval: 30s
+    lease_ttl: 10m
+    lease_renew_lead: 3m
+    lease_call_timeout: 20s
+    definitions:
+      - id: generation-v1:def-1
+        max_repairs: -1
+      - id: generation-v1:def-2
+        max_repairs: 0
+  artifacts:
+    transfer_window: 15m
 # development: DEVELOPMENT_ONLY fault injection; never enable outside the
 # integration scenarios (see docs/architecture/delivery.md P05).
 development:
