@@ -25,6 +25,7 @@ import (
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/activities"
 	controladapter "github.com/ancyloce/anvilkit-agent-workflow/internal/adapters/control"
 	k8sadapter "github.com/ancyloce/anvilkit-agent-workflow/internal/adapters/kubernetes"
+	"github.com/ancyloce/anvilkit-agent-workflow/internal/adapters/modelproxy"
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/config"
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/workflows"
 )
@@ -127,8 +128,24 @@ func Module() fx.Option {
 					CandidateSeccompProfile: cfg.Kubernetes.CandidateSeccompProfile,
 				})
 			},
-			func(cfg config.Config, ctl *controladapter.Client, l *k8sadapter.Launcher) *activities.Activities {
-				return &activities.Activities{Control: ctl, Recovery: ctl, Launcher: l, Observer: cfg.Temporal.WorkerIdentity}
+			func(cfg config.Config, log *slog.Logger) (activities.ModelCaller, error) {
+				mp := cfg.ModelProxy
+				if mp.Address == "" {
+					log.Warn("model proxy address not configured; the model call Activities answer DEPENDENCY_UNAVAILABLE")
+					return modelproxy.Unavailable(), nil
+				}
+				o := modelproxy.Options{BaseURL: mp.Address, Timeout: mp.Timeout}
+				if mp.Identity.Mode == "mtls" {
+					m := mp.Identity.MTLS
+					o.TLS = &modelproxy.TLSFiles{CertFile: m.CertFile, KeyFile: m.KeyFile, CAFile: m.CAFile, ServerName: m.ServerName}
+				} else {
+					log.Warn("DEVELOPMENT_ONLY model proxy identity: bearer token; qualifies no production identity")
+					o.Token = mp.Token
+				}
+				return modelproxy.New(o)
+			},
+			func(cfg config.Config, ctl *controladapter.Client, l *k8sadapter.Launcher, m activities.ModelCaller) *activities.Activities {
+				return &activities.Activities{Control: ctl, Recovery: ctl, Launcher: l, Model: m, Observer: cfg.Temporal.WorkerIdentity}
 			},
 			newWorkers,
 		),
@@ -145,11 +162,13 @@ func Register(business, control worker.Worker, acts *activities.Activities, q wo
 		activities.NameObserveJob: acts.ObserveJob, activities.NameRegisterInstance: acts.RegisterInstance, activities.NameObserveInstance: acts.ObserveInstance,
 		activities.NameVerifyResult: acts.VerifyResult,
 		activities.NameAcceptResult: acts.AcceptResult,
+		activities.NameCallModel:    acts.CallModel, activities.NameGetModelCall: acts.GetModelCall,
 	} {
 		business.RegisterActivityWithOptions(fn, activity.RegisterOptions{Name: name})
 	}
 	for name, fn := range map[string]any{
 		activities.NameObserveLaunch: acts.ObserveLaunch, activities.NameDeleteJob: acts.DeleteJob, activities.NameCloseAttempt: acts.CloseAttempt,
+		activities.NameCancelModelCall:    acts.CancelModelCall,
 		activities.NameEnumerateInventory: acts.EnumerateInventory, activities.NameListFindings: acts.ListFindings, activities.NameReconcileFinding: acts.ReconcileFinding,
 		activities.NameRecordLaunchOutcome: acts.RecordLaunchOutcome, activities.NameEvaluateRecovery: acts.EvaluateRecovery,
 	} {
