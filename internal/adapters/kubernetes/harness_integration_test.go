@@ -338,13 +338,16 @@ func TestHarnessOnTheDevelopmentCluster(t *testing.T) {
 			Handles      map[string][]string                 `json:"handles"`
 			Duplicate    *struct{ Existing, SameStage bool } `json:"duplicateSubmission"`
 			StepIdentity string                              `json:"stepIdentity"`
+			Complete     *bool                               `json:"complete"`
 			Detail       string                              `json:"detail"`
 			Error        string                              `json:"error"`
 		}
 		require.NoError(t, json.Unmarshal([]byte(ownerPod.TerminationMessage), &vs), ownerPod.TerminationMessage)
 		require.Equal(t, "completed", vs.Outcome, vs.Error)
 		require.Equal(t, "certified", vs.Verdict, "%s %s", vs.FailureCode, vs.Detail)
-		require.Equal(t, "setpriv", vs.StepIdentity, "the build and SSR steps ran under the candidate identity")
+		require.NotNil(t, vs.Complete)
+		require.True(t, *vs.Complete, "every mandatory check of the validator profile (SSR and browser host included) passed in the Pod")
+		require.Equal(t, "setpriv", vs.StepIdentity, "the build, SSR and browser steps ran under the candidate identity")
 		require.True(t, vs.Duplicate != nil && vs.Duplicate.Existing && vs.Duplicate.SameStage)
 		pods, err := cs.CoreV1().Pods(clusterNamespace).List(ctx, metav1.ListOptions{LabelSelector: "batch.kubernetes.io/job-name=" + key})
 		require.NoError(t, err)
