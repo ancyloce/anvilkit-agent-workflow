@@ -96,7 +96,7 @@ config:
     enabled: false
   health:
     listen: 127.0.0.1:9102
-  shutdown_timeout: 30s
+  # shutdown_timeout is rendered from shutdown.drainSeconds below.
 
 resources:
   requests:
@@ -117,9 +117,16 @@ probes:
     periodSeconds: 10
     failureThreshold: 3
 
-# Shutdown: the worker reports not ready, then drains its pollers for up
-# to shutdown_timeout from the configuration; the grace period must exceed it.
-terminationGracePeriodSeconds: 60
+# Shutdown: on SIGTERM the worker reports not ready, stops both Task Queues
+# from accepting work at once and drains their in-flight Activities for at
+# most shutdown.drainSeconds together (the configuration's shutdown_timeout,
+# rendered from this value; 1 to 300 as the worker accepts), then closes its
+# clients and the health listener within its fixed close allowance (10 s,
+# internal/bootstrap). The Pod's termination grace period is derived as
+# drainSeconds + 15 (the allowance and a margin before SIGKILL), so no
+# supported drain bound outlives the Pod.
+shutdown:
+  drainSeconds: 30
 
 podSecurityContext:
   runAsNonRoot: true

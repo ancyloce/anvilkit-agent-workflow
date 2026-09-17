@@ -1,6 +1,11 @@
 {{- include "anvilkit-agent-workflow.require" . -}}
 {{- $cfg := deepCopy .Values.config -}}
 {{- $_ := set $cfg.kubernetes "namespace" .Values.launcher.namespace -}}
+{{- $drain := int .Values.shutdown.drainSeconds -}}
+{{- if or (lt $drain 1) (gt $drain 300) }}
+{{- fail (printf "shutdown.drainSeconds %d is outside [1, 300], the worker's supported shutdown_timeout range" $drain) }}
+{{- end }}
+{{- $_ = set $cfg "shutdown_timeout" (printf "%ds" $drain) -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
