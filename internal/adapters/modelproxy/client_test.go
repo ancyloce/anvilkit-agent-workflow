@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -21,30 +19,16 @@ import (
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/adapters/modelproxy"
 )
 
-// fixtures are the cross-runtime vectors of the contract; the Go side must
-// read the same frames the Proxy (TypeScript) produces.
-func fixtureFrames(t *testing.T) map[string]json.RawMessage {
-	t.Helper()
-	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "..", "..", "contracts", "openapi", "model-proxy.fixtures.json"))
-	if err != nil {
-		t.Skip("contracts/openapi/model-proxy.fixtures.json not beside this repository")
-	}
-	var doc struct {
-		Cases []struct {
-			Name     string          `json:"name"`
-			Schema   string          `json:"schema"`
-			Valid    bool            `json:"valid"`
-			Instance json.RawMessage `json:"instance"`
-		} `json:"cases"`
-	}
-	require.NoError(t, json.Unmarshal(raw, &doc))
-	out := map[string]json.RawMessage{}
-	for _, c := range doc.Cases {
-		if c.Schema == "StreamFrame" && c.Valid {
-			out[c.Name] = c.Instance
-		}
-	}
-	return out
+// The positive StreamFrame vectors of the contract's cross-runtime fixture
+// file (openapi/model-proxy.fixtures.json of the contracts repository,
+// checked there against every runtime), as the Proxy writes them. They are
+// read here through the client's strict decoder against the contract the
+// pinned module embeds, so a vector this copy and the contract disagree on
+// fails here rather than being skipped.
+var fixtureFrames = map[string]string{
+	"admitted frame":                                           `{"callId":"call_01J9ABCDEF","sequence":"0","type":"admitted"}`,
+	"tool call frame with arguments digest":                    `{"callId":"call_01J9ABCDEF","sequence":"7","type":"tool_call","toolCall":{"toolCallId":"tc_1","name":"read_brief","argumentsDigest":"sha256:0dc7fa9db7237a2b5c96f70f59bb00f73bb86a0ca5554e91c312f9ada26e18b3","arguments":"{}"}}`,
+	"done frame with native usage counters as decimal strings": `{"callId":"call_01J9ABCDEF","sequence":"12","type":"done","outcome":"succeeded","usage":{"inputUnits":"1200","outputUnits":"340","reasoningUnits":"0","cachedInputUnits":"0"}}`,
 }
 
 // fakeProxy serves the frozen contract: a scripted SSE answer (go-sse
@@ -137,14 +121,14 @@ func input(callID string) activities.ModelCallInput {
 }
 
 func TestCallModelReadsTheContractFrames(t *testing.T) {
-	frames := fixtureFrames(t)
+	frames := fixtureFrames
 	f := newFakeProxy(t)
 	f.frames = []string{
-		string(frames["admitted frame"]),
+		frames["admitted frame"],
 		`{"callId":"call_01J9ABCDEF","sequence":"1","type":"text","text":"Hello"}`,
 		`{"callId":"call_01J9ABCDEF","sequence":"2","type":"text","text":" world"}`,
-		strings.Replace(string(frames["tool call frame with arguments digest"]), `"sequence": "7"`, `"sequence": "3"`, 1),
-		strings.Replace(string(frames["done frame with native usage counters as decimal strings"]), `"sequence": "12"`, `"sequence": "4"`, 1),
+		strings.Replace(frames["tool call frame with arguments digest"], `"sequence":"7"`, `"sequence":"3"`, 1),
+		strings.Replace(frames["done frame with native usage counters as decimal strings"], `"sequence":"12"`, `"sequence":"4"`, 1),
 	}
 	f.record = `{"callId":"call_01J9ABCDEF","routeId":"route_planner_default","state":"succeeded","dispatchId":"dsp_01J9ABCDEF","usage":{"inputUnits":"1200","outputUnits":"340","reasoningUnits":"0","cachedInputUnits":"0"},"nativeReference":"chatcmpl-1","createdAt":"2026-09-14T12:00:00Z","updatedAt":"2026-09-14T12:00:09.5Z"}`
 	c, err := modelproxy.New(modelproxy.Options{BaseURL: f.srv.URL, Token: "workflow-token", Timeout: 10 * time.Second})
@@ -253,22 +237,71 @@ func TestCallModelRefusesFramesOutsideTheContract(t *testing.T) {
 	f := newFakeProxy(t)
 	c, err := modelproxy.New(modelproxy.Options{BaseURL: f.srv.URL, Token: "t", Timeout: 10 * time.Second})
 	require.NoError(t, err)
+	admitted := `{"callId":"c","sequence":"0","type":"admitted"}`
 	for name, frames := range map[string][]string{
 		"unknown member":     {`{"callId":"c","sequence":"0","type":"admitted","raw":{"provider":"body"}}`},
 		"another call":       {`{"callId":"other","sequence":"0","type":"admitted"}`},
-		"sequence gap":       {`{"callId":"c","sequence":"0","type":"admitted"}`, `{"callId":"c","sequence":"2","type":"done","outcome":"succeeded"}`},
+		"sequence gap":       {admitted, `{"callId":"c","sequence":"2","type":"done","outcome":"succeeded"}`},
 		"non-canonical seq":  {`{"callId":"c","sequence":"00","type":"admitted"}`},
 		"unknown frame type": {`{"callId":"c","sequence":"0","type":"retry"}`},
+		// The JSON contract: one document, every member once, the schema's
+		// types, enums and patterns — a duplicate member with an equal value
+		// included, and a counter the Sequence pattern excludes.
+		"duplicate member":              {`{"callId":"c","sequence":"0","type":"admitted","type":"admitted"}`},
+		"duplicate member, other value": {admitted, `{"callId":"c","sequence":"1","type":"text","text":"a","text":"b"}`},
+		"trailing second document":      {admitted + ` {"callId":"c","sequence":"1","type":"done","outcome":"succeeded"}`},
+		"trailing garbage":              {admitted + `x`},
+		"negative usage counter":        {admitted, `{"callId":"c","sequence":"1","type":"done","outcome":"succeeded","usage":{"inputUnits":"-1","outputUnits":"1","reasoningUnits":"0","cachedInputUnits":"0"}}`},
+		"usage counter as a number":     {admitted, `{"callId":"c","sequence":"1","type":"usage","usage":{"inputUnits":1,"outputUnits":"1","reasoningUnits":"0","cachedInputUnits":"0"}}`},
+		"usage without a counter":       {admitted, `{"callId":"c","sequence":"1","type":"usage","usage":{"inputUnits":"1","outputUnits":"1","reasoningUnits":"0"}}`},
+		"sequence as a number":          {`{"callId":"c","sequence":0,"type":"admitted"}`},
+		"outcome outside the enum":      {admitted, `{"callId":"c","sequence":"1","type":"done","outcome":"maybe"}`},
+		"text over the contract bound":  {admitted, `{"callId":"c","sequence":"1","type":"text","text":"` + strings.Repeat("x", 65537) + `"}`},
+		"tool call without its digest":  {admitted, `{"callId":"c","sequence":"1","type":"tool_call","toolCall":{"toolCallId":"tc_1","name":"read_brief","arguments":"{}"}}`},
+		"tool call member unknown":      {admitted, `{"callId":"c","sequence":"1","type":"tool_call","toolCall":{"toolCallId":"tc_1","name":"read_brief","argumentsDigest":"sha256:0dc7fa9db7237a2b5c96f70f59bb00f73bb86a0ca5554e91c312f9ada26e18b3","function":{}}}`},
+		"invalid UTF-8 in text":         {admitted, "{\"callId\":\"c\",\"sequence\":\"1\",\"type\":\"text\",\"text\":\"\xff\"}"},
 	} {
 		f.frames = frames
 		_, err := c.CallModel(t.Context(), input("c"), func() {})
 		require.Equal(t, "INVALID_ARGUMENT", activities.RefusalCode(err), name)
+		require.NotContains(t, err.Error(), "read_brief", "%s: the refusal names members and reasons, not values", name)
 	}
 	f.frames = []string{`{"callId":"c","sequence":"0","type":"admitted"}`, `{"callId":"c","sequence":"1","type":"text","text":"partial"}`}
 	_, err = c.CallModel(t.Context(), input("c"), func() {})
 	require.Error(t, err)
 	require.Empty(t, activities.RefusalCode(err), "a stream without its final frame is retryable: the same call id reenters")
 	require.ErrorContains(t, err, "without a final frame")
+}
+
+func TestQueryAndCancelReadTheRecordStrictly(t *testing.T) {
+	f := newFakeProxy(t)
+	c, err := modelproxy.New(modelproxy.Options{BaseURL: f.srv.URL, Token: "t", Timeout: 10 * time.Second})
+	require.NoError(t, err)
+	valid := `{"callId":"c","routeId":"r","state":"succeeded","dispatchId":"d","usage":{"inputUnits":"3","outputUnits":"1","reasoningUnits":"0","cachedInputUnits":"0"},"nativeReference":"chatcmpl-1","errorCode":"","createdAt":"2026-09-14T12:00:00Z","updatedAt":"2026-09-14T12:00:09.5Z"}`
+	f.record = valid
+	got, err := c.GetModelCall(t.Context(), "c")
+	require.NoError(t, err)
+	require.Equal(t, activities.ModelCallResult{CallID: "c", DispatchID: "d", State: "succeeded", NativeReference: "chatcmpl-1", Usage: &activities.ModelUsage{InputUnits: "3", OutputUnits: "1", ReasoningUnits: "0", CachedInputUnits: "0"}}, got)
+	canceled, err := c.CancelModelCall(t.Context(), "c")
+	require.NoError(t, err)
+	require.Equal(t, got, canceled)
+	for name, record := range map[string]string{
+		"duplicate member":              `{"callId":"c","callId":"c","routeId":"r","state":"succeeded","dispatchId":"d","createdAt":"2026-09-14T12:00:00Z","updatedAt":"2026-09-14T12:00:09.5Z"}`,
+		"trailing second document":      valid + valid,
+		"unknown member":                `{"callId":"c","routeId":"r","state":"succeeded","dispatchId":"d","createdAt":"2026-09-14T12:00:00Z","updatedAt":"2026-09-14T12:00:09.5Z","frames":[]}`,
+		"state outside the enum":        `{"callId":"c","routeId":"r","state":"streaming","dispatchId":"d","createdAt":"2026-09-14T12:00:00Z","updatedAt":"2026-09-14T12:00:09.5Z"}`,
+		"negative usage counter":        `{"callId":"c","routeId":"r","state":"succeeded","dispatchId":"d","usage":{"inputUnits":"-1","outputUnits":"1","reasoningUnits":"0","cachedInputUnits":"0"},"createdAt":"2026-09-14T12:00:00Z","updatedAt":"2026-09-14T12:00:09.5Z"}`,
+		"missing required member":       `{"callId":"c","routeId":"r","state":"succeeded","createdAt":"2026-09-14T12:00:00Z","updatedAt":"2026-09-14T12:00:09.5Z"}`,
+		"timestamp outside the pattern": `{"callId":"c","routeId":"r","state":"succeeded","dispatchId":"d","createdAt":"2026-09-14 12:00:00","updatedAt":"2026-09-14T12:00:09.5Z"}`,
+		"dispatch id as a number":       `{"callId":"c","routeId":"r","state":"succeeded","dispatchId":7,"createdAt":"2026-09-14T12:00:00Z","updatedAt":"2026-09-14T12:00:09.5Z"}`,
+	} {
+		f.record = record
+		_, err := c.GetModelCall(t.Context(), "c")
+		require.Equal(t, "INVALID_ARGUMENT", activities.RefusalCode(err), "query: %s", name)
+		_, err = c.CancelModelCall(t.Context(), "c")
+		require.Equal(t, "INVALID_ARGUMENT", activities.RefusalCode(err), "cancel: %s", name)
+	}
+	require.Equal(t, int32(0), f.posts.Load(), "queries and cancels never open a call")
 }
 
 func TestCallModelMapsRefusalsAndRetryableAnswers(t *testing.T) {
@@ -285,9 +318,19 @@ func TestCallModelMapsRefusalsAndRetryableAnswers(t *testing.T) {
 	_, err = c.CallModel(t.Context(), input("c"), func() {})
 	require.Error(t, err)
 	require.Empty(t, activities.RefusalCode(err), "a retryable answer is retried under the same call id")
-	f.status, f.envelope = 500, `not json`
-	_, err = c.CallModel(t.Context(), input("c"), func() {})
-	require.ErrorContains(t, err, "without an error envelope")
+	for name, envelope := range map[string]string{
+		"not json":                 `not json`,
+		"duplicate member":         `{"error":{"code":"FORBIDDEN","code":"FORBIDDEN","message":"m","requestId":"req_4","retryable":false}}`,
+		"trailing second document": `{"error":{"code":"FORBIDDEN","message":"m","requestId":"req_4","retryable":false}}{}`,
+		"code outside the enum":    `{"error":{"code":"TEAPOT","message":"m","requestId":"req_4","retryable":false}}`,
+		"unknown member":           `{"error":{"code":"FORBIDDEN","message":"m","requestId":"req_4","retryable":false,"hint":"x"}}`,
+		"retryable as a string":    `{"error":{"code":"FORBIDDEN","message":"m","requestId":"req_4","retryable":"no"}}`,
+	} {
+		f.status, f.envelope = 500, envelope
+		_, err = c.CallModel(t.Context(), input("c"), func() {})
+		require.ErrorContains(t, err, "without an error envelope", name)
+		require.Empty(t, activities.RefusalCode(err), "%s: an answer outside the contract is not a refusal of the call", name)
+	}
 }
 
 func TestClientOptionsAndUnavailablePort(t *testing.T) {

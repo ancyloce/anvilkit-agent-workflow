@@ -43,6 +43,9 @@ func Dial(address, backend, worker string) (*Client, error) {
 
 func (c *Client) Close() error { return c.conn.Close() }
 
+// Conn is the established connection, shared with the artifact port.
+func (c *Client) Conn() *grpc.ClientConn { return c.conn }
+
 // command builds the durable identity: the digest covers the typed input so
 // a changed input for the same command id is refused by Control.
 func (c *Client) command(tenantID, commandID string, input any) *controlv1.CommandIdentity {
@@ -96,7 +99,7 @@ func (c *Client) PrepareLaunch(ctx context.Context, in activities.PrepareLaunchI
 	if err != nil {
 		return activities.LaunchRef{}, nonRetryable(err)
 	}
-	return activities.LaunchRef{LaunchID: resp.GetLaunchId(), AttemptID: resp.GetAttemptId(), LaunchKey: resp.GetLaunchKey(), ImageDigest: image}, nil
+	return activities.LaunchRef{LaunchID: resp.GetLaunchId(), AttemptID: resp.GetAttemptId(), LaunchKey: resp.GetLaunchKey(), ImageDigest: image, LaunchEpoch: resp.GetLaunchEpoch()}, nil
 }
 
 func (c *Client) RegisterInstance(ctx context.Context, in activities.RegisterInstanceInput) (activities.InstanceRef, error) {

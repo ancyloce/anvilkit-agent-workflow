@@ -5,17 +5,21 @@
 // Workflow's identity to the Proxy (a DEVELOPMENT_ONLY bearer token from the
 // environment, or the workload certificate) and forwards nothing else. The
 // event stream is read by go-sse (the protocol: field parsing, multi-line
-// data, comments, CRLF) with a bounded event size; every frame is decoded
-// strictly and checked against the call and the sequence here.
+// data, comments, CRLF) with a bounded event size; every frame, record and
+// error envelope is one strict JSON document of the contract (contracts.md
+// §4: encoding/json/v2 rejects duplicate members, trailing data, invalid
+// UTF-8 and unknown members; the component schema of the embedded contract
+// enforces the types, enums, patterns, bounds and required members) and is
+// checked against the call and the sequence here.
 package modelproxy
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -23,13 +27,54 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/tmaxmax/go-sse"
 
 	"github.com/ancyloce/anvilkit-agent-contracts/go/modelproxyapi"
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/activities"
 )
+
+// contractSchemas are the component schemas of the contract the generated
+// module embeds (the same openapi/model-proxy.yaml the Proxy validates
+// against), loaded once per process.
+var contractSchemas = sync.OnceValues(func() (openapi3.Schemas, error) {
+	spec, err := modelproxyapi.GetSpec()
+	if err != nil {
+		return nil, fmt.Errorf("embedded model proxy contract: %w", err)
+	}
+	if spec.Components == nil || len(spec.Components.Schemas) == 0 {
+		return nil, errors.New("embedded model proxy contract declares no component schemas")
+	}
+	return spec.Components.Schemas, nil
+})
+
+// decodeStrict reads one JSON document of the named contract schema into
+// out. encoding/json/v2 refuses duplicate members, a second document after
+// the first, invalid UTF-8 and (into the generated type) unknown members;
+// the component schema refuses what the contract's types, enums, patterns,
+// bounds and required members exclude. Errors name members and reasons,
+// never the values (a frame may carry prompt or model text).
+func decodeStrict(schemas openapi3.Schemas, name string, data []byte, out any) error {
+	var value any
+	if err := jsonv2.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	schema, ok := schemas[name]
+	if !ok || schema == nil || schema.Value == nil {
+		return fmt.Errorf("%s is not a component schema of the contract", name)
+	}
+	if err := schema.Value.VisitJSON(value); err != nil {
+		var se *openapi3.SchemaError
+		if errors.As(err, &se) {
+			return fmt.Errorf("%s at /%s: %s", name, strings.Join(se.JSONPointer(), "/"), se.Reason)
+		}
+		return fmt.Errorf("%s: %w", name, err)
+	}
+	return jsonv2.Unmarshal(data, out, jsonv2.RejectUnknownMembers(true))
+}
 
 // Options of the client.
 type Options struct {
@@ -54,6 +99,7 @@ type TLSFiles struct{ CertFile, KeyFile, CAFile, ServerName string }
 // Client implements activities.ModelCaller.
 type Client struct {
 	api           *modelproxyapi.Client
+	schemas       openapi3.Schemas
 	timeout       time.Duration
 	maxFrames     int
 	maxFrameBytes int
@@ -127,6 +173,10 @@ func New(o Options) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	schemas, err := contractSchemas()
+	if err != nil {
+		return nil, fmt.Errorf("model proxy: %w", err)
+	}
 	timeout := o.Timeout
 	if timeout <= 0 {
 		timeout = 5 * time.Minute
@@ -139,7 +189,7 @@ func New(o Options) (*Client, error) {
 	if maxFrameBytes <= 0 {
 		maxFrameBytes = DefaultMaxFrameBytes
 	}
-	return &Client{api: api, timeout: timeout, maxFrames: maxFrames, maxFrameBytes: maxFrameBytes}, nil
+	return &Client{api: api, schemas: schemas, timeout: timeout, maxFrames: maxFrames, maxFrameBytes: maxFrameBytes}, nil
 }
 
 // requestOf maps the typed input to the contract request; the request
@@ -208,10 +258,10 @@ func requestOf(in activities.ModelCallInput) (modelproxyapi.ModelCallRequest, er
 // refusal maps an error envelope to the Activity's errors: a non-retryable
 // refusal for the Proxy's precondition codes, a retryable error for a
 // retryable answer (nothing was sent; the same call id reenters later).
-func refusal(status int, body []byte) error {
+func (c *Client) refusal(status int, body []byte) error {
 	var env modelproxyapi.ErrorEnvelope
-	if err := json.Unmarshal(body, &env); err != nil || env.Error.Code == "" {
-		return fmt.Errorf("model proxy answered %d without an error envelope", status)
+	if err := decodeStrict(c.schemas, "ErrorEnvelope", body, &env); err != nil {
+		return fmt.Errorf("model proxy answered %d without an error envelope: %w", status, err)
 	}
 	err := fmt.Errorf("%s: %s (request %s)", env.Error.Code, env.Error.Message, env.Error.RequestId)
 	if env.Error.Retryable {
@@ -242,7 +292,7 @@ func (c *Client) CallModel(ctx context.Context, in activities.ModelCallInput, he
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
-		return activities.ModelCallResult{}, refusal(resp.StatusCode, body)
+		return activities.ModelCallResult{}, c.refusal(resp.StatusCode, body)
 	}
 	if !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
 		return activities.ModelCallResult{}, fmt.Errorf("model proxy answered %q, not an event stream", resp.Header.Get("Content-Type"))
@@ -256,9 +306,7 @@ func (c *Client) CallModel(ctx context.Context, in activities.ModelCallInput, he
 			return activities.Refused("INVALID_ARGUMENT", fmt.Errorf("frame of %d bytes exceeds the bound of %d", len(payload), c.maxFrameBytes))
 		}
 		var f modelproxyapi.StreamFrame
-		dec := json.NewDecoder(strings.NewReader(payload))
-		dec.DisallowUnknownFields()
-		if err := dec.Decode(&f); err != nil {
+		if err := decodeStrict(c.schemas, "StreamFrame", []byte(payload), &f); err != nil {
 			return activities.Refused("INVALID_ARGUMENT", fmt.Errorf("frame outside the contract: %w", err))
 		}
 		if f.CallId != in.CallID {
@@ -375,12 +423,10 @@ func (c *Client) GetModelCall(ctx context.Context, callID string) (activities.Mo
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusOK {
-		return activities.ModelCallResult{}, refusal(resp.StatusCode, body)
+		return activities.ModelCallResult{}, c.refusal(resp.StatusCode, body)
 	}
 	var m modelproxyapi.ModelCall
-	dec := json.NewDecoder(bytes.NewReader(body))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&m); err != nil {
+	if err := decodeStrict(c.schemas, "ModelCall", body, &m); err != nil {
 		return activities.ModelCallResult{}, activities.Refused("INVALID_ARGUMENT", fmt.Errorf("call record outside the contract: %w", err))
 	}
 	return resultOf(&m), nil
@@ -397,12 +443,10 @@ func (c *Client) CancelModelCall(ctx context.Context, callID string) (activities
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusAccepted {
-		return activities.ModelCallResult{}, refusal(resp.StatusCode, body)
+		return activities.ModelCallResult{}, c.refusal(resp.StatusCode, body)
 	}
 	var m modelproxyapi.ModelCall
-	dec := json.NewDecoder(bytes.NewReader(body))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&m); err != nil {
+	if err := decodeStrict(c.schemas, "ModelCall", body, &m); err != nil {
 		return activities.ModelCallResult{}, activities.Refused("INVALID_ARGUMENT", fmt.Errorf("call record outside the contract: %w", err))
 	}
 	return resultOf(&m), nil
