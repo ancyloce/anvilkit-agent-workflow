@@ -10,6 +10,7 @@ require (
 	github.com/knadh/koanf/providers/file v1.2.0
 	github.com/knadh/koanf/v2 v2.3.6
 	github.com/stretchr/testify v1.12.1
+	github.com/tmaxmax/go-sse v0.11.0
 	go.temporal.io/sdk v1.48.0
 	go.uber.org/fx v1.24.0
 	google.golang.org/grpc v1.83.2
