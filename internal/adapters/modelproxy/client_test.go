@@ -1,19 +1,22 @@
 package modelproxy_test
 
 import (
+	"bytes"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/tmaxmax/go-sse"
 
+	"github.com/ancyloce/anvilkit-agent-contracts/go/modelproxyapi"
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/activities"
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/adapters/modelproxy"
 )
@@ -44,15 +47,22 @@ func fixtureFrames(t *testing.T) map[string]json.RawMessage {
 	return out
 }
 
-// fakeProxy serves the frozen contract: a scripted SSE answer, the record, and the cancel.
+// fakeProxy serves the frozen contract: a scripted SSE answer (go-sse
+// encodes the events; raw bytes stand in only for the negative shapes), the
+// record, and the cancel.
 type fakeProxy struct {
 	srv      *httptest.Server
 	posts    atomic.Int32
 	auth     atomic.Value
+	body     atomic.Value
 	frames   []string
 	status   int
 	envelope string
 	record   string
+	// raw, when set, is written instead of the encoded frames (protocol shapes the encoder does not produce).
+	raw string
+	// fragment, when positive, writes the answer in pieces of that many bytes, flushed one by one.
+	fragment int
 }
 
 func newFakeProxy(t *testing.T) *fakeProxy {
@@ -62,6 +72,8 @@ func newFakeProxy(t *testing.T) *fakeProxy {
 		switch {
 		case r.Method == "POST" && r.URL.Path == "/api/v1/model-calls":
 			f.posts.Add(1)
+			raw, _ := readAll(r)
+			f.body.Store(raw)
 			if f.status != 200 {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(f.status)
@@ -70,9 +82,26 @@ func newFakeProxy(t *testing.T) *fakeProxy {
 			}
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.WriteHeader(200)
-			for i, fr := range f.frames {
-				fmt.Fprintf(w, "id: %d\ndata: %s\n\n", i, fr)
+			var out bytes.Buffer
+			if f.raw != "" {
+				out.WriteString(f.raw)
+			} else {
+				for i, fr := range f.frames {
+					m := &sse.Message{ID: sse.ID(strconv.Itoa(i))}
+					m.AppendData(fr)
+					_, _ = m.WriteTo(&out)
+				}
 			}
+			if f.fragment > 0 {
+				b := out.Bytes()
+				for i := 0; i < len(b); i += f.fragment {
+					end := min(i+f.fragment, len(b))
+					_, _ = w.Write(b[i:end])
+					w.(http.Flusher).Flush()
+				}
+				return
+			}
+			_, _ = w.Write(out.Bytes())
 		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/api/v1/model-calls/"):
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(200)
@@ -89,6 +118,12 @@ func newFakeProxy(t *testing.T) *fakeProxy {
 	}))
 	t.Cleanup(f.srv.Close)
 	return f
+}
+
+func readAll(r *http.Request) (string, error) {
+	var b bytes.Buffer
+	_, err := b.ReadFrom(r.Body)
+	return b.String(), err
 }
 
 func input(callID string) activities.ModelCallInput {
@@ -136,6 +171,82 @@ func TestCallModelReadsTheContractFrames(t *testing.T) {
 	canceled, err := c.CancelModelCall(t.Context(), "call_01J9ABCDEF")
 	require.NoError(t, err)
 	require.Equal(t, "dsp_01J9ABCDEF", canceled.DispatchID)
+}
+
+func TestCallModelReadsTheProtocolShapes(t *testing.T) {
+	// The same frames however the wire delivers them: one data line, several
+	// data lines (joined by newlines, whitespace to the JSON decoder), CRLF
+	// terminators with keepalive comments in between, and pieces that cut
+	// lines and multibyte sequences. The decoded frames agree.
+	frames := []string{
+		`{"callId":"c","sequence":"0","type":"admitted"}`,
+		`{"callId":"c","sequence":"1","type":"text","text":"héllo 🎉 日本"}`,
+		`{"callId":"c","sequence":"2","type":"done","outcome":"succeeded","usage":{"inputUnits":"3","outputUnits":"1","reasoningUnits":"0","cachedInputUnits":"0"}}`,
+	}
+	f := newFakeProxy(t)
+	f.record = `{"callId":"c","routeId":"r","state":"succeeded","dispatchId":"d","createdAt":"2026-09-14T12:00:00Z","updatedAt":"2026-09-14T12:00:09.5Z"}`
+	c, err := modelproxy.New(modelproxy.Options{BaseURL: f.srv.URL, Token: "t", Timeout: 10 * time.Second})
+	require.NoError(t, err)
+	f.frames = frames
+	single, err := c.CallModel(t.Context(), input("c"), func() {})
+	require.NoError(t, err)
+	require.Equal(t, "succeeded", single.State)
+	require.Equal(t, "héllo 🎉 日本", single.Text)
+	require.Equal(t, 3, single.Frames)
+	f.frames, f.raw = nil, "id: 0\ndata: "+frames[0]+"\n\n"+
+		"id: 1\ndata: {\"callId\":\"c\",\"sequence\":\"1\",\ndata: \"type\":\"text\",\ndata: \"text\":\"héllo 🎉 日本\"}\n\n"+
+		"id: 2\ndata: "+frames[2]+"\n\n"
+	multiline, err := c.CallModel(t.Context(), input("c"), func() {})
+	require.NoError(t, err)
+	require.Equal(t, single, multiline)
+	f.raw = ": keepalive\r\n\r\nid: 0\r\ndata: " + frames[0] + "\r\n\r\n: keepalive\r\n\r\nid: 1\r\ndata: " + frames[1] + "\r\n\r\nid: 2\r\ndata: " + frames[2] + "\r\n\r\n"
+	crlf, err := c.CallModel(t.Context(), input("c"), func() {})
+	require.NoError(t, err)
+	require.Equal(t, single, crlf)
+	f.raw, f.frames, f.fragment = "", frames, 7
+	fragmented, err := c.CallModel(t.Context(), input("c"), func() {})
+	require.NoError(t, err)
+	require.Equal(t, single, fragmented)
+	f.fragment = 0
+	// An event over the frame bound is refused, never read partially.
+	bounded, err := modelproxy.New(modelproxy.Options{BaseURL: f.srv.URL, Token: "t", Timeout: 10 * time.Second, MaxFrameBytes: 64})
+	require.NoError(t, err)
+	f.frames = []string{frames[0], `{"callId":"c","sequence":"1","type":"text","text":"` + strings.Repeat("x", 100) + `"}`, frames[2]}
+	_, err = bounded.CallModel(t.Context(), input("c"), func() {})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "exceeds the bound")
+	// The final frame is the last one read: frames after it are not consumed.
+	f.frames = append(append([]string{}, frames...), `{"callId":"c","sequence":"3","type":"text","text":"late"}`)
+	after, err := c.CallModel(t.Context(), input("c"), func() {})
+	require.NoError(t, err)
+	require.Equal(t, 3, after.Frames)
+}
+
+func TestRequestCarriesTheToolRoundTrip(t *testing.T) {
+	f := newFakeProxy(t)
+	f.frames = []string{`{"callId":"c","sequence":"0","type":"admitted"}`, `{"callId":"c","sequence":"1","type":"done","outcome":"succeeded","usage":{"inputUnits":"3","outputUnits":"1","reasoningUnits":"0","cachedInputUnits":"0"}}`}
+	f.record = `{"callId":"c","routeId":"r","state":"succeeded","dispatchId":"d","createdAt":"2026-09-14T12:00:00Z","updatedAt":"2026-09-14T12:00:09.5Z"}`
+	c, err := modelproxy.New(modelproxy.Options{BaseURL: f.srv.URL, Token: "t", Timeout: 10 * time.Second})
+	require.NoError(t, err)
+	in := input("c")
+	in.Messages = append(in.Messages,
+		activities.ModelMessage{Role: "assistant", Content: "", ToolCalls: []activities.ModelToolCall{{ToolCallID: "tc_1", Name: "read_brief", Arguments: `{"section":"hero"}`, ArgumentsDigest: "sha256:0dc7fa9db7237a2b5c96f70f59bb00f73bb86a0ca5554e91c312f9ada26e18b3"}}},
+		activities.ModelMessage{Role: "tool", ToolCallID: "tc_1", Content: "The brief: one hero."},
+	)
+	_, err = c.CallModel(t.Context(), in, func() {})
+	require.NoError(t, err)
+	var sent modelproxyapi.ModelCallRequest
+	dec := json.NewDecoder(strings.NewReader(f.body.Load().(string)))
+	dec.DisallowUnknownFields()
+	require.NoError(t, dec.Decode(&sent), "the request is the contract's, tool calls included")
+	require.Len(t, sent.Messages, 4)
+	require.NotNil(t, sent.Messages[2].ToolCalls)
+	require.Equal(t, []modelproxyapi.MessageToolCall{{ToolCallId: "tc_1", Name: "read_brief", Arguments: `{"section":"hero"}`}}, *sent.Messages[2].ToolCalls)
+	require.Nil(t, sent.Messages[2].ToolCallId)
+	require.NotNil(t, sent.Messages[3].ToolCallId)
+	require.Equal(t, "tc_1", string(*sent.Messages[3].ToolCallId))
+	require.Nil(t, sent.Messages[3].ToolCalls)
+	require.NotContains(t, f.body.Load().(string), "ArgumentsDigest", "the digest is the frame's, not part of the replay")
 }
 
 func TestCallModelRefusesFramesOutsideTheContract(t *testing.T) {

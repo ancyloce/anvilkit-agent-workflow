@@ -3,12 +3,13 @@
 // one POST opens a call and streams its frames, a GET queries the original
 // call, a POST cancels it. The client holds no provider key; it presents the
 // Workflow's identity to the Proxy (a DEVELOPMENT_ONLY bearer token from the
-// environment, or the workload certificate) and forwards nothing else. Every
-// frame is decoded strictly and checked against the call and the sequence.
+// environment, or the workload certificate) and forwards nothing else. The
+// event stream is read by go-sse (the protocol: field parsing, multi-line
+// data, comments, CRLF) with a bounded event size; every frame is decoded
+// strictly and checked against the call and the sequence here.
 package modelproxy
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -23,6 +24,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/tmaxmax/go-sse"
 
 	"github.com/ancyloce/anvilkit-agent-contracts/go/modelproxyapi"
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/activities"
@@ -40,6 +43,9 @@ type Options struct {
 	Timeout time.Duration
 	// MaxFrames bounds the frames one call may deliver (the route profile's bound or the contract's).
 	MaxFrames int
+	// MaxFrameBytes bounds one encoded frame (the route profile's max_frame_bytes or the
+	// contract's largest frame); a larger event ends the call as a refusal.
+	MaxFrameBytes int
 }
 
 // TLSFiles is the workload identity material.
@@ -47,10 +53,20 @@ type TLSFiles struct{ CertFile, KeyFile, CAFile, ServerName string }
 
 // Client implements activities.ModelCaller.
 type Client struct {
-	api       *modelproxyapi.Client
-	timeout   time.Duration
-	maxFrames int
+	api           *modelproxyapi.Client
+	timeout       time.Duration
+	maxFrames     int
+	maxFrameBytes int
 }
+
+// DefaultMaxFrameBytes is the largest frame the contract allows (the
+// arguments of a tool call at 262144 code points of four bytes plus the
+// envelope), rounded up.
+const DefaultMaxFrameBytes = 2 << 20
+
+// sseFieldOverhead is what an event carries besides the frame's JSON: the
+// `id` field, the `data:` prefixes and the line terminators.
+const sseFieldOverhead = 256
 
 // unavailable marks the port as not configured: every call answers
 // DEPENDENCY_UNAVAILABLE without any network.
@@ -119,7 +135,11 @@ func New(o Options) (*Client, error) {
 	if maxFrames <= 0 {
 		maxFrames = 1 << 20
 	}
-	return &Client{api: api, timeout: timeout, maxFrames: maxFrames}, nil
+	maxFrameBytes := o.MaxFrameBytes
+	if maxFrameBytes <= 0 {
+		maxFrameBytes = DefaultMaxFrameBytes
+	}
+	return &Client{api: api, timeout: timeout, maxFrames: maxFrames, maxFrameBytes: maxFrameBytes}, nil
 }
 
 // requestOf maps the typed input to the contract request; the request
@@ -152,6 +172,13 @@ func requestOf(in activities.ModelCallInput) (modelproxyapi.ModelCallRequest, er
 		if m.ToolCallID != "" {
 			id := m.ToolCallID
 			msg.ToolCallId = &id
+		}
+		if len(m.ToolCalls) > 0 {
+			calls := make([]modelproxyapi.MessageToolCall, 0, len(m.ToolCalls))
+			for _, tc := range m.ToolCalls {
+				calls = append(calls, modelproxyapi.MessageToolCall{ToolCallId: tc.ToolCallID, Name: tc.Name, Arguments: tc.Arguments})
+			}
+			msg.ToolCalls = &calls
 		}
 		req.Messages = append(req.Messages, msg)
 	}
@@ -194,8 +221,9 @@ func refusal(status int, body []byte) error {
 }
 
 // CallModel opens the call and consumes its frames. A frame outside the
-// contract, out of sequence or for another call ends the Activity with a
-// refusal (the call is queried, never repeated).
+// contract, out of sequence, over the frame bound or for another call ends
+// the Activity with a refusal (the call is queried, never repeated); a
+// stream that ends without its final frame is retried as a reentry.
 func (c *Client) CallModel(ctx context.Context, in activities.ModelCallInput, heartbeat func()) (activities.ModelCallResult, error) {
 	req, err := requestOf(in)
 	if err != nil {
@@ -223,12 +251,12 @@ func (c *Client) CallModel(ctx context.Context, in activities.ModelCallInput, he
 	var text strings.Builder
 	next := uint64(0)
 	final := false
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 0, 64<<10), 1<<20)
-	var data []byte
-	handle := func(payload []byte) error {
+	handle := func(payload string) error {
+		if len(payload) > c.maxFrameBytes {
+			return activities.Refused("INVALID_ARGUMENT", fmt.Errorf("frame of %d bytes exceeds the bound of %d", len(payload), c.maxFrameBytes))
+		}
 		var f modelproxyapi.StreamFrame
-		dec := json.NewDecoder(bytes.NewReader(payload))
+		dec := json.NewDecoder(strings.NewReader(payload))
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(&f); err != nil {
 			return activities.Refused("INVALID_ARGUMENT", fmt.Errorf("frame outside the contract: %w", err))
@@ -280,34 +308,31 @@ func (c *Client) CallModel(ctx context.Context, in activities.ModelCallInput, he
 		heartbeat()
 		return nil
 	}
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		switch {
-		case len(line) == 0:
-			if len(data) > 0 {
-				if err := handle(data); err != nil {
-					return out, err
-				}
-				data = data[:0]
-			}
-		case bytes.HasPrefix(line, []byte("data:")):
-			data = append(data, bytes.TrimSpace(line[5:])...)
+	// go-sse reads the stream as the protocol states it (fields, multi-line
+	// data joined by newlines, comments dropped); an event larger than the
+	// frame bound plus the field overhead ends the read with an error.
+	var readErr error
+	for ev, err := range sse.Read(resp.Body, &sse.ReadConfig{MaxEventSize: c.maxFrameBytes + sseFieldOverhead}) {
+		if err != nil {
+			readErr = err
+			break
+		}
+		if ev.Data == "" {
+			continue // keepalive comments and id-only blocks carry no frame
+		}
+		if err := handle(ev.Data); err != nil {
+			return out, err
 		}
 		if final {
 			break
 		}
 	}
-	if !final && len(data) > 0 {
-		if err := handle(data); err != nil {
-			return out, err
-		}
-	}
-	if err := scanner.Err(); err != nil && !final {
-		// The stream ended without its final frame: the call is not over or
-		// the connection was lost; a retry reenters the same call id.
-		return out, fmt.Errorf("model proxy stream interrupted after %d frames: %w", out.Frames, err)
-	}
 	if !final {
+		if readErr != nil {
+			// The stream ended without its final frame: the call is not over or
+			// the connection was lost; a retry reenters the same call id.
+			return out, fmt.Errorf("model proxy stream interrupted after %d frames: %w", out.Frames, readErr)
+		}
 		return out, fmt.Errorf("model proxy stream ended after %d frames without a final frame", out.Frames)
 	}
 	out.Text = text.String()
