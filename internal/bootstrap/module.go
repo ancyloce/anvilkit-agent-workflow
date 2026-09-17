@@ -23,9 +23,11 @@ import (
 	"go.uber.org/fx/fxevent"
 
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/activities"
+	artifactadapter "github.com/ancyloce/anvilkit-agent-workflow/internal/adapters/artifacts"
 	controladapter "github.com/ancyloce/anvilkit-agent-workflow/internal/adapters/control"
 	k8sadapter "github.com/ancyloce/anvilkit-agent-workflow/internal/adapters/kubernetes"
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/adapters/modelproxy"
+	"github.com/ancyloce/anvilkit-agent-workflow/internal/adapters/pagix"
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/config"
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/workflows"
 )
@@ -102,6 +104,62 @@ func Bounds(e config.Execution) workflows.Bounds {
 	}
 }
 
+// Lifecycle maps the validated lifecycle section onto the P13 workflows'
+// frozen bounds.
+func Lifecycle(l config.Lifecycle) workflows.LifecycleBounds {
+	lb := workflows.LifecycleBounds{
+		AnalysisRouteID: l.Preparation.RouteID, AnalysisMaxOutputTokens: l.Preparation.MaxOutputTokens,
+		AnalysisMaxExposure: activities.Money{Currency: l.Preparation.MaxExposureCurrency, Amount: l.Preparation.MaxExposureAmount},
+		AnalysisCallTimeout: l.Preparation.CallTimeout, ContentRepairAllowance: l.Preparation.ContentRepairAllowance,
+		PermitPollInterval: l.Generation.PermitPollInterval, LeaseTTL: l.Generation.LeaseTTL, LeaseRenewLead: l.Generation.LeaseRenewLead, LeaseCallTimeout: l.Generation.LeaseCallTimeout,
+	}
+	for _, d := range l.Generation.Definitions {
+		lb.Definitions = append(lb.Definitions, workflows.DefinitionActivation{ID: d.ID, CodegenProfileID: d.CodegenProfile, ValidatorProfile: d.ValidatorProfile, MaxRepairs: d.MaxRepairs})
+	}
+	return lb
+}
+
+// unavailablePorts answer DEPENDENCY_UNAVAILABLE for every lease, source
+// and content-digest call of a deployment without the Pagix double or a
+// real declaration (ENV-07): a generation fails at bootstrap before any
+// send, a preparation before its brief.
+type unavailablePorts struct{}
+
+func (unavailablePorts) refuse() error {
+	return activities.Refused("DEPENDENCY_UNAVAILABLE", errors.New("no Pagix/Knowledge port is configured (lifecycle.pagix_double_dir, ENV-07)"))
+}
+func (u unavailablePorts) Acquire(context.Context, activities.LeaseInput) (activities.LeaseResult, error) {
+	return activities.LeaseResult{}, u.refuse()
+}
+func (u unavailablePorts) Renew(context.Context, activities.LeaseInput) (activities.LeaseResult, error) {
+	return activities.LeaseResult{}, u.refuse()
+}
+func (u unavailablePorts) Query(context.Context, activities.LeaseInput) (activities.LeaseResult, error) {
+	return activities.LeaseResult{}, u.refuse()
+}
+func (u unavailablePorts) Release(context.Context, activities.LeaseInput) (activities.LeaseResult, error) {
+	return activities.LeaseResult{}, u.refuse()
+}
+func (u unavailablePorts) CheckScope(context.Context, activities.CheckSourceScopeInput) (activities.ScopeDecision, error) {
+	return activities.ScopeDecision{}, u.refuse()
+}
+func (u unavailablePorts) RegisterCandidate(context.Context, string, activities.RegisterCandidateInput) (activities.CandidateRef, error) {
+	return activities.CandidateRef{}, u.refuse()
+}
+func (u unavailablePorts) QueryRegistration(context.Context, string) (activities.CandidateRef, bool, error) {
+	return activities.CandidateRef{}, false, u.refuse()
+}
+func (u unavailablePorts) ContentDigest(context.Context, string, activities.SourceReference) (activities.ContentDigest, error) {
+	return activities.ContentDigest{}, u.refuse()
+}
+
+// lifecyclePorts is the set the lifecycle Activities bind.
+type lifecyclePorts struct {
+	lease     activities.LeasePort
+	source    activities.SourcePort
+	knowledge activities.Knowledge
+}
+
 func Module() fx.Option {
 	return fx.Options(
 		// The stop hook drains for at most shutdown_timeout and closes within
@@ -147,6 +205,25 @@ func Module() fx.Option {
 			func(cfg config.Config, ctl *controladapter.Client, l *k8sadapter.Launcher, m activities.ModelCaller) *activities.Activities {
 				return &activities.Activities{Control: ctl, Recovery: ctl, Launcher: l, Model: m, Observer: cfg.Temporal.WorkerIdentity}
 			},
+			func(cfg config.Config, log *slog.Logger) (lifecyclePorts, error) {
+				dir := cfg.Lifecycle.PagixDoubleDir
+				if dir == "" {
+					log.Warn("no Pagix/Knowledge port configured: the Generation lease, source and content-digest calls answer DEPENDENCY_UNAVAILABLE (ENV-07)")
+					return lifecyclePorts{lease: unavailablePorts{}, source: unavailablePorts{}, knowledge: unavailablePorts{}}, nil
+				}
+				log.Warn("DEVELOPMENT_ONLY Pagix/Knowledge doubles enabled; they qualify no upstream", "dir", dir)
+				d, err := pagix.New(dir)
+				if err != nil {
+					return lifecyclePorts{}, err
+				}
+				return lifecyclePorts{lease: d, source: d, knowledge: d}, nil
+			},
+			func(cfg config.Config, ctl *controladapter.Client, m activities.ModelCaller, ports lifecyclePorts) *activities.LifecycleActivities {
+				return &activities.LifecycleActivities{
+					Preparation: ctl, Generation: ctl, Artifacts: artifactadapter.New(ctl.Conn(), cfg.Temporal.WorkerIdentity, cfg.Lifecycle.Artifacts.TransferWindow),
+					Knowledge: ports.knowledge, Model: m, Lease: ports.lease, Source: ports.source, MaxInputBytes: cfg.Lifecycle.Preparation.MaxInputBytes,
+				}
+			},
 			newWorkers,
 		),
 		fx.Invoke(run),
@@ -157,6 +234,34 @@ func Module() fx.Option {
 func Register(business, control worker.Worker, acts *activities.Activities, q workflows.Queues, b workflows.Bounds) {
 	business.RegisterWorkflowWithOptions(workflows.LocalCheck(q, b), workflow.RegisterOptions{Name: workflows.LocalCheckWorkflowName})
 	business.RegisterWorkflowWithOptions(workflows.Recovery(q, b), workflow.RegisterOptions{Name: workflows.RecoveryWorkflowName})
+	registerFixed(business, control, acts)
+}
+
+// RegisterLifecycle registers the P13 business workflows and their
+// Activities: the ordinary ones on the business queue, the lease calls,
+// the settlement and the candidate registration on the reserved control
+// queue (DD-01 §4: protected supervision).
+func RegisterLifecycle(business, control worker.Worker, acts *activities.LifecycleActivities, q workflows.Queues, b workflows.Bounds, lb workflows.LifecycleBounds) {
+	business.RegisterWorkflowWithOptions(workflows.Preparation(q, b, lb), workflow.RegisterOptions{Name: workflows.PreparationWorkflowName})
+	business.RegisterWorkflowWithOptions(workflows.Generation(q, b, lb), workflow.RegisterOptions{Name: workflows.GenerationWorkflowName})
+	for name, fn := range map[string]any{
+		activities.NameGetPreparation: acts.GetPreparation, activities.NameAnalyzeRequirements: acts.AnalyzeRequirements, activities.NameRecordQuestionSet: acts.RecordQuestionSet,
+		activities.NameGetAnswer: acts.GetAnswer, activities.NameFreezeReferences: acts.FreezeReferences, activities.NameFreezeBrief: acts.FreezeBrief,
+		activities.NameGetGeneration: acts.GetGeneration, activities.NameRequestExecutionPermit: acts.RequestExecutionPermit, activities.NameRecordFunding: acts.RecordFunding,
+		activities.NameCheckSourceScope: acts.CheckSourceScope, activities.NameGetAcceptedStage: acts.GetAcceptedStage,
+	} {
+		business.RegisterActivityWithOptions(fn, activity.RegisterOptions{Name: name})
+	}
+	for name, fn := range map[string]any{
+		activities.NameSettleOperation: acts.SettleOperation, activities.NameAcquireLease: acts.AcquireLease, activities.NameRenewLease: acts.RenewLease,
+		activities.NameQueryLease: acts.QueryLease, activities.NameReleaseLease: acts.ReleaseLease, activities.NameRecordLease: acts.RecordLease,
+		activities.NameRegisterCandidate: acts.RegisterCandidate,
+	} {
+		control.RegisterActivityWithOptions(fn, activity.RegisterOptions{Name: name})
+	}
+}
+
+func registerFixed(business, control worker.Worker, acts *activities.Activities) {
 	for name, fn := range map[string]any{
 		activities.NameOpenAttempt: acts.OpenAttempt, activities.NamePrepareLaunch: acts.PrepareLaunch, activities.NameCreateJob: acts.CreateJob,
 		activities.NameObserveJob: acts.ObserveJob, activities.NameRegisterInstance: acts.RegisterInstance, activities.NameObserveInstance: acts.ObserveInstance,
@@ -220,7 +325,7 @@ func (w *workers) fatal(q *queueWorker, err error) {
 	q.stop()
 }
 
-func newWorkers(cfg config.Config, c client.Client, acts *activities.Activities, log *slog.Logger, h *health, sd fx.Shutdowner) *workers {
+func newWorkers(cfg config.Config, c client.Client, acts *activities.Activities, lacts *activities.LifecycleActivities, log *slog.Logger, h *health, sd fx.Shutdowner) *workers {
 	w := newLifecycle(cfg.ShutdownTimeout, h, sd, log)
 	w.business = &queueWorker{name: cfg.Temporal.TaskQueue}
 	w.control = &queueWorker{name: cfg.Temporal.ControlTaskQueue}
@@ -241,7 +346,9 @@ func newWorkers(cfg config.Config, c client.Client, acts *activities.Activities,
 	}
 	w.business.Worker = worker.New(c, cfg.Temporal.TaskQueue, businessOpts)
 	w.control.Worker = worker.New(c, cfg.Temporal.ControlTaskQueue, controlOpts)
-	Register(w.business, w.control, acts, workflows.Queues{Business: cfg.Temporal.TaskQueue, Control: cfg.Temporal.ControlTaskQueue}, Bounds(cfg.Execution))
+	queues := workflows.Queues{Business: cfg.Temporal.TaskQueue, Control: cfg.Temporal.ControlTaskQueue}
+	Register(w.business, w.control, acts, queues, Bounds(cfg.Execution))
+	RegisterLifecycle(w.business, w.control, lacts, queues, Bounds(cfg.Execution), Lifecycle(cfg.Lifecycle))
 	return w
 }
 
