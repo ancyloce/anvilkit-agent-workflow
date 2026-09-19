@@ -47,6 +47,19 @@ type fakeProxy struct {
 	raw string
 	// fragment, when positive, writes the answer in pieces of that many bytes, flushed one by one.
 	fragment int
+	// cutBody, when set, declares a longer Content-Length than the envelope or
+	// record written, so the connection closes before the body is complete.
+	cutBody bool
+}
+
+// answer writes a non-stream body (an envelope or a record), cut short when cutBody is set.
+func (f *fakeProxy) answer(w http.ResponseWriter, status int, body string) {
+	w.Header().Set("Content-Type", "application/json")
+	if f.cutBody {
+		w.Header().Set("Content-Length", strconv.Itoa(len(body)+64))
+	}
+	w.WriteHeader(status)
+	_, _ = w.Write([]byte(body))
 }
 
 func newFakeProxy(t *testing.T) *fakeProxy {
@@ -59,9 +72,7 @@ func newFakeProxy(t *testing.T) *fakeProxy {
 			raw, _ := readAll(r)
 			f.body.Store(raw)
 			if f.status != 200 {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(f.status)
-				_, _ = w.Write([]byte(f.envelope))
+				f.answer(w, f.status, f.envelope)
 				return
 			}
 			w.Header().Set("Content-Type", "text/event-stream")
@@ -87,13 +98,17 @@ func newFakeProxy(t *testing.T) *fakeProxy {
 			}
 			_, _ = w.Write(out.Bytes())
 		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/api/v1/model-calls/"):
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(200)
-			_, _ = w.Write([]byte(f.record))
+			if f.status != 200 {
+				f.answer(w, f.status, f.envelope)
+				return
+			}
+			f.answer(w, 200, f.record)
 		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/cancellations"):
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(202)
-			_, _ = w.Write([]byte(f.record))
+			if f.status != 200 {
+				f.answer(w, f.status, f.envelope)
+				return
+			}
+			f.answer(w, 202, f.record)
 		case r.URL.Path == "/elsewhere":
 			w.WriteHeader(200)
 		default:
@@ -302,6 +317,73 @@ func TestQueryAndCancelReadTheRecordStrictly(t *testing.T) {
 		require.Equal(t, "INVALID_ARGUMENT", activities.RefusalCode(err), "cancel: %s", name)
 	}
 	require.Equal(t, int32(0), f.posts.Load(), "queries and cancels never open a call")
+}
+
+func TestAnswersAreReadWithinTheirBounds(t *testing.T) {
+	f := newFakeProxy(t)
+	c, err := modelproxy.New(modelproxy.Options{BaseURL: f.srv.URL, Token: "t", Timeout: 10 * time.Second})
+	require.NoError(t, err)
+	envelope := `{"error":{"code":"STALE_EXECUTION","message":"the call deadline has passed","requestId":"req_1","retryable":false}}`
+	record := `{"callId":"c","routeId":"r","state":"succeeded","dispatchId":"d","createdAt":"2026-09-14T12:00:00Z","updatedAt":"2026-09-14T12:00:09.5Z"}`
+	pad := func(doc string, size int) string { return doc + strings.Repeat(" ", size-len(doc)) }
+	// An envelope within its 64 KiB bound is the refusal it states; one byte
+	// over, or a body the connection cut short, is not an envelope at all —
+	// an ordinary error, never a denial of the call.
+	f.status, f.envelope = 403, pad(envelope, 64<<10)
+	_, err = c.CallModel(t.Context(), input("c"), func() {})
+	require.Equal(t, "STALE_EXECUTION", activities.RefusalCode(err))
+	f.envelope = pad(envelope, 64<<10+1)
+	_, err = c.CallModel(t.Context(), input("c"), func() {})
+	require.Error(t, err)
+	require.Empty(t, activities.RefusalCode(err), "an oversized answer decides nothing")
+	require.ErrorContains(t, err, "exceeds the bound")
+	f.envelope, f.cutBody = envelope, true
+	_, err = c.CallModel(t.Context(), input("c"), func() {})
+	require.Error(t, err)
+	require.Empty(t, activities.RefusalCode(err), "a cut answer decides nothing")
+	require.ErrorContains(t, err, "reading the response body")
+	_, err = c.GetModelCall(t.Context(), "c")
+	require.Empty(t, activities.RefusalCode(err))
+	require.ErrorContains(t, err, "reading the response body")
+	f.cutBody = false
+	f.envelope = pad(envelope, 64<<10+1)
+	_, err = c.CancelModelCall(t.Context(), "c")
+	require.Empty(t, activities.RefusalCode(err))
+	require.ErrorContains(t, err, "exceeds the bound")
+	// A record within its 1 MiB bound is read; over it, it is outside the
+	// contract; cut short, the query is an ordinary error and is repeated.
+	f.status, f.record = 200, pad(record, 1<<20)
+	got, err := c.GetModelCall(t.Context(), "c")
+	require.NoError(t, err)
+	require.Equal(t, "succeeded", got.State)
+	canceled, err := c.CancelModelCall(t.Context(), "c")
+	require.NoError(t, err)
+	require.Equal(t, "d", canceled.DispatchID)
+	f.record = pad(record, 1<<20+1)
+	_, err = c.GetModelCall(t.Context(), "c")
+	require.Equal(t, "INVALID_ARGUMENT", activities.RefusalCode(err))
+	require.ErrorContains(t, err, "exceeds the bound")
+	_, err = c.CancelModelCall(t.Context(), "c")
+	require.Equal(t, "INVALID_ARGUMENT", activities.RefusalCode(err))
+	f.record = record + " " + record
+	_, err = c.GetModelCall(t.Context(), "c")
+	require.Equal(t, "INVALID_ARGUMENT", activities.RefusalCode(err), "a second document is refused, not read up to the first")
+	f.record, f.cutBody = record, true
+	_, err = c.GetModelCall(t.Context(), "c")
+	require.Error(t, err)
+	require.Empty(t, activities.RefusalCode(err))
+	require.ErrorContains(t, err, "reading the response body")
+	_, err = c.CancelModelCall(t.Context(), "c")
+	require.Empty(t, activities.RefusalCode(err))
+	require.ErrorContains(t, err, "reading the response body")
+	f.cutBody = false
+	// After the stream, the record query that fails to read leaves the result without the dispatch identity, never fails the call.
+	f.frames = []string{`{"callId":"c","sequence":"0","type":"admitted"}`, `{"callId":"c","sequence":"1","type":"done","outcome":"succeeded","usage":{"inputUnits":"3","outputUnits":"1","reasoningUnits":"0","cachedInputUnits":"0"}}`}
+	f.record = pad(record, 1<<20+1)
+	res, err := c.CallModel(t.Context(), input("c"), func() {})
+	require.NoError(t, err)
+	require.Equal(t, "succeeded", res.State)
+	require.Empty(t, res.DispatchID)
 }
 
 func TestCallModelMapsRefusalsAndRetryableAnswers(t *testing.T) {

@@ -170,8 +170,8 @@ func (c *Client) GetGeneration(ctx context.Context, in activities.GetGenerationI
 	view := activities.GenerationView{
 		QueueDeadline: g.GetQueueDeadline().AsTime(), Lease: fromLease(g.GetLease()), Funded: g.Funding != nil, DefinitionActivation: g.GetDefinitionActivation(),
 		MaxRepairs: repairs, CodegenProfileID: g.GetCodegenProfileId(), ValidatorProfileID: g.GetValidatorProfileId(), CandidateEffectID: g.GetCandidateEffectId(),
-		PermitActive:  g.Permit != nil && g.GetPermit().GetState() == controlv1.PermitState_PERMIT_STATE_ACTIVE,
-		SubjectDigest: g.GetSubject().GetSubjectDigest(), SourceRevision: g.GetSubject().GetSourceRevision(), ActorID: g.GetActorId(),
+		PermitActive: g.Permit != nil && g.GetPermit().GetState() == controlv1.PermitState_PERMIT_STATE_ACTIVE,
+		ProfileID:    g.GetSubject().GetProfileId(), SubjectDigest: g.GetSubject().GetSubjectDigest(), SourceRevision: g.GetSubject().GetSourceRevision(), ActorID: g.GetActorId(),
 	}
 	if g.Brief != nil {
 		view.Brief = fromBrief(g.GetBrief())
@@ -256,7 +256,8 @@ func (c *Client) PrepareEffect(ctx context.Context, in activities.RegisterCandid
 	if in.Lease.State == "held" && in.Lease.LeaseID != "" && in.Lease.ExpiresAt != nil {
 		req.Lease = &controlv1.Lease{LeaseId: in.Lease.LeaseID, Fence: in.Lease.Fence, ExpiresAt: timestamppb.New(*in.Lease.ExpiresAt)}
 	}
-	req.Command = c.command(in.TenantID, in.CommandID, req)
+	// Bind the accepted source and independent certification into the immutable effect identity.
+	req.Command = c.command(in.TenantID, in.CommandID, in)
 	resp, err := c.effects().PrepareEffect(ctx, req)
 	if err != nil {
 		return activities.EffectPermit{}, nonRetryable(err)

@@ -114,6 +114,31 @@ const DefaultMaxFrameBytes = 2 << 20
 // `id` field, the `data:` prefixes and the line terminators.
 const sseFieldOverhead = 256
 
+// The bounds of the non-stream answers: an error envelope (its message is
+// at most 512 characters by contract) and a call record.
+const (
+	maxEnvelopeBytes = 64 << 10
+	maxRecordBytes   = 1 << 20
+)
+
+// errBodyTooLarge marks a body over its bound.
+var errBodyTooLarge = errors.New("response body exceeds the bound")
+
+// readBounded reads a body of at most limit bytes: one byte more than the
+// limit is asked for, so a longer body is refused as such rather than
+// truncated into a shorter document, and a read that fails (a connection
+// cut mid-body) is refused rather than decoded as far as it got.
+func readBounded(r io.Reader, limit int64) ([]byte, error) {
+	body, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil {
+		return nil, fmt.Errorf("reading the response body: %w", err)
+	}
+	if int64(len(body)) > limit {
+		return nil, fmt.Errorf("%w of %d bytes", errBodyTooLarge, limit)
+	}
+	return body, nil
+}
+
 // unavailable marks the port as not configured: every call answers
 // DEPENDENCY_UNAVAILABLE without any network.
 type unavailable struct{}
@@ -257,17 +282,25 @@ func requestOf(in activities.ModelCallInput) (modelproxyapi.ModelCallRequest, er
 
 // refusal maps an error envelope to the Activity's errors: a non-retryable
 // refusal for the Proxy's precondition codes, a retryable error for a
-// retryable answer (nothing was sent; the same call id reenters later).
-func (c *Client) refusal(status int, body []byte) error {
-	var env modelproxyapi.ErrorEnvelope
-	if err := decodeStrict(c.schemas, "ErrorEnvelope", body, &env); err != nil {
+// retryable answer (nothing was sent; the same call id reenters later). An
+// answer that is not one envelope of the contract — unreadable, over the
+// bound, malformed, a second document, an unknown member or code — is an
+// ordinary error, never a refusal: nothing outside the contract decides that
+// the call was denied.
+func (c *Client) refusal(status int, body io.Reader) error {
+	raw, err := readBounded(body, maxEnvelopeBytes)
+	if err != nil {
 		return fmt.Errorf("model proxy answered %d without an error envelope: %w", status, err)
 	}
-	err := fmt.Errorf("%s: %s (request %s)", env.Error.Code, env.Error.Message, env.Error.RequestId)
-	if env.Error.Retryable {
-		return err
+	var env modelproxyapi.ErrorEnvelope
+	if err := decodeStrict(c.schemas, "ErrorEnvelope", raw, &env); err != nil {
+		return fmt.Errorf("model proxy answered %d without an error envelope: %w", status, err)
 	}
-	return activities.Refused(string(env.Error.Code), err)
+	answer := fmt.Errorf("%s: %s (request %s)", env.Error.Code, env.Error.Message, env.Error.RequestId)
+	if env.Error.Retryable {
+		return answer
+	}
+	return activities.Refused(string(env.Error.Code), answer)
 }
 
 // CallModel opens the call and consumes its frames. A frame outside the
@@ -291,8 +324,7 @@ func (c *Client) CallModel(ctx context.Context, in activities.ModelCallInput, he
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
-		return activities.ModelCallResult{}, c.refusal(resp.StatusCode, body)
+		return activities.ModelCallResult{}, c.refusal(resp.StatusCode, resp.Body)
 	}
 	if !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
 		return activities.ModelCallResult{}, fmt.Errorf("model proxy answered %q, not an event stream", resp.Header.Get("Content-Type"))
@@ -421,15 +453,10 @@ func (c *Client) GetModelCall(ctx context.Context, callID string) (activities.Mo
 		return activities.ModelCallResult{}, fmt.Errorf("model proxy: %w", err)
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusOK {
-		return activities.ModelCallResult{}, c.refusal(resp.StatusCode, body)
+		return activities.ModelCallResult{}, c.refusal(resp.StatusCode, resp.Body)
 	}
-	var m modelproxyapi.ModelCall
-	if err := decodeStrict(c.schemas, "ModelCall", body, &m); err != nil {
-		return activities.ModelCallResult{}, activities.Refused("INVALID_ARGUMENT", fmt.Errorf("call record outside the contract: %w", err))
-	}
-	return resultOf(&m), nil
+	return c.record(resp.Body)
 }
 
 // CancelModelCall records the cancel intent; incurred usage stays.
@@ -441,12 +468,25 @@ func (c *Client) CancelModelCall(ctx context.Context, callID string) (activities
 		return activities.ModelCallResult{}, fmt.Errorf("model proxy: %w", err)
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusAccepted {
-		return activities.ModelCallResult{}, c.refusal(resp.StatusCode, body)
+		return activities.ModelCallResult{}, c.refusal(resp.StatusCode, resp.Body)
+	}
+	return c.record(resp.Body)
+}
+
+// record reads one call record of the contract: a body that cannot be read
+// to its end is an ordinary error (the query is repeated), one over the
+// bound or outside the contract a refusal of the answer.
+func (c *Client) record(body io.Reader) (activities.ModelCallResult, error) {
+	raw, err := readBounded(body, maxRecordBytes)
+	if err != nil {
+		if errors.Is(err, errBodyTooLarge) {
+			return activities.ModelCallResult{}, activities.Refused("INVALID_ARGUMENT", fmt.Errorf("call record outside the contract: %w", err))
+		}
+		return activities.ModelCallResult{}, fmt.Errorf("model proxy: %w", err)
 	}
 	var m modelproxyapi.ModelCall
-	if err := decodeStrict(c.schemas, "ModelCall", body, &m); err != nil {
+	if err := decodeStrict(c.schemas, "ModelCall", raw, &m); err != nil {
 		return activities.ModelCallResult{}, activities.Refused("INVALID_ARGUMENT", fmt.Errorf("call record outside the contract: %w", err))
 	}
 	return resultOf(&m), nil
