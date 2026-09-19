@@ -32,6 +32,7 @@ type GetGenerationInput struct {
 
 // GenerationView is Control's admission record of a Generation.
 type GenerationView struct {
+	ProfileID            string
 	SubjectDigest        string
 	SourceRevision       string
 	ActorID              string
