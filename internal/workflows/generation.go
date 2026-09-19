@@ -199,7 +199,6 @@ func Generation(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Contex
 		// certified; certification is the validator's accepted stage.
 		var certifiedSource, certification *activities.AcceptedStage
 		var lastAttempt activities.AttemptRef
-		var lastInstance activities.InstanceRef
 		for {
 			if code := awaitRunnable(ctx, state); code != "" {
 				outcome, failureCode = settleOutcome(ctx, ctx.Err(), code)
@@ -260,7 +259,8 @@ func Generation(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Contex
 			}
 			switch validation.Verdict {
 			case "certified":
-				certifiedSource, certification, lastAttempt, lastInstance = &stage, &validation, vattempt, vinstance
+				certifiedSource, certification, lastAttempt = &stage, &validation, vattempt
+				_ = vinstance
 				_ = attempt
 				_ = instance
 			case "repairable":
@@ -292,13 +292,37 @@ func Generation(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Contex
 			outcome, failureCode = "failed", "SOURCE_MISSING"
 			return nil
 		}
-		epoch, _ := strconv.ParseUint(lastAttempt.ExecutionEpoch, 10, 64)
+		if cert == nil {
+			outcome, failureCode = "failed", "CERTIFICATION_MISSING"
+			return nil
+		}
+		// Registration is trusted Workflow execution after the Validator Job
+		// closes. It owns a current attempt, never the closed candidate binding.
+		var registration activities.AttemptRef
+		if openErr := workflow.ExecuteActivity(business, activities.NameOpenAttempt, activities.OpenAttemptInput{
+			OperationID: operationID, TenantID: tenantID, CommandID: operationID + ":candidate:1:open",
+			StepID: "register_candidate", ProfileID: view.ProfileID,
+		}).Get(ctx, &registration); openErr != nil {
+			outcome, failureCode = settleOutcome(ctx, openErr, "STALE_EXECUTION")
+			return nil
+		}
+		defer func() {
+			disconnected, _ := workflow.NewDisconnectedContext(ctx)
+			if closeErr := closeAttempt(disconnected, q, bounds, registration, registration.AttemptID+":close", "completed", "not_required", ""); closeErr != nil {
+				err = closeErr
+			}
+		}()
+		epoch, _ := strconv.ParseUint(registration.ExecutionEpoch, 10, 64)
 		var candidate activities.CandidateRef
+		registrationDeadline := lastAttempt.Deadline
+		if state.lease.ExpiresAt != nil && state.lease.ExpiresAt.Before(registrationDeadline) {
+			registrationDeadline = *state.lease.ExpiresAt
+		}
 		state.inflight++
 		regErr := workflow.ExecuteActivity(controlOptions(workCtx, q, bounds), activities.NameRegisterCandidate, activities.RegisterCandidateInput{
-			OperationID: operationID, TenantID: tenantID, AttemptID: lastAttempt.AttemptID, InstanceID: lastInstance.InstanceID, ExecutionEpoch: epoch,
+			OperationID: operationID, TenantID: tenantID, AttemptID: registration.AttemptID, ExecutionEpoch: epoch,
 			CommandID: operationID + ":candidate:" + strconv.Itoa(candidateEffect), Occurrence: candidateEffect, Subject: "source:" + view.SubjectDigest, SourceRevision: view.SourceRevision,
-			Source: *source, Certification: derefArtifact(cert), Lease: state.lease, Deadline: lastAttempt.Deadline,
+			Source: *source, Certification: derefArtifact(cert), Lease: state.lease, Deadline: registrationDeadline,
 		}).Get(ctx, &candidate)
 		state.inflight--
 		if state.fenced {
@@ -513,10 +537,23 @@ func releaseLease(ctx workflow.Context, q Queues, b Bounds, lb LifecycleBounds, 
 	in := leaseInput(operationID, tenantID, view, state, lb)
 	var res activities.LeaseResult
 	if err := workflow.ExecuteActivity(leaseOptions(ctx, q, b, lb), activities.NameReleaseLease, in).Get(ctx, &res); err != nil {
-		workflow.GetLogger(ctx).Warn("lease release not confirmed", "operationId", operationID, "error", err)
-		return
+		res.State = "unknown"
 	}
-	if _, err := recordLease(ctx, q, b, operationID, tenantID, state.occurrence, activities.LeaseResult{LeaseID: state.lease.LeaseID, Fence: state.lease.Fence}, "released"); err != nil {
+	for res.State != "lost" && res.State != "released" {
+		// A timeout or UNKNOWN is not release evidence. Observe the original
+		// occurrence through durable history; never issue another release id.
+		if err := workflow.Sleep(ctx, b.ReconcileInitialInterval); err != nil {
+			return
+		}
+		if err := workflow.ExecuteActivity(leaseOptions(ctx, q, b, lb), activities.NameQueryLease, in).Get(ctx, &res); err != nil {
+			res.State = "unknown"
+		}
+	}
+	confirmed := "lost"
+	if res.State == "released" || res.Reason == "RELEASED" {
+		confirmed = "released"
+	}
+	if _, err := recordLease(ctx, q, b, operationID, tenantID, state.occurrence, activities.LeaseResult{LeaseID: state.lease.LeaseID, Fence: state.lease.Fence}, confirmed); err != nil {
 		workflow.GetLogger(ctx).Warn("lease release not recorded", "operationId", operationID, "error", err)
 	}
 }

@@ -504,13 +504,23 @@ func closeAttempt(ctx workflow.Context, q Queues, b Bounds, attempt activities.A
 		TaskQueue: q.Control, StartToCloseTimeout: b.ControlActivityTimeout,
 		RetryPolicy: &temporal.RetryPolicy{InitialInterval: b.ControlRetryInitial, BackoffCoefficient: 2, MaximumInterval: b.ControlRetryMaxInterval, MaximumAttempts: 0},
 	})
-	var closed activities.CloseResult
-	if err := workflow.ExecuteActivity(closeCtx, activities.NameCloseAttempt, activities.CloseAttemptInput{
-		Attempt: attempt, CommandID: commandID, Outcome: outcome, Cleanup: cleanup, FailureCode: failureCode,
-	}).Get(closeCtx, &closed); err != nil {
-		return temporal.NewNonRetryableApplicationError(fmt.Sprintf("close attempt %s (%s) refused; the operation is not settled", attempt.AttemptID, commandID), activities.RefusalCode(err), err)
+	for {
+		var closed activities.CloseResult
+		if err := workflow.ExecuteActivity(closeCtx, activities.NameCloseAttempt, activities.CloseAttemptInput{
+			Attempt: attempt, CommandID: commandID, Outcome: outcome, Cleanup: cleanup, FailureCode: failureCode,
+		}).Get(closeCtx, &closed); err != nil {
+			return temporal.NewNonRetryableApplicationError(fmt.Sprintf("close attempt %s (%s) refused; the operation is not settled", attempt.AttemptID, commandID), activities.RefusalCode(err), err)
+		}
+		// Cleanup with unknown evidence has its own reconciliation loop. When
+		// cleanup is definite, retain this close in history until Control's
+		// remaining send/effect/finance obligations have actually settled.
+		if closed.Lifecycle != "reconciling" || cleanup == "unknown" || outcome == "unknown" {
+			return nil
+		}
+		if err := workflow.Sleep(closeCtx, b.ReconcileInitialInterval); err != nil {
+			return err
+		}
 	}
-	return nil
 }
 
 // verdictOutcome maps the trusted observer's verdict to the attempt outcome.

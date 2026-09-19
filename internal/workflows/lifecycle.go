@@ -119,13 +119,22 @@ func controlOptions(ctx workflow.Context, q Queues, b Bounds) workflow.Context {
 // settleOperation states the business outcome to Control under a stable
 // command; a refusal is a visible non-retryable failure of the run.
 func settleOperation(ctx workflow.Context, q Queues, b Bounds, operationID, tenantID, commandID, outcome, failureCode, phase string) error {
-	var ref activities.OperationRef
-	if err := workflow.ExecuteActivity(controlOptions(ctx, q, b), activities.NameSettleOperation, activities.SettleOperationInput{
-		OperationID: operationID, TenantID: tenantID, CommandID: commandID, Outcome: outcome, FailureCode: failureCode, Phase: phase,
-	}).Get(ctx, &ref); err != nil {
-		return temporal.NewNonRetryableApplicationError("settle "+operationID+" refused; the operation is not settled", activities.RefusalCode(err), err)
+	for {
+		var ref activities.OperationRef
+		if err := workflow.ExecuteActivity(controlOptions(ctx, q, b), activities.NameSettleOperation, activities.SettleOperationInput{
+			OperationID: operationID, TenantID: tenantID, CommandID: commandID, Outcome: outcome, FailureCode: failureCode, Phase: phase,
+		}).Get(ctx, &ref); err != nil {
+			return temporal.NewNonRetryableApplicationError("settle "+operationID+" refused; the operation is not settled", activities.RefusalCode(err), err)
+		}
+		if ref.Lifecycle != "reconciling" {
+			return nil
+		}
+		// Temporal retains the original command and outcome through restarts.
+		// No new effect is sent while Control waits for outstanding obligations.
+		if err := workflow.Sleep(ctx, b.ReconcileInitialInterval); err != nil {
+			return err
+		}
 	}
-	return nil
 }
 
 // awaitHandlers lets every Update handler finish before the run returns

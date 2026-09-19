@@ -230,7 +230,10 @@ func TestGenerationCandidateReadyAfterIndependentCertification(t *testing.T) {
 	require.Equal(t, "candidate_ready", r.last().Phase)
 	require.Equal(t, []string{"op_GEN:permit", "op_GEN:permit", "op_GEN:permit"}, r.permits, "the queue wait asks under one command identity")
 	require.Equal(t, []string{"op_GEN:funding"}, r.fundings)
-	require.Len(t, r.opens, 2)
+	require.Len(t, r.opens, 3)
+	require.Equal(t, "register_candidate", r.opens[2].StepID)
+	require.Equal(t, "att_"+r.opens[2].CommandID, r.registers[0].AttemptID)
+	require.Empty(t, r.registers[0].InstanceID)
 	require.Equal(t, "codegen", r.opens[0].StepID)
 	require.Equal(t, "codegen-team-dev-v1", r.opens[0].ProfileID)
 	require.Equal(t, "validate", r.opens[1].StepID)
@@ -285,7 +288,7 @@ func TestGenerationBoundedRepairOnAcceptedRepairableFindings(t *testing.T) {
 	require.True(t, env.IsWorkflowCompleted())
 	require.NoError(t, env.GetWorkflowError())
 	require.Equal(t, "succeeded", r.last().Outcome)
-	require.Len(t, r.opens, 4, "codegen, validate, one repair round, validate")
+	require.Len(t, r.opens, 5, "codegen, validate, one repair round, validate, registration")
 	require.Equal(t, uint64(1), r.opens[2].Visit)
 	require.Equal(t, "op_GEN:codegen:1:1:open", r.opens[2].CommandID)
 	names := func(in []activities.LaunchInput) []string {
@@ -514,3 +517,18 @@ func (f *fakeGenerationPorts) QueryRegistration(context.Context, string) (activi
 }
 
 var _ sync.Locker = (*sync.Mutex)(nil)
+
+func TestUnknownLeaseReleaseQueriesOriginalBeforeRecording(t *testing.T) {
+	env, r := generationEnv(t, lifecycleBounds, genScript{
+		scope:     activities.ScopeDecision{Allowed: true},
+		codegen:   map[uint64]activities.AcceptedStage{0: certified("c0", sourceA, stageA)},
+		validator: map[uint64]activities.AcceptedStage{0: certified("v0", evidence)},
+		candidate: activities.CandidateRef{State: "succeeded", EffectID: "eff1"},
+		lease:     map[string]activities.LeaseResult{"release": {State: "unknown"}, "query": {State: "lost", Reason: "RELEASED"}},
+	})
+	env.OnActivity(activities.NameQueryLease, mock.Anything, mock.Anything).Return(activities.LeaseResult{State: "lost", Reason: "RELEASED"}, nil).Once()
+	env.ExecuteWorkflow(workflows.GenerationWorkflowName, genInput)
+	require.NoError(t, env.GetWorkflowError())
+	env.AssertActivityNumberOfCalls(t, activities.NameQueryLease, 1)
+	require.Equal(t, "released", r.leases[len(r.leases)-1].State)
+}
