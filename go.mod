@@ -3,7 +3,7 @@ module github.com/ancyloce/anvilkit-agent-workflow
 go 1.27.0
 
 require (
-	github.com/ancyloce/anvilkit-agent-contracts/go v0.1.3-0.20260917133639-1e7cb5d5c537
+	github.com/ancyloce/anvilkit-agent-contracts/go v0.1.3
 	github.com/getkin/kin-openapi v0.149.0
 	github.com/go-viper/mapstructure/v2 v2.4.0
 	github.com/knadh/koanf/parsers/yaml v1.1.0
