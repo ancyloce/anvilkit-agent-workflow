@@ -208,6 +208,11 @@ type Lifecycle struct {
 	Artifacts struct {
 		TransferWindow time.Duration `koanf:"transfer_window"`
 	} `koanf:"artifacts"`
+	// Preview: the reviewed job profile that builds a preview's saved
+	// revision (P20; DEVELOPMENT_ONLY: the fixed validator profile).
+	Preview struct {
+		BuildProfile string `koanf:"build_profile"`
+	} `koanf:"preview"`
 	// PagixDoubleDir is the directory of the DEVELOPMENT_ONLY lease,
 	// source and content-digest doubles (ANVILKIT_WORKFLOW_PAGIX_DOUBLE_DIR);
 	// empty leaves the Generation ports unavailable (every generation
@@ -238,6 +243,7 @@ var defaults = map[string]any{
 	"lifecycle.generation.lease_call_timeout":        "20s",
 	"lifecycle.generation.definitions":               []map[string]any{{"id": "generation-v1:def-1", "max_repairs": -1}, {"id": "generation-v1:def-2", "max_repairs": 0}},
 	"lifecycle.artifacts.transfer_window":            "15m",
+	"lifecycle.preview.build_profile":                "validator-fixed-dev-v1",
 	"temporal.namespace":                             "anvilkit",
 	"temporal.task_queue":                            "anvilkit-workflow",
 	"temporal.control_task_queue":                    "anvilkit-workflow-control",
@@ -427,6 +433,7 @@ func (c Config) validate() error {
 	within("shutdown_timeout", c.ShutdownTimeout, MinShutdownTimeout, MaxShutdownTimeout)
 	lp, lg := c.Lifecycle.Preparation, c.Lifecycle.Generation
 	req("lifecycle.preparation.route_id", lp.RouteID)
+	req("lifecycle.preview.build_profile", c.Lifecycle.Preview.BuildProfile)
 	if lp.MaxOutputTokens < 1 || lp.MaxOutputTokens > 1<<20 {
 		errs = append(errs, fmt.Errorf("lifecycle.preparation.max_output_tokens %d outside [1, 1048576]", lp.MaxOutputTokens))
 	}
