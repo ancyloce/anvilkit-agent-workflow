@@ -162,6 +162,9 @@ func generationEnvWith(t *testing.T, b workflows.Bounds, lb workflows.LifecycleB
 		return activities.JobRef{JobUID: "job-" + in.Launch.AttemptID, Request: in.Request}, nil
 	})
 	exit := int32(0)
+	env.OnActivity(activities.NameAwaitJobOwner, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.ObserveJobInput) (activities.JobObservation, error) {
+		return activities.JobObservation{JobUID: "job-" + in.Launch.AttemptID, Pods: []activities.PodObservation{{PodUID: "pod-" + in.Launch.AttemptID, Phase: "running"}}}, nil
+	})
 	env.OnActivity(activities.NameObserveJob, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.ObserveJobInput) (activities.JobObservation, error) {
 		return activities.JobObservation{JobUID: "job-" + in.Launch.AttemptID, Pods: []activities.PodObservation{{PodUID: "pod-" + in.Launch.AttemptID, Phase: "succeeded", ExitCode: &exit}}}, nil
 	})
@@ -511,6 +514,18 @@ func (f *fakeGenerationPorts) RegisterCandidate(_ context.Context, effectID stri
 	}
 	return activities.CandidateRef{EffectID: effectID, State: "succeeded", CandidateID: "cand_1"}, nil
 }
+func (f *fakeGenerationPorts) SaveRevision(context.Context, string, activities.SaveSourceInput) (activities.SaveSourceResult, error) {
+	return activities.SaveSourceResult{}, errors.New("not used by generation")
+}
+
+func (f *fakeGenerationPorts) QuerySave(context.Context, string) (activities.SaveSourceResult, bool, error) {
+	return activities.SaveSourceResult{}, false, nil
+}
+
+func (f *fakeGenerationPorts) CurrentRevision(context.Context, string) (string, error) {
+	return "1", nil
+}
+
 func (f *fakeGenerationPorts) QueryRegistration(context.Context, string) (activities.CandidateRef, bool, error) {
 	f.queries++
 	return activities.CandidateRef{EffectID: "eff_1", State: "succeeded", CandidateID: "cand_1"}, true, nil

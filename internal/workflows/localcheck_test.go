@@ -40,7 +40,7 @@ func registerWith(env *testsuite.TestWorkflowEnvironment, b workflows.Bounds) {
 	env.RegisterWorkflowWithOptions(workflows.LocalCheck(queues, b), workflow.RegisterOptions{Name: workflows.LocalCheckWorkflowName})
 	for name, fn := range map[string]any{
 		activities.NameOpenAttempt: a.OpenAttempt, activities.NamePrepareLaunch: a.PrepareLaunch, activities.NameCreateJob: a.CreateJob,
-		activities.NameObserveJob: a.ObserveJob, activities.NameRegisterInstance: a.RegisterInstance, activities.NameObserveInstance: a.ObserveInstance,
+		activities.NameObserveJob: a.ObserveJob, activities.NameAwaitJobOwner: a.AwaitJobOwner, activities.NameRegisterInstance: a.RegisterInstance, activities.NameObserveInstance: a.ObserveInstance,
 		activities.NameVerifyResult: a.VerifyResult,
 		activities.NameAcceptResult: a.AcceptResult, activities.NameObserveLaunch: a.ObserveLaunch, activities.NameDeleteJob: a.DeleteJob, activities.NameCloseAttempt: a.CloseAttempt,
 	} {

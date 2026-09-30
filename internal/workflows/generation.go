@@ -671,6 +671,29 @@ func runJobStep(ctx workflow.Context, q Queues, b Bounds, spec stepSpec, state *
 		TaskQueue: q.Business, StartToCloseTimeout: observeTimeout, HeartbeatTimeout: b.ObserveHeartbeatTimeout,
 		RetryPolicy: &temporal.RetryPolicy{InitialInterval: b.ControlRetryInitial, MaximumAttempts: b.ObserveMaxAttempts},
 	})
+	// A harness profile's sidecar receives its execution scope only from the
+	// instance registration, so the Job's physical owner is registered while
+	// it runs (P20: the first in-cluster harness Job of this step); the
+	// terminal observation below registers every Pod again under the same
+	// command identity, which Control answers with the same instance.
+	if workflow.GetVersion(ctx, "job-owner-registration", workflow.DefaultVersion, 1) == 1 {
+		var owner activities.JobObservation
+		if err := workflow.ExecuteActivity(observeCtx, activities.NameAwaitJobOwner, activities.ObserveJobInput{Launch: launch, Deadline: deadline}).Get(ctx, &owner); err != nil {
+			outcome, failureCode = settle(ctx, err, "OBSERVER_FAILED")
+			return stage, attempt, current, failureCode
+		}
+		// Only an owner the launcher reported as such (not a terminal or
+		// expired wait, whose first Pod may be a duplicate) is registered here.
+		if owner.Reason == "" && len(owner.Pods) > 0 && owner.Pods[0].PodUID != "" {
+			pod := owner.Pods[0]
+			if err := workflow.ExecuteActivity(business, activities.NameRegisterInstance, activities.RegisterInstanceInput{
+				Attempt: attempt, Launch: launch, CommandID: attempt.AttemptID + ":register:" + pod.PodUID, JobUID: owner.JobUID, PodUID: pod.PodUID,
+			}).Get(ctx, nil); err != nil {
+				outcome, failureCode = settle(ctx, err, "OBSERVER_FAILED")
+				return stage, attempt, current, failureCode
+			}
+		}
+	}
 	var observation activities.JobObservation
 	if err := workflow.ExecuteActivity(observeCtx, activities.NameObserveJob, activities.ObserveJobInput{Launch: launch, Deadline: jobDeadline}).Get(ctx, &observation); err != nil {
 		outcome, failureCode = settle(ctx, err, "OBSERVER_FAILED")

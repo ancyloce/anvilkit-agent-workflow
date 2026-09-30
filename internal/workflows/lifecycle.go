@@ -14,6 +14,7 @@ import (
 const (
 	PreparationWorkflowName = "PreparationWorkflow"
 	GenerationWorkflowName  = "GenerationWorkflow"
+	PreviewWorkflowName     = "PreviewBuildWorkflow"
 	AnswerUpdateName        = "PreparationAnswer"
 	CommandUpdateName       = "ControlCommand"
 )
@@ -64,6 +65,8 @@ type LifecycleBounds struct {
 	LeaseRenewLead     time.Duration
 	LeaseCallTimeout   time.Duration
 	Definitions        []DefinitionActivation
+	// Preview: the job profile that builds a preview's saved revision.
+	PreviewBuildProfile string
 }
 
 // DefinitionActivation is one reviewed definition this worker registered
