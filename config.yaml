@@ -93,6 +93,10 @@ lifecycle:
         max_repairs: 0
   artifacts:
     transfer_window: 15m
+  # preview (P20): the reviewed job profile that builds a preview's saved
+  # revision (DEVELOPMENT_ONLY: the fixed validator profile).
+  preview:
+    build_profile: validator-fixed-dev-v1
 # development: DEVELOPMENT_ONLY fault injection; never enable outside the
 # integration scenarios (see docs/architecture/delivery.md P05).
 development:
