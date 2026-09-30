@@ -112,6 +112,7 @@ func Lifecycle(l config.Lifecycle) workflows.LifecycleBounds {
 		AnalysisMaxExposure: activities.Money{Currency: l.Preparation.MaxExposureCurrency, Amount: l.Preparation.MaxExposureAmount},
 		AnalysisCallTimeout: l.Preparation.CallTimeout, ContentRepairAllowance: l.Preparation.ContentRepairAllowance,
 		PermitPollInterval: l.Generation.PermitPollInterval, LeaseTTL: l.Generation.LeaseTTL, LeaseRenewLead: l.Generation.LeaseRenewLead, LeaseCallTimeout: l.Generation.LeaseCallTimeout,
+		PreviewBuildProfile: l.Preview.BuildProfile,
 	}
 	for _, d := range l.Generation.Definitions {
 		lb.Definitions = append(lb.Definitions, workflows.DefinitionActivation{ID: d.ID, CodegenProfileID: d.CodegenProfile, ValidatorProfile: d.ValidatorProfile, MaxRepairs: d.MaxRepairs})
@@ -148,6 +149,15 @@ func (u unavailablePorts) RegisterCandidate(context.Context, string, activities.
 }
 func (u unavailablePorts) QueryRegistration(context.Context, string) (activities.CandidateRef, bool, error) {
 	return activities.CandidateRef{}, false, u.refuse()
+}
+func (u unavailablePorts) SaveRevision(context.Context, string, activities.SaveSourceInput) (activities.SaveSourceResult, error) {
+	return activities.SaveSourceResult{}, u.refuse()
+}
+func (u unavailablePorts) QuerySave(context.Context, string) (activities.SaveSourceResult, bool, error) {
+	return activities.SaveSourceResult{}, false, u.refuse()
+}
+func (u unavailablePorts) CurrentRevision(context.Context, string) (string, error) {
+	return "", u.refuse()
 }
 func (u unavailablePorts) ContentDigest(context.Context, string, activities.SourceReference) (activities.ContentDigest, error) {
 	return activities.ContentDigest{}, u.refuse()
@@ -221,7 +231,7 @@ func Module() fx.Option {
 			func(cfg config.Config, ctl *controladapter.Client, m activities.ModelCaller, ports lifecyclePorts) *activities.LifecycleActivities {
 				return &activities.LifecycleActivities{
 					Preparation: ctl, Generation: ctl, Artifacts: artifactadapter.New(ctl.Conn(), cfg.Temporal.WorkerIdentity, cfg.Lifecycle.Artifacts.TransferWindow),
-					Knowledge: ports.knowledge, Model: m, Lease: ports.lease, Source: ports.source, MaxInputBytes: cfg.Lifecycle.Preparation.MaxInputBytes,
+					Knowledge: ports.knowledge, Model: m, Lease: ports.lease, Source: ports.source, Preview: ctl, MaxInputBytes: cfg.Lifecycle.Preparation.MaxInputBytes,
 				}
 			},
 			newWorkers,
@@ -244,18 +254,20 @@ func Register(business, control worker.Worker, acts *activities.Activities, q wo
 func RegisterLifecycle(business, control worker.Worker, acts *activities.LifecycleActivities, q workflows.Queues, b workflows.Bounds, lb workflows.LifecycleBounds) {
 	business.RegisterWorkflowWithOptions(workflows.Preparation(q, b, lb), workflow.RegisterOptions{Name: workflows.PreparationWorkflowName})
 	business.RegisterWorkflowWithOptions(workflows.Generation(q, b, lb), workflow.RegisterOptions{Name: workflows.GenerationWorkflowName})
+	business.RegisterWorkflowWithOptions(workflows.PreviewBuild(q, b, lb), workflow.RegisterOptions{Name: workflows.PreviewWorkflowName})
 	for name, fn := range map[string]any{
 		activities.NameGetPreparation: acts.GetPreparation, activities.NameAnalyzeRequirements: acts.AnalyzeRequirements, activities.NameRecordQuestionSet: acts.RecordQuestionSet,
 		activities.NameGetAnswer: acts.GetAnswer, activities.NameFreezeReferences: acts.FreezeReferences, activities.NameFreezeBrief: acts.FreezeBrief,
 		activities.NameGetGeneration: acts.GetGeneration, activities.NameRequestExecutionPermit: acts.RequestExecutionPermit, activities.NameRecordFunding: acts.RecordFunding,
 		activities.NameCheckSourceScope: acts.CheckSourceScope, activities.NameGetAcceptedStage: acts.GetAcceptedStage,
+		activities.NameGetPreviewSource: acts.GetPreviewSource, activities.NameCurrentSourceRevision: acts.CurrentSourceRevision,
 	} {
 		business.RegisterActivityWithOptions(fn, activity.RegisterOptions{Name: name})
 	}
 	for name, fn := range map[string]any{
 		activities.NameSettleOperation: acts.SettleOperation, activities.NameAcquireLease: acts.AcquireLease, activities.NameRenewLease: acts.RenewLease,
 		activities.NameQueryLease: acts.QueryLease, activities.NameReleaseLease: acts.ReleaseLease, activities.NameRecordLease: acts.RecordLease,
-		activities.NameRegisterCandidate: acts.RegisterCandidate,
+		activities.NameRegisterCandidate: acts.RegisterCandidate, activities.NameSaveSource: acts.SaveSource, activities.NameRecordPreview: acts.RecordPreview,
 	} {
 		control.RegisterActivityWithOptions(fn, activity.RegisterOptions{Name: name})
 	}
@@ -264,7 +276,7 @@ func RegisterLifecycle(business, control worker.Worker, acts *activities.Lifecyc
 func registerFixed(business, control worker.Worker, acts *activities.Activities) {
 	for name, fn := range map[string]any{
 		activities.NameOpenAttempt: acts.OpenAttempt, activities.NamePrepareLaunch: acts.PrepareLaunch, activities.NameCreateJob: acts.CreateJob,
-		activities.NameObserveJob: acts.ObserveJob, activities.NameRegisterInstance: acts.RegisterInstance, activities.NameObserveInstance: acts.ObserveInstance,
+		activities.NameObserveJob: acts.ObserveJob, activities.NameAwaitJobOwner: acts.AwaitJobOwner, activities.NameRegisterInstance: acts.RegisterInstance, activities.NameObserveInstance: acts.ObserveInstance,
 		activities.NameVerifyResult: acts.VerifyResult,
 		activities.NameAcceptResult: acts.AcceptResult,
 		activities.NameCallModel:    acts.CallModel, activities.NameGetModelCall: acts.GetModelCall,
