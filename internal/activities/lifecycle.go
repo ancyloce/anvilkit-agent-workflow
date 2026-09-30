@@ -27,6 +27,7 @@ type LifecycleActivities struct {
 	Model       ModelCaller
 	Lease       LeasePort
 	Source      SourcePort
+	Preview     PreviewControl
 	// MaxInputBytes bounds one prompt or answer the analysis reads.
 	MaxInputBytes int64
 }

@@ -37,6 +37,10 @@ func (a *Activities) ObserveJob(ctx context.Context, in ObserveJobInput) (JobObs
 	return a.Launcher.ObserveJob(ctx, in, func() { activity.RecordHeartbeat(ctx) })
 }
 
+func (a *Activities) AwaitJobOwner(ctx context.Context, in ObserveJobInput) (JobObservation, error) {
+	return a.Launcher.AwaitOwner(ctx, in, func() { activity.RecordHeartbeat(ctx) })
+}
+
 func (a *Activities) RegisterInstance(ctx context.Context, in RegisterInstanceInput) (InstanceRef, error) {
 	return a.Control.RegisterInstance(ctx, in)
 }

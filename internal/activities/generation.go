@@ -237,4 +237,11 @@ type SourcePort interface {
 	CheckScope(ctx context.Context, in CheckSourceScopeInput) (ScopeDecision, error)
 	RegisterCandidate(ctx context.Context, effectID string, in RegisterCandidateInput) (CandidateRef, error)
 	QueryRegistration(ctx context.Context, effectID string) (CandidateRef, bool, error)
+	// SaveRevision saves edited source under the expected revision (P20):
+	// saved with the new revision, or conflict with the current one;
+	// QuerySave answers the original effect identity; CurrentRevision the
+	// lineage's current revision.
+	SaveRevision(ctx context.Context, effectID string, in SaveSourceInput) (SaveSourceResult, error)
+	QuerySave(ctx context.Context, effectID string) (SaveSourceResult, bool, error)
+	CurrentRevision(ctx context.Context, subject string) (string, error)
 }

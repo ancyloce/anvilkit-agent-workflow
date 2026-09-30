@@ -18,6 +18,7 @@ const (
 	NamePrepareLaunch    = "PrepareLaunch"
 	NameCreateJob        = "CreateJob"
 	NameObserveJob       = "ObserveJob"
+	NameAwaitJobOwner    = "AwaitJobOwner"
 	NameRegisterInstance = "RegisterInstance"
 	NameObserveInstance  = "ObserveInstance"
 	NameVerifyResult     = "VerifyResult"
@@ -292,6 +293,11 @@ type Launcher interface {
 	// nothing from it; any other error leaves the request unresolved.
 	CreateJob(ctx context.Context, in CreateJobInput) (JobRef, error)
 	ObserveJob(ctx context.Context, in ObserveJobInput, heartbeat func()) (JobObservation, error)
+	// AwaitOwner reports the Job as soon as its physical owner Pod exists (or
+	// the Job is terminal, or the deadline passed), so a harness profile's
+	// Pod can be registered while it runs: its sidecar receives its execution
+	// scope only from that registration.
+	AwaitOwner(ctx context.Context, in ObserveJobInput, heartbeat func()) (JobObservation, error)
 	// ObserveLaunch reports the Job and Pods under the launch key as soon as
 	// the backend shows any, waiting up to SettleWindow; it never deletes.
 	// An error means nothing was observed: the create is still unresolved.
