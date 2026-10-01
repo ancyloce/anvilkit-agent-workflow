@@ -129,3 +129,15 @@ func TestPublicationFaults(t *testing.T) {
 	_, err = d.FetchPublished(ctx, "browser", "", "rel_u", "index.js")
 	require.Error(t, err, "the receipt names a file the origin does not serve")
 }
+
+// A catalog that moves between the caller's read and the conditional write
+// is a conflict naming the current revision; nothing is activated.
+func TestActivationConflictFault(t *testing.T) {
+	ctx := context.Background()
+	d, err := New(t.TempDir())
+	require.NoError(t, err)
+	d.InstallFault("activate", 1, "conflict")
+	res, err := d.Activate(ctx, "eff_c", activities.ActivateInput{Occurrence: 1, Subject: releaseSubject(), Lock: activities.LockEntry{ReleaseID: "rel_c"}, ExpectedCatalogRevision: "0"})
+	require.NoError(t, err)
+	require.Equal(t, activities.ActivationResult{State: "conflict", CurrentCatalogRevision: "1"}, res)
+}

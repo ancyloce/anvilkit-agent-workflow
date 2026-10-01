@@ -37,7 +37,7 @@ import (
 // (ANVILKIT_DEV_RELEASES_DIR), so an activated release is what the host's
 // loader can pin and reopen. Faults a test installs (kind:occurrence):
 // review, publish (unknown | fail | wrong-destination | unavailable) and
-// activate (unknown).
+// activate (unknown | conflict).
 
 var releaseIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 
@@ -383,6 +383,20 @@ func (d *Double) Activate(ctx context.Context, effectID string, in activities.Ac
 	if err != nil {
 		return activities.ActivationResult{}, err
 	}
+	fault := d.fault("activate", in.Occurrence)
+	if fault == "conflict" {
+		// Another activation moved the catalog between the caller's read and
+		// this conditional write.
+		rev, _ := strconv.ParseUint(doc.Revision, 10, 64)
+		doc.Revision = strconv.FormatUint(rev+1, 10)
+		raw, err := json.Marshal(doc)
+		if err != nil {
+			return activities.ActivationResult{}, err
+		}
+		if err := writeFileAtomic(filepath.Join(d.originDir(), "catalog.json"), raw, 0o644); err != nil {
+			return activities.ActivationResult{}, err
+		}
+	}
 	switch {
 	case doc.Revision != in.ExpectedCatalogRevision:
 		res = activities.ActivationResult{State: "conflict", CurrentCatalogRevision: doc.Revision}
@@ -420,7 +434,7 @@ func (d *Double) Activate(ctx context.Context, effectID string, in activities.Ac
 	if err := d.writeJSON(recPath, res); err != nil {
 		return activities.ActivationResult{}, err
 	}
-	if d.fault("activate", in.Occurrence) == "unknown" {
+	if fault == "unknown" {
 		return activities.ActivationResult{}, errors.New("activation answer lost (fault injected)")
 	}
 	return res, nil
