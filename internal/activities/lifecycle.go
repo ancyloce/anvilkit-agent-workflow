@@ -28,6 +28,10 @@ type LifecycleActivities struct {
 	Lease       LeasePort
 	Source      SourcePort
 	Preview     PreviewControl
+	// Release and ReleasePort are Control's release projection and permits
+	// and the release side of Pagix (P21).
+	Release     ReleaseControl
+	ReleasePort ReleasePort
 	// MaxInputBytes bounds one prompt or answer the analysis reads.
 	MaxInputBytes int64
 }
