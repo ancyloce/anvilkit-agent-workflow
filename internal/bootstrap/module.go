@@ -112,7 +112,11 @@ func Lifecycle(l config.Lifecycle) workflows.LifecycleBounds {
 		AnalysisMaxExposure: activities.Money{Currency: l.Preparation.MaxExposureCurrency, Amount: l.Preparation.MaxExposureAmount},
 		AnalysisCallTimeout: l.Preparation.CallTimeout, ContentRepairAllowance: l.Preparation.ContentRepairAllowance,
 		PermitPollInterval: l.Generation.PermitPollInterval, LeaseTTL: l.Generation.LeaseTTL, LeaseRenewLead: l.Generation.LeaseRenewLead, LeaseCallTimeout: l.Generation.LeaseCallTimeout,
-		PreviewBuildProfile: l.Preview.BuildProfile,
+		PreviewBuildProfile:     l.Preview.BuildProfile,
+		ReleaseValidatorProfile: l.Release.ValidatorProfile,
+		ReleaseDestinations:     activities.ReleaseDestinations{NpmRegistry: l.Release.NpmRegistry, BrowserOrigin: l.Release.BrowserOrigin},
+		ReleaseApprovalWait:     l.Release.ApprovalWait, ReleaseApprovalPoll: l.Release.ApprovalPoll, ReleasePollsPerRun: l.Release.PollsPerRun,
+		ReleaseReconcileRounds: l.Release.ReconcileRounds, ReleaseReconcilePause: l.Release.ReconcilePause,
 	}
 	for _, d := range l.Generation.Definitions {
 		lb.Definitions = append(lb.Definitions, workflows.DefinitionActivation{ID: d.ID, CodegenProfileID: d.CodegenProfile, ValidatorProfile: d.ValidatorProfile, MaxRepairs: d.MaxRepairs})
@@ -168,6 +172,7 @@ type lifecyclePorts struct {
 	lease     activities.LeasePort
 	source    activities.SourcePort
 	knowledge activities.Knowledge
+	release   activities.ReleasePort
 }
 
 func Module() fx.Option {
@@ -219,19 +224,24 @@ func Module() fx.Option {
 				dir := cfg.Lifecycle.PagixDoubleDir
 				if dir == "" {
 					log.Warn("no Pagix/Knowledge port configured: the Generation lease, source and content-digest calls answer DEPENDENCY_UNAVAILABLE (ENV-07)")
-					return lifecyclePorts{lease: unavailablePorts{}, source: unavailablePorts{}, knowledge: unavailablePorts{}}, nil
+					return lifecyclePorts{lease: unavailablePorts{}, source: unavailablePorts{}, knowledge: unavailablePorts{}, release: activities.ReleaseUnavailable{}}, nil
 				}
 				log.Warn("DEVELOPMENT_ONLY Pagix/Knowledge doubles enabled; they qualify no upstream", "dir", dir)
 				d, err := pagix.New(dir)
 				if err != nil {
 					return lifecyclePorts{}, err
 				}
-				return lifecyclePorts{lease: d, source: d, knowledge: d}, nil
+				if origin := cfg.Lifecycle.Release.OriginDir; origin != "" {
+					if err := d.SetOrigin(origin); err != nil {
+						return lifecyclePorts{}, err
+					}
+				}
+				return lifecyclePorts{lease: d, source: d, knowledge: d, release: d}, nil
 			},
 			func(cfg config.Config, ctl *controladapter.Client, m activities.ModelCaller, ports lifecyclePorts) *activities.LifecycleActivities {
 				return &activities.LifecycleActivities{
 					Preparation: ctl, Generation: ctl, Artifacts: artifactadapter.New(ctl.Conn(), cfg.Temporal.WorkerIdentity, cfg.Lifecycle.Artifacts.TransferWindow),
-					Knowledge: ports.knowledge, Model: m, Lease: ports.lease, Source: ports.source, Preview: ctl, MaxInputBytes: cfg.Lifecycle.Preparation.MaxInputBytes,
+					Knowledge: ports.knowledge, Model: m, Lease: ports.lease, Source: ports.source, Preview: ctl, Release: ctl, ReleasePort: ports.release, MaxInputBytes: cfg.Lifecycle.Preparation.MaxInputBytes,
 				}
 			},
 			newWorkers,
@@ -255,12 +265,15 @@ func RegisterLifecycle(business, control worker.Worker, acts *activities.Lifecyc
 	business.RegisterWorkflowWithOptions(workflows.Preparation(q, b, lb), workflow.RegisterOptions{Name: workflows.PreparationWorkflowName})
 	business.RegisterWorkflowWithOptions(workflows.Generation(q, b, lb), workflow.RegisterOptions{Name: workflows.GenerationWorkflowName})
 	business.RegisterWorkflowWithOptions(workflows.PreviewBuild(q, b, lb), workflow.RegisterOptions{Name: workflows.PreviewWorkflowName})
+	business.RegisterWorkflowWithOptions(workflows.Release(q, b, lb), workflow.RegisterOptions{Name: workflows.ReleaseWorkflowName})
 	for name, fn := range map[string]any{
 		activities.NameGetPreparation: acts.GetPreparation, activities.NameAnalyzeRequirements: acts.AnalyzeRequirements, activities.NameRecordQuestionSet: acts.RecordQuestionSet,
 		activities.NameGetAnswer: acts.GetAnswer, activities.NameFreezeReferences: acts.FreezeReferences, activities.NameFreezeBrief: acts.FreezeBrief,
 		activities.NameGetGeneration: acts.GetGeneration, activities.NameRequestExecutionPermit: acts.RequestExecutionPermit, activities.NameRecordFunding: acts.RecordFunding,
 		activities.NameCheckSourceScope: acts.CheckSourceScope, activities.NameGetAcceptedStage: acts.GetAcceptedStage,
 		activities.NameGetPreviewSource: acts.GetPreviewSource, activities.NameCurrentSourceRevision: acts.CurrentSourceRevision,
+		activities.NameGetReleaseBinding: acts.GetReleaseBinding, activities.NameBuildReleaseSubj: acts.BuildReleaseSubject,
+		activities.NameReviewDecision: acts.ReviewDecision, activities.NameCatalogRevision: acts.CatalogRevision,
 	} {
 		business.RegisterActivityWithOptions(fn, activity.RegisterOptions{Name: name})
 	}
@@ -268,6 +281,8 @@ func RegisterLifecycle(business, control worker.Worker, acts *activities.Lifecyc
 		activities.NameSettleOperation: acts.SettleOperation, activities.NameAcquireLease: acts.AcquireLease, activities.NameRenewLease: acts.RenewLease,
 		activities.NameQueryLease: acts.QueryLease, activities.NameReleaseLease: acts.ReleaseLease, activities.NameRecordLease: acts.RecordLease,
 		activities.NameRegisterCandidate: acts.RegisterCandidate, activities.NameSaveSource: acts.SaveSource, activities.NameRecordPreview: acts.RecordPreview,
+		activities.NameRegisterReview: acts.RegisterReview, activities.NamePublishTarget: acts.PublishTarget, activities.NameActivateRelease: acts.ActivateRelease,
+		activities.NameRecordRelease: acts.RecordRelease,
 	} {
 		control.RegisterActivityWithOptions(fn, activity.RegisterOptions{Name: name})
 	}
