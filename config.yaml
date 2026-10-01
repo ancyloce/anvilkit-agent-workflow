@@ -97,6 +97,22 @@ lifecycle:
   # revision (DEVELOPMENT_ONLY: the fixed validator profile).
   preview:
     build_profile: validator-fixed-dev-v1
+  # release (P21): the reviewed validator profile that certifies the exact
+  # source (DEVELOPMENT_ONLY: the fixed validator profile), the release
+  # profile's destinations (DEVELOPMENT_ONLY names served by the Pagix
+  # double until ENV-07/08), the maintainer's approval wait (never beyond
+  # the operation deadline), its poll interval, the polls one run makes
+  # before it continues as new, and the bounded original-identity queries of
+  # an unknown target.
+  release:
+    validator_profile: validator-fixed-dev-v1
+    npm_registry: https://registry.anvilkit.invalid/
+    browser_origin: https://components.anvilkit.invalid
+    approval_wait: 336h
+    approval_poll: 30s
+    polls_per_run: 200
+    reconcile_rounds: 20
+    reconcile_pause: 30s
 # development: DEVELOPMENT_ONLY fault injection; never enable outside the
 # integration scenarios (see docs/architecture/delivery.md P05).
 development:
