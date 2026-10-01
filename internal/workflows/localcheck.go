@@ -75,6 +75,10 @@ func launchKeyFor(operationID string) string {
 type Input struct {
 	OperationID string `json:"operationId"`
 	TenantID    string `json:"tenantId"`
+	// Release carries a release's durable facts into the run it continues
+	// as (P21: the long approval wait rolls over at a qualified boundary);
+	// Control's relay never sets it.
+	Release *ReleaseCarry `json:"release,omitempty"`
 }
 
 // LocalCheck runs the fixed qualification fixture for one operation: open

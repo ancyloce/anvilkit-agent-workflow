@@ -15,6 +15,7 @@ const (
 	PreparationWorkflowName = "PreparationWorkflow"
 	GenerationWorkflowName  = "GenerationWorkflow"
 	PreviewWorkflowName     = "PreviewBuildWorkflow"
+	ReleaseWorkflowName     = "ReleaseWorkflow"
 	AnswerUpdateName        = "PreparationAnswer"
 	CommandUpdateName       = "ControlCommand"
 )
@@ -67,6 +68,18 @@ type LifecycleBounds struct {
 	Definitions        []DefinitionActivation
 	// Preview: the job profile that builds a preview's saved revision.
 	PreviewBuildProfile string
+	// Release (P21): the validator profile that certifies the exact source,
+	// the release profile's destinations, the maintainer's approval wait
+	// (bounded again by the operation deadline), its poll interval, the
+	// polls one run makes before it continues as new, and the bounded
+	// original-identity queries of an unknown target.
+	ReleaseValidatorProfile string
+	ReleaseDestinations     activities.ReleaseDestinations
+	ReleaseApprovalWait     time.Duration
+	ReleaseApprovalPoll     time.Duration
+	ReleasePollsPerRun      int
+	ReleaseReconcileRounds  int
+	ReleaseReconcilePause   time.Duration
 }
 
 // DefinitionActivation is one reviewed definition this worker registered
