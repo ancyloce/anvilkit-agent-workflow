@@ -218,6 +218,26 @@ type Lifecycle struct {
 	// empty leaves the Generation ports unavailable (every generation
 	// fails at bootstrap with DEPENDENCY_UNAVAILABLE) until ENV-07.
 	PagixDoubleDir string `koanf:"pagix_double_dir"`
+	// Release (P21): the reviewed validator profile that certifies the
+	// exact source, the release profile's destinations (DEVELOPMENT_ONLY
+	// until ENV-07/08 name the real registry and origin), the maintainer's
+	// approval wait (bounded again by the operation deadline), its poll
+	// interval, the polls one run makes before it continues as new, and the
+	// bound on original-identity queries of an unknown target.
+	Release struct {
+		ValidatorProfile string        `koanf:"validator_profile"`
+		NpmRegistry      string        `koanf:"npm_registry"`
+		BrowserOrigin    string        `koanf:"browser_origin"`
+		ApprovalWait     time.Duration `koanf:"approval_wait"`
+		ApprovalPoll     time.Duration `koanf:"approval_poll"`
+		PollsPerRun      int           `koanf:"polls_per_run"`
+		ReconcileRounds  int           `koanf:"reconcile_rounds"`
+		ReconcilePause   time.Duration `koanf:"reconcile_pause"`
+		// OriginDir places the double's browser origin (the Studio's
+		// DEVELOPMENT_ONLY release directory; ANVILKIT_WORKFLOW_RELEASE_ORIGIN_DIR);
+		// empty keeps it under the double's directory.
+		OriginDir string `koanf:"origin_dir"`
+	} `koanf:"release"`
 }
 
 // Definition is one reviewed definition activation this worker registers
@@ -244,6 +264,14 @@ var defaults = map[string]any{
 	"lifecycle.generation.definitions":               []map[string]any{{"id": "generation-v1:def-1", "max_repairs": -1}, {"id": "generation-v1:def-2", "max_repairs": 0}},
 	"lifecycle.artifacts.transfer_window":            "15m",
 	"lifecycle.preview.build_profile":                "validator-fixed-dev-v1",
+	"lifecycle.release.validator_profile":            "validator-fixed-dev-v1",
+	"lifecycle.release.npm_registry":                 "https://registry.anvilkit.invalid/",
+	"lifecycle.release.browser_origin":               "https://components.anvilkit.invalid",
+	"lifecycle.release.approval_wait":                "336h",
+	"lifecycle.release.approval_poll":                "30s",
+	"lifecycle.release.polls_per_run":                200,
+	"lifecycle.release.reconcile_rounds":             20,
+	"lifecycle.release.reconcile_pause":              "30s",
 	"temporal.namespace":                             "anvilkit",
 	"temporal.task_queue":                            "anvilkit-workflow",
 	"temporal.control_task_queue":                    "anvilkit-workflow-control",
@@ -288,6 +316,7 @@ var envOverrides = map[string]string{
 	"ANVILKIT_WORKFLOW_SIDECAR_CONTROL_ADDRESS": "kubernetes.sidecar.control_address",
 	"ANVILKIT_WORKFLOW_HEALTH_LISTEN":           "health.listen",
 	"ANVILKIT_WORKFLOW_PAGIX_DOUBLE_DIR":        "lifecycle.pagix_double_dir",
+	"ANVILKIT_WORKFLOW_RELEASE_ORIGIN_DIR":      "lifecycle.release.origin_dir",
 }
 
 func Load() (Config, error) {
@@ -461,6 +490,22 @@ func (c Config) validate() error {
 		if d.ID == "" {
 			errs = append(errs, fmt.Errorf("lifecycle.generation.definitions[%d] needs an id", i))
 		}
+	}
+	lr := c.Lifecycle.Release
+	req("lifecycle.release.validator_profile", lr.ValidatorProfile)
+	for key, v := range map[string]string{"lifecycle.release.npm_registry": lr.NpmRegistry, "lifecycle.release.browser_origin": lr.BrowserOrigin} {
+		if u, err := url.Parse(v); err != nil || u.Scheme != "https" || u.Host == "" {
+			errs = append(errs, fmt.Errorf("%s %q must be an https URL", key, v))
+		}
+	}
+	within("lifecycle.release.approval_wait", lr.ApprovalWait, time.Minute, 2160*time.Hour)
+	within("lifecycle.release.approval_poll", lr.ApprovalPoll, time.Second, time.Hour)
+	within("lifecycle.release.reconcile_pause", lr.ReconcilePause, time.Second, time.Hour)
+	if lr.PollsPerRun < 10 || lr.PollsPerRun > 10000 {
+		errs = append(errs, fmt.Errorf("lifecycle.release.polls_per_run %d outside [10, 10000]", lr.PollsPerRun))
+	}
+	if lr.ReconcileRounds < 1 || lr.ReconcileRounds > 1000 {
+		errs = append(errs, fmt.Errorf("lifecycle.release.reconcile_rounds %d outside [1, 1000]", lr.ReconcileRounds))
 	}
 	within("lifecycle.artifacts.transfer_window", c.Lifecycle.Artifacts.TransferWindow, time.Minute, 24*time.Hour)
 	// Cross-field rules: one observation of an unresolved create lasts at
