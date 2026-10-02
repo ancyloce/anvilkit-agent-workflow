@@ -13,7 +13,9 @@ metadata:
   labels:
     {{- include "anvilkit-agent-workflow.labels" . | nindent 4 }}
 spec:
+  {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "anvilkit-agent-workflow.selectorLabels" . | nindent 6 }}
@@ -73,6 +75,10 @@ spec:
               value: {{ include "anvilkit-agent-workflow.buildId" . | quote }}
             - name: ANVILKIT_WORKFLOW_HEALTH_LISTEN
               value: {{ printf "0.0.0.0:%d" (int .Values.health.port) | quote }}
+            {{- if .Values.telemetry.otlpEndpoint }}
+            - name: ANVILKIT_WORKFLOW_TELEMETRY_OTLP_ENDPOINT
+              value: {{ .Values.telemetry.otlpEndpoint | quote }}
+            {{- end }}
           ports:
             - name: health
               containerPort: {{ .Values.health.port }}
