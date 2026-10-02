@@ -58,6 +58,9 @@ execution:
     timeout: 3m
     max_attempts: 2
     unresolved_settle_window: 60s
+    # how long an unanswered create request can still commit after its
+    # Activity ended; must exceed the API server's --request-timeout (60s)
+    create_request_lifetime: 3m
     reconcile_initial_interval: 5s
     reconcile_max_interval: 1m
     reconcile_max_duration: 24h
