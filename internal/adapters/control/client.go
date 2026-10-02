@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -34,7 +35,7 @@ type Client struct {
 // Dial connects to Control; backend names the launch backend identity and
 // worker the actor recorded on Workflow-issued commands.
 func Dial(address, backend, worker string) (*Client, error) {
-	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(address, grpc.WithStatsHandler(otelgrpc.NewClientHandler()), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, err
 	}
