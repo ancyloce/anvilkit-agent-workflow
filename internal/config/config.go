@@ -112,6 +112,16 @@ type Cleanup struct {
 	// request is accounted for (answered, not created, or its object seen)
 	// and the Job and its Pods are gone.
 	UnresolvedSettleWindow time.Duration `koanf:"unresolved_settle_window"`
+	// CreateRequestLifetime is how long, after its create Activity ended
+	// without an answer, a written create request can still commit: the API
+	// server handles a request at most for its own request timeout
+	// (kube-apiserver --request-timeout, 60s by default), and an etcd write
+	// that did not commit before the next committed one never commits later.
+	// Once a request's lifetime has ended, a cleanup call that starts
+	// afterwards and confirms the launch key empty (a consistent read) is
+	// evidence the request never committed. It must exceed the placement's
+	// API server request timeout (a deployment input, ENV-01).
+	CreateRequestLifetime time.Duration `koanf:"create_request_lifetime"`
 	// ReconcileInitialInterval and ReconcileMaxInterval pace the
 	// reconciliation rounds after an unknown cleanup; ReconcileMaxDuration
 	// bounds the whole reconciliation before it fails visibly.
@@ -164,7 +174,18 @@ const (
 	MaxShutdownTimeout = 5 * time.Minute
 )
 
+// Telemetry places the redacted signals (security.md "data classification,
+// logging and deletion"): Temporal and Control-call spans over OTLP to the
+// collector when an endpoint is placed (no exporter otherwise), sampled at
+// SampleRatio; the SDK and process metrics are served on the health
+// listener's /metrics. Neither enters a Workflow's history or its decisions.
+type Telemetry struct {
+	OTLPEndpoint string  `koanf:"otlp_endpoint"`
+	SampleRatio  float64 `koanf:"sample_ratio"`
+}
+
 type Config struct {
+	Telemetry   Telemetry   `koanf:"telemetry"`
 	Temporal    Temporal    `koanf:"temporal"`
 	Control     Control     `koanf:"control"`
 	ModelProxy  ModelProxy  `koanf:"model_proxy"`
@@ -293,11 +314,13 @@ var defaults = map[string]any{
 	"execution.cleanup.timeout":                      "3m",
 	"execution.cleanup.max_attempts":                 2,
 	"execution.cleanup.unresolved_settle_window":     "60s",
+	"execution.cleanup.create_request_lifetime":      "3m",
 	"execution.cleanup.reconcile_initial_interval":   "5s",
 	"execution.cleanup.reconcile_max_interval":       "1m",
 	"execution.cleanup.reconcile_max_duration":       "24h",
 	"development.enabled":                            false,
 	"health.listen":                                  "127.0.0.1:9102",
+	"telemetry.sample_ratio":                         1.0,
 	"shutdown_timeout":                               "30s",
 }
 
@@ -315,6 +338,7 @@ var envOverrides = map[string]string{
 	"ANVILKIT_WORKFLOW_IMAGE_REGISTRY":          "kubernetes.image_registry",
 	"ANVILKIT_WORKFLOW_SIDECAR_CONTROL_ADDRESS": "kubernetes.sidecar.control_address",
 	"ANVILKIT_WORKFLOW_HEALTH_LISTEN":           "health.listen",
+	"ANVILKIT_WORKFLOW_TELEMETRY_OTLP_ENDPOINT": "telemetry.otlp_endpoint",
 	"ANVILKIT_WORKFLOW_PAGIX_DOUBLE_DIR":        "lifecycle.pagix_double_dir",
 	"ANVILKIT_WORKFLOW_RELEASE_ORIGIN_DIR":      "lifecycle.release.origin_dir",
 }
@@ -455,10 +479,14 @@ func (c Config) validate() error {
 		errs = append(errs, fmt.Errorf("execution.cleanup.max_attempts %d outside [1, 100]", cl.MaxAttempts))
 	}
 	within("execution.cleanup.unresolved_settle_window", cl.UnresolvedSettleWindow, 5*time.Second, 10*time.Minute)
+	within("execution.cleanup.create_request_lifetime", cl.CreateRequestLifetime, 30*time.Second, time.Hour)
 	within("execution.cleanup.reconcile_initial_interval", cl.ReconcileInitialInterval, time.Second, time.Hour)
 	within("execution.cleanup.reconcile_max_interval", cl.ReconcileMaxInterval, time.Second, time.Hour)
 	within("execution.cleanup.reconcile_max_duration", cl.ReconcileMaxDuration, time.Minute, 7*24*time.Hour)
 	req("health.listen", c.Health.Listen)
+	if c.Telemetry.SampleRatio < 0 || c.Telemetry.SampleRatio > 1 {
+		errs = append(errs, fmt.Errorf("telemetry.sample_ratio %v outside [0, 1]", c.Telemetry.SampleRatio))
+	}
 	within("shutdown_timeout", c.ShutdownTimeout, MinShutdownTimeout, MaxShutdownTimeout)
 	lp, lg := c.Lifecycle.Preparation, c.Lifecycle.Generation
 	req("lifecycle.preparation.route_id", lp.RouteID)
@@ -518,6 +546,9 @@ func (c Config) validate() error {
 	}
 	if cl.Timeout <= cl.UnresolvedSettleWindow {
 		errs = append(errs, fmt.Errorf("execution.cleanup.timeout %s must exceed execution.cleanup.unresolved_settle_window %s", cl.Timeout, cl.UnresolvedSettleWindow))
+	}
+	if cl.CreateRequestLifetime >= cl.ReconcileMaxDuration {
+		errs = append(errs, fmt.Errorf("execution.cleanup.create_request_lifetime %s must be shorter than execution.cleanup.reconcile_max_duration %s", cl.CreateRequestLifetime, cl.ReconcileMaxDuration))
 	}
 	if cl.ReconcileInitialInterval > cl.ReconcileMaxInterval {
 		errs = append(errs, fmt.Errorf("execution.cleanup.reconcile_initial_interval %s exceeds reconcile_max_interval %s", cl.ReconcileInitialInterval, cl.ReconcileMaxInterval))

@@ -37,6 +37,7 @@ func TestCheckedInFileLoads(t *testing.T) {
 	c, err := config.LoadFrom(filepath.Join("..", "..", "config.yaml"), env)
 	require.NoError(t, err)
 	require.Equal(t, 60*time.Second, c.Execution.Cleanup.UnresolvedSettleWindow)
+	require.Equal(t, 3*time.Minute, c.Execution.Cleanup.CreateRequestLifetime, "beyond the API server's default 60s request timeout")
 }
 
 func TestUnknownKeysAreRejected(t *testing.T) {
@@ -64,6 +65,10 @@ func TestRequiredValuesRangesAndCrossFieldRules(t *testing.T) {
 	require.ErrorContains(t, err, "control_retry_max_attempts")
 	_, err = config.LoadFrom(write(t, minimal+"execution:\n  cleanup:\n    unresolved_settle_window: 10s\n"), env)
 	require.ErrorContains(t, err, "unresolved_settle_window 10s must be at least", "one observation of an unresolved create lasts at least the create Activity's bound")
+	_, err = config.LoadFrom(write(t, minimal+"execution:\n  cleanup:\n    create_request_lifetime: 10s\n"), env)
+	require.ErrorContains(t, err, "create_request_lifetime", "shorter than any API server request timeout it must cover")
+	_, err = config.LoadFrom(write(t, minimal+"execution:\n  cleanup:\n    create_request_lifetime: 30m\n    reconcile_max_duration: 20m\n"), env)
+	require.ErrorContains(t, err, "create_request_lifetime 30m0s must be shorter than", "a lifetime the reconciliation never outlives could never settle a request")
 	_, err = config.LoadFrom(write(t, minimal+"execution:\n  cleanup:\n    timeout: 30s\n"), env)
 	require.ErrorContains(t, err, "cleanup.timeout 30s must exceed")
 	_, err = config.LoadFrom(write(t, minimal+"execution:\n  cleanup:\n    reconcile_initial_interval: 5m\n    reconcile_max_interval: 1m\n"), env)
@@ -98,4 +103,13 @@ func TestModelProxyPlacementAndSecret(t *testing.T) {
 	require.ErrorContains(t, err, "model_proxy.address must be an absolute http(s) URL")
 	_, err = config.LoadFrom(write(t, minimal+"model_proxy:\n  identity:\n    mode: mtls\n"), append(env, "ANVILKIT_WORKFLOW_MODEL_PROXY_ADDRESS=https://proxy"))
 	require.ErrorContains(t, err, "model_proxy.identity.mtls.cert_file, key_file and ca_file are required")
+}
+
+func TestTelemetryPlacement(t *testing.T) {
+	c, err := config.LoadFrom(write(t, minimal), append(env, "ANVILKIT_WORKFLOW_TELEMETRY_OTLP_ENDPOINT=collector:4317"))
+	require.NoError(t, err)
+	require.Equal(t, "collector:4317", c.Telemetry.OTLPEndpoint)
+	require.Equal(t, 1.0, c.Telemetry.SampleRatio)
+	_, err = config.LoadFrom(write(t, minimal+"telemetry:\n  sample_ratio: 2\n"), env)
+	require.ErrorContains(t, err, "telemetry.sample_ratio")
 }
