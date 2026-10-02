@@ -622,7 +622,7 @@ func runJobStep(ctx workflow.Context, q Queues, b Bounds, spec stepSpec, state *
 				cleanup = "complete"
 			}
 		}
-		if cerr := closeAttempt(disconnected, q, b, attempt, attempt.AttemptID+":close", outcome, cleanup, failureCode); cerr != nil {
+		if cerr := closeLaunchAttempt(disconnected, q, b, attempt, launched, attempt.AttemptID+":close", outcome, cleanup, failureCode); cerr != nil {
 			logger.Error("attempt close refused", "attemptId", attempt.AttemptID, "error", cerr)
 			if code == "" {
 				code = activities.RefusalCode(cerr)
@@ -637,7 +637,7 @@ func runJobStep(ctx workflow.Context, q Queues, b Bounds, spec stepSpec, state *
 			code = "CLEANUP_UNCONFIRMED"
 			return
 		}
-		if cerr := closeAttempt(disconnected, q, b, attempt, attempt.AttemptID+":close:settled", outcome, "complete", failureCode); cerr != nil {
+		if cerr := closeLaunchAttempt(disconnected, q, b, attempt, launched, attempt.AttemptID+":close:settled", outcome, "complete", failureCode); cerr != nil {
 			logger.Error("cleanup settlement refused", "attemptId", attempt.AttemptID, "error", cerr)
 		}
 	}()

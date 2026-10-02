@@ -3,6 +3,7 @@ package workflows_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -24,7 +25,7 @@ var (
 	bounds = workflows.Bounds{
 		ControlActivityTimeout: 30 * time.Second, ControlRetryInitial: time.Second, ControlRetryMaxInterval: 30 * time.Second, ControlRetryMaxAttempts: 6,
 		LaunchWindow: 2 * time.Minute, ObserveHeartbeatTimeout: 30 * time.Second, ObserveMaxAttempts: 3,
-		CleanupTimeout: 3 * time.Minute, CleanupMaxAttempts: 2, UnresolvedSettleWindow: 60 * time.Second,
+		CleanupTimeout: 3 * time.Minute, CleanupMaxAttempts: 2, UnresolvedSettleWindow: 60 * time.Second, CreateRequestLifetime: 3 * time.Minute,
 		ReconcileInitialInterval: 5 * time.Second, ReconcileMaxInterval: time.Minute, ReconcileMaxDuration: 24 * time.Hour,
 	}
 )
@@ -168,8 +169,8 @@ func certifiedRun(env *testsuite.TestWorkflowEnvironment) {
 	env.OnActivity(activities.NameAcceptResult, mock.Anything, mock.Anything).Return(activities.StageRef{StageID: "stg-1"}, nil)
 }
 
-// A close refused by Control (conflicting identity, unknown attempt) fails
-// the Workflow visibly instead of completing it with an unsettled operation.
+// A close refused by Control (a conflicting identity) fails the Workflow
+// visibly instead of completing it with an unsettled operation.
 func TestLocalCheckRefusedCloseFailsTheWorkflow(t *testing.T) {
 	var ts testsuite.WorkflowTestSuite
 	env := ts.NewTestWorkflowEnvironment()
@@ -184,6 +185,104 @@ func TestLocalCheckRefusedCloseFailsTheWorkflow(t *testing.T) {
 	require.Contains(t, err.Error(), "close attempt att_1")
 	require.Equal(t, "IDEMPOTENCY_CONFLICT", activities.RefusalCode(err))
 	env.AssertNumberOfCalls(t, activities.NameCloseAttempt, 1)
+}
+
+// restoredBeforeTheAttempt is Control's answer for an attempt its database
+// no longer holds: the point-in-time restore went back to before it.
+func restoredBeforeTheAttempt() error {
+	return activities.Refused("NOT_FOUND", errors.New("rpc error: code = NotFound desc = NOT_FOUND: attempt att_1"))
+}
+
+// launchLostToARestore is the run of the PITR interleaving: the launch was
+// prepared (its obligation is in the inventory) and the Job created, then
+// Control's database was restored to a point before the attempt, so the
+// instance registration is refused NOT_FOUND and the run stops its Job.
+func launchLostToARestore(env *testsuite.TestWorkflowEnvironment) {
+	exit := int32(0)
+	env.OnActivity(activities.NameOpenAttempt, mock.Anything, mock.Anything).Return(attempt, nil)
+	env.OnActivity(activities.NamePrepareLaunch, mock.Anything, mock.Anything).Return(launch, nil)
+	env.OnActivity(activities.NameCreateJob, mock.Anything, mock.Anything).Return(activities.JobRef{JobUID: "job-1"}, nil)
+	env.OnActivity(activities.NameObserveJob, mock.Anything, mock.Anything).Return(activities.JobObservation{
+		JobUID: "job-1", Pods: []activities.PodObservation{{PodUID: "pod-1", Phase: "succeeded", ExitCode: &exit, TerminationMessage: "{}"}},
+	}, nil)
+	env.OnActivity(activities.NameRegisterInstance, mock.Anything, mock.Anything).Return(activities.InstanceRef{}, restoredBeforeTheAttempt())
+	env.OnActivity(activities.NameDeleteJob, mock.Anything, mock.Anything).Return(activities.LaunchObservation{}, nil)
+}
+
+// Regression for the intermittent PITR restriction: the run deleted its Job
+// (cleanup complete) but Control, restored to before the attempt, answers
+// its close NOT_FOUND. That close is the only evidence the recovery can
+// settle the restored launch with (the deleted Job shows nothing, which is
+// not cleanup evidence), so it is kept and resubmitted under the same
+// command until the recovery has restored the attempt; dropping it left the
+// recovery scope restricted.
+func TestLocalCheckCloseOfALaunchLostToARestoreWaitsForTheRestoredAttempt(t *testing.T) {
+	var ts testsuite.WorkflowTestSuite
+	env := ts.NewTestWorkflowEnvironment()
+	register(env)
+	launchLostToARestore(env)
+	var closes []activities.CloseAttemptInput
+	env.OnActivity(activities.NameCloseAttempt, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.CloseAttemptInput) (activities.CloseResult, error) {
+		closes = append(closes, in)
+		if len(closes) < 4 { // the recovery restores the attempt only later
+			return activities.CloseResult{}, restoredBeforeTheAttempt()
+		}
+		return activities.CloseResult{Lifecycle: "failed"}, nil
+	})
+	env.ExecuteWorkflow(workflows.LocalCheckWorkflowName, input)
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError(), "the close reached the restored attempt")
+	require.Len(t, closes, 4)
+	for _, c := range closes {
+		require.Equal(t, "att_1:close", c.CommandID, "one durable close command, resubmitted")
+		require.Equal(t, "complete", c.Cleanup, "the run's own delete observed the launch key empty")
+		require.Equal(t, "infrastructure_failed", c.Outcome)
+		require.Equal(t, "NOT_FOUND", c.FailureCode)
+	}
+	env.AssertNumberOfCalls(t, activities.NameDeleteJob, 1)
+	env.AssertNumberOfCalls(t, activities.NamePrepareLaunch, 1)
+	env.AssertNotCalled(t, activities.NameAcceptResult, mock.Anything, mock.Anything)
+}
+
+// The kept close is bounded like every reconciliation of this run: an
+// attempt that never comes back fails the run visibly at the bound with
+// Control's refusal.
+func TestLocalCheckCloseOfALaunchLostToARestoreFailsVisiblyAtTheBound(t *testing.T) {
+	var ts testsuite.WorkflowTestSuite
+	env := ts.NewTestWorkflowEnvironment()
+	narrow := bounds
+	narrow.ReconcileInitialInterval, narrow.ReconcileMaxInterval, narrow.ReconcileMaxDuration = 5*time.Second, 30*time.Second, 2*time.Minute
+	registerWith(env, narrow)
+	launchLostToARestore(env)
+	closes := 0
+	env.OnActivity(activities.NameCloseAttempt, mock.Anything, mock.Anything).Return(func(context.Context, activities.CloseAttemptInput) (activities.CloseResult, error) {
+		closes++
+		return activities.CloseResult{}, restoredBeforeTheAttempt()
+	})
+	start := env.Now()
+	env.ExecuteWorkflow(workflows.LocalCheckWorkflowName, input)
+	require.True(t, env.IsWorkflowCompleted())
+	err := env.GetWorkflowError()
+	require.Error(t, err)
+	require.Equal(t, "NOT_FOUND", activities.RefusalCode(err))
+	require.Greater(t, closes, 3, "the close was resubmitted on the backoff before the bound")
+	require.LessOrEqual(t, env.Now().Sub(start), narrow.ReconcileMaxDuration+narrow.ControlActivityTimeout)
+}
+
+// Without a launch no inventory obligation brings the attempt back and no
+// recovery needs the close: an unknown attempt still fails the run at once.
+func TestLocalCheckUnknownAttemptWithoutALaunchFailsAtOnce(t *testing.T) {
+	var ts testsuite.WorkflowTestSuite
+	env := ts.NewTestWorkflowEnvironment()
+	register(env)
+	env.OnActivity(activities.NameOpenAttempt, mock.Anything, mock.Anything).Return(attempt, nil)
+	env.OnActivity(activities.NamePrepareLaunch, mock.Anything, mock.Anything).Return(activities.LaunchRef{}, restoredBeforeTheAttempt())
+	env.OnActivity(activities.NameCloseAttempt, mock.Anything, mock.Anything).Return(activities.CloseResult{}, restoredBeforeTheAttempt())
+	env.ExecuteWorkflow(workflows.LocalCheckWorkflowName, input)
+	require.True(t, env.IsWorkflowCompleted())
+	require.Equal(t, "NOT_FOUND", activities.RefusalCode(env.GetWorkflowError()))
+	env.AssertNumberOfCalls(t, activities.NameCloseAttempt, 1)
+	env.AssertNotCalled(t, activities.NameCreateJob, mock.Anything, mock.Anything)
 }
 
 // A transient close failure is retried under the same command identity
@@ -700,6 +799,122 @@ func TestLocalCheckUnansweredCreateNeverSeenFailsVisiblyAtTheBound(t *testing.T)
 	env.AssertNotCalled(t, activities.NameCloseAttempt, mock.Anything, mock.MatchedBy(func(in activities.CloseAttemptInput) bool { return in.Cleanup == "complete" }))
 	env.AssertNumberOfCalls(t, activities.NameCreateJob, 2)
 	env.AssertNumberOfCalls(t, activities.NamePrepareLaunch, 1)
+}
+
+// unansweredThenRetried is the control-plane drill's run: request 1 is
+// written while the Kubernetes API has no quorum and never answered, request
+// 2 creates the Job after the restart, the run certifies on it and its
+// cleanup deletes B. Request 1 stays unaccounted. Every Pod registered with
+// Control is appended to sequence as register:<pod>.
+func unansweredThenRetried(env *testsuite.TestWorkflowEnvironment, requestOneEnded *time.Time, sequence *[]string) {
+	exit := int32(0)
+	env.OnActivity(activities.NameOpenAttempt, mock.Anything, mock.Anything).Return(attempt, nil)
+	env.OnActivity(activities.NamePrepareLaunch, mock.Anything, mock.Anything).Return(launch, nil)
+	env.OnActivity(activities.NameCreateJob, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.CreateJobInput) (activities.JobRef, error) {
+		if in.Request == 1 {
+			*requestOneEnded = env.Now() // the test environment's clock, the one the Workflow reads
+			return activities.JobRef{}, unansweredCreate
+		}
+		return activities.JobRef{JobUID: "job-b", Request: 2}, nil
+	})
+	env.OnActivity(activities.NameObserveJob, mock.Anything, mock.Anything).Return(activities.JobObservation{
+		JobUID: "job-b", Pods: []activities.PodObservation{{PodUID: "pod-b", Phase: "succeeded", ExitCode: &exit, TerminationMessage: "{}"}},
+	}, nil)
+	env.OnActivity(activities.NameRegisterInstance, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.RegisterInstanceInput) (activities.InstanceRef, error) {
+		*sequence = append(*sequence, "register:"+in.PodUID)
+		return activities.InstanceRef{InstanceID: "inst-" + in.PodUID, Current: in.PodUID == "pod-b"}, nil
+	})
+	env.OnActivity(activities.NameObserveInstance, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(activities.NameVerifyResult, mock.Anything, mock.Anything).Return(activities.Verdict{Verdict: "certified", Manifest: []byte("{}"), ResultDigest: "sha256:aa"}, nil)
+	env.OnActivity(activities.NameAcceptResult, mock.Anything, mock.Anything).Return(activities.StageRef{StageID: "stg-1"}, nil)
+	env.OnActivity(activities.NameObserveLaunch, mock.Anything, mock.Anything).Return(func(context.Context, activities.ObserveLaunchInput) (activities.LaunchObservation, error) {
+		return activities.LaunchObservation{}, errors.New("job lc-abc create unresolved: neither the Job nor a Pod was observed within 1m0s, so the create is not known to have finished; cleanup stays unknown")
+	})
+}
+
+// Regression for the control-plane drill: an unanswered create request that
+// never committed kept the operation reconciling until the 24-hour bound,
+// because absence is not evidence. Its lifetime gives the evidence: the API
+// server commits a request only while it handles it, so once
+// CreateRequestLifetime has passed since the request's Activity ended, a
+// delete that starts afterwards and finds the launch key empty (a consistent
+// read that would have reported the request's object instead of deleting it)
+// proves it never committed. Within the lifetime every round still observes
+// and absence settles nothing.
+func TestLocalCheckUnansweredCreatePastItsLifetimeSettlesOnAnEmptyKey(t *testing.T) {
+	var ts testsuite.WorkflowTestSuite
+	env := ts.NewTestWorkflowEnvironment()
+	register(env)
+	var requestOneEnded time.Time
+	var registrations []string
+	unansweredThenRetried(env, &requestOneEnded, &registrations)
+	type call struct {
+		at          time.Time
+		unaccounted []int
+	}
+	var deletes []call
+	env.OnActivity(activities.NameDeleteJob, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.DeleteJobInput) (activities.LaunchObservation, error) {
+		deletes = append(deletes, call{env.Now(), append([]int(nil), in.Unaccounted...)})
+		return activities.LaunchObservation{}, nil
+	})
+	var closes []activities.CloseAttemptInput
+	env.OnActivity(activities.NameCloseAttempt, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.CloseAttemptInput) (activities.CloseResult, error) {
+		closes = append(closes, in)
+		if in.Cleanup == "unknown" {
+			return activities.CloseResult{Lifecycle: "reconciling"}, nil
+		}
+		return activities.CloseResult{Lifecycle: "succeeded"}, nil
+	})
+	env.ExecuteWorkflow(workflows.LocalCheckWorkflowName, input)
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError(), "cleanup settled once request 1's lifetime was over")
+	require.Len(t, closes, 2)
+	require.Equal(t, "unknown", closes[0].Cleanup, "within the lifetime absence settles nothing")
+	require.Equal(t, "att_1:close:settled", closes[1].CommandID)
+	require.Equal(t, "complete", closes[1].Cleanup)
+	require.Equal(t, "completed", closes[1].Outcome, "the certified result stands")
+	last := deletes[len(deletes)-1]
+	require.Equal(t, []int{1}, last.unaccounted, "the settling delete would have reported request 1's object, not deleted it")
+	require.False(t, last.at.Before(requestOneEnded.Add(bounds.CreateRequestLifetime)), "the settling delete started after request 1's lifetime ended")
+	env.AssertNumberOfCalls(t, activities.NameCreateJob, 2)
+	env.AssertNumberOfCalls(t, activities.NamePrepareLaunch, 1)
+}
+
+// The lifetime never turns an object into absence: when the delete that
+// starts after the lifetime finds request 1's object after all (the bound
+// was shorter than the API server's), the object is recorded — its Pod
+// registered with Control — before the next delete stops it, exactly as an
+// observed object.
+func TestLocalCheckObjectOfAnExpiredRequestIsRecordedBeforeItIsStopped(t *testing.T) {
+	var ts testsuite.WorkflowTestSuite
+	env := ts.NewTestWorkflowEnvironment()
+	register(env)
+	var requestOneEnded time.Time
+	var sequence []string
+	unansweredThenRetried(env, &requestOneEnded, &sequence)
+	env.OnActivity(activities.NameDeleteJob, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.DeleteJobInput) (activities.LaunchObservation, error) {
+		started := env.Now()
+		if slices.Contains(in.Unaccounted, 1) && !started.Before(requestOneEnded.Add(bounds.CreateRequestLifetime)) {
+			sequence = append(sequence, "delete:found-1")
+			return activities.LaunchObservation{JobUID: "job-a", Pods: []activities.PodObservation{{PodUID: "pod-a", Phase: "running"}}, Requests: []int{1}}, nil
+		}
+		sequence = append(sequence, "delete")
+		return activities.LaunchObservation{}, nil
+	})
+	env.OnActivity(activities.NameCloseAttempt, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.CloseAttemptInput) (activities.CloseResult, error) {
+		sequence = append(sequence, "close:"+in.Cleanup)
+		if in.Cleanup == "unknown" {
+			return activities.CloseResult{Lifecycle: "reconciling"}, nil
+		}
+		return activities.CloseResult{Lifecycle: "succeeded"}, nil
+	})
+	env.ExecuteWorkflow(workflows.LocalCheckWorkflowName, input)
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+	require.Contains(t, sequence, "register:pod-a", "request 1's Pod is registered with Control")
+	i := slices.Index(sequence, "delete:found-1")
+	require.GreaterOrEqual(t, i, 0)
+	require.Equal(t, []string{"delete:found-1", "register:pod-a", "delete", "close:complete"}, sequence[i:], "recorded first, then stopped, then settled")
 }
 
 // A create request the launcher reports as not created (the API server

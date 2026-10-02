@@ -34,16 +34,19 @@ type Queues struct {
 // with workflow.SideEffect, so a redeployed worker with other values never
 // changes the replay of an existing run.
 type Bounds struct {
-	ControlActivityTimeout   time.Duration
-	ControlRetryInitial      time.Duration
-	ControlRetryMaxInterval  time.Duration
-	ControlRetryMaxAttempts  int32
-	LaunchWindow             time.Duration
-	ObserveHeartbeatTimeout  time.Duration
-	ObserveMaxAttempts       int32
-	CleanupTimeout           time.Duration
-	CleanupMaxAttempts       int32
-	UnresolvedSettleWindow   time.Duration
+	ControlActivityTimeout  time.Duration
+	ControlRetryInitial     time.Duration
+	ControlRetryMaxInterval time.Duration
+	ControlRetryMaxAttempts int32
+	LaunchWindow            time.Duration
+	ObserveHeartbeatTimeout time.Duration
+	ObserveMaxAttempts      int32
+	CleanupTimeout          time.Duration
+	CleanupMaxAttempts      int32
+	UnresolvedSettleWindow  time.Duration
+	// CreateRequestLifetime: see cleanupRound; zero (never a valid
+	// configuration) leaves unanswered requests to observation alone.
+	CreateRequestLifetime    time.Duration
 	ReconcileInitialInterval time.Duration
 	ReconcileMaxInterval     time.Duration
 	ReconcileMaxDuration     time.Duration
@@ -112,7 +115,9 @@ type Input struct {
 // Only the reconciliation bound ends that loop, and then the Workflow fails
 // visibly instead of completing with an unsettled operation. The close is a
 // durable Control command under the attempt's identity: it is retried until
-// Control answers, and a refusal fails the Workflow.
+// Control answers, and a refusal fails the Workflow — except that the close
+// of a prepared launch whose attempt Control lost to a point-in-time restore
+// is kept until the recovery restores the attempt (closeLaunchAttempt).
 func LocalCheck(q Queues, b Bounds) func(ctx workflow.Context, in Input) error {
 	return func(ctx workflow.Context, in Input) (err error) {
 		operationID := in.OperationID
@@ -149,7 +154,7 @@ func LocalCheck(q Queues, b Bounds) func(ctx workflow.Context, in Input) error {
 					cleanup = "complete"
 				}
 			}
-			if cerr := closeAttempt(disconnected, q, bounds, attempt, attempt.AttemptID+":close", outcome, cleanup, failureCode); cerr != nil {
+			if cerr := closeLaunchAttempt(disconnected, q, bounds, attempt, launched, attempt.AttemptID+":close", outcome, cleanup, failureCode); cerr != nil {
 				logger.Error("attempt close refused", "attemptId", attempt.AttemptID, "error", cerr)
 				if err == nil {
 					err = cerr
@@ -169,7 +174,7 @@ func LocalCheck(q Queues, b Bounds) func(ctx workflow.Context, in Input) error {
 				}
 				return
 			}
-			if cerr := closeAttempt(disconnected, q, bounds, attempt, attempt.AttemptID+":close:settled", outcome, "complete", failureCode); cerr != nil {
+			if cerr := closeLaunchAttempt(disconnected, q, bounds, attempt, launched, attempt.AttemptID+":close:settled", outcome, "complete", failureCode); cerr != nil {
 				logger.Error("cleanup settlement refused", "attemptId", attempt.AttemptID, "error", cerr)
 				if err == nil {
 					err = cerr
@@ -279,11 +284,26 @@ func LocalCheck(q Queues, b Bounds) func(ctx workflow.Context, in Input) error {
 // as it was built: issued counts the requests, unaccounted holds the
 // ordinals of those that were written to the backend without an answer
 // (unanswered, timed out, canceled in flight) and have not been observed as
-// the object they made. A request the backend answered, or that is known
-// not to have been created, needs no evidence.
+// the object they made, ended the Workflow time their create Activity ended
+// (the client side of the request was over then). A request the backend
+// answered, or that is known not to have been created, needs no evidence.
 type createLedger struct {
 	issued      int
 	unaccounted []int
+	ended       map[int]time.Time
+}
+
+// expiredBy returns the unaccounted requests whose lifetime ended by now: a
+// consistent read that starts after this point shows the object of each of
+// them if it ever committed.
+func (l *createLedger) expiredBy(now time.Time, lifetime time.Duration) []int {
+	var out []int
+	for _, r := range l.unaccounted {
+		if ended, ok := l.ended[r]; ok && !ended.Add(lifetime).After(now) {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // account strikes the requests whose objects the backend showed.
@@ -345,6 +365,10 @@ func createJob(ctx workflow.Context, q Queues, b Bounds, spec jobSpec, launch ac
 			// Written or possibly written without an answer: the backend may
 			// still hold or produce its object under the launch key.
 			ledger.unaccounted = append(ledger.unaccounted, request)
+			if ledger.ended == nil {
+				ledger.ended = map[int]time.Time{}
+			}
+			ledger.ended[request] = workflow.Now(ctx)
 			logger.Warn("create request unanswered; it stays in the run's ledger until the launch key shows its object", "launchKey", launch.LaunchKey, "request", request, "error", err)
 		}
 		if ctx.Err() != nil || int32(ledger.issued) >= b.ControlRetryMaxAttempts {
@@ -384,11 +408,22 @@ func cleanupOptions(ctx workflow.Context, q Queues, b Bounds) workflow.Context {
 // unconfirmed, as does nothing observed within the settle window or a
 // delete that is not confirmed: the caller records cleanup unknown and
 // keeps recovering under the same launch identity.
+//
+// A request also leaves the ledger once its lifetime is over
+// (CreateRequestLifetime after its create Activity ended): the API server
+// can commit a request only while it handles it, and a write that did not
+// commit before the next committed one never commits later, so a delete
+// call that starts after every unaccounted request's lifetime ended and
+// reports the launch key empty — a consistent read, with the unaccounted
+// requests' objects reported instead of deleted unseen — proves that none
+// of them committed and none can. Absence before that point stays what it
+// was: no evidence.
 func cleanupRound(ctx workflow.Context, q Queues, b Bounds, attempt activities.AttemptRef, launch activities.LaunchRef, ledger *createLedger) bool {
 	logger := workflow.GetLogger(ctx)
 	for observed := false; ; observed = true {
 		before := len(ledger.unaccounted)
-		if before > 0 && !observeLaunch(ctx, q, b, attempt, launch, ledger) {
+		expired := lifetimeEnded(ctx, b, ledger)
+		if before > 0 && len(expired) < before && !observeLaunch(ctx, q, b, attempt, launch, ledger) {
 			logger.Warn("launch not observed on the backend; a create request is still unaccounted for", "launchKey", launch.LaunchKey, "requests", ledger.unaccounted)
 			return false
 		}
@@ -402,6 +437,9 @@ func cleanupRound(ctx workflow.Context, q Queues, b Bounds, attempt activities.A
 			// it: recorded here, in history and with Control, before the
 			// next delete stops it.
 			recordObservation(ctx, q, b, attempt, launch, ledger, stopped)
+		} else if len(expired) > 0 {
+			ledger.account(expired)
+			logger.Info("create requests past their lifetime are not on the backend: they never committed", "launchKey", launch.LaunchKey, "requests", expired)
 		}
 		if ledger.settled() && stopped.Empty() {
 			return true
@@ -411,6 +449,24 @@ func cleanupRound(ctx workflow.Context, q Queues, b Bounds, attempt activities.A
 			return false
 		}
 	}
+}
+
+// lifetimeEnded returns the unaccounted requests whose lifetime is over at
+// the start of this cleanup step (the delete call that follows starts later
+// still). Runs recorded before this rule existed, and a zero lifetime, keep
+// observation as the only evidence.
+func lifetimeEnded(ctx workflow.Context, b Bounds, ledger *createLedger) []int {
+	if b.CreateRequestLifetime <= 0 || len(ledger.unaccounted) == 0 {
+		return nil
+	}
+	expired := ledger.expiredBy(workflow.Now(ctx), b.CreateRequestLifetime)
+	if len(expired) == 0 {
+		return nil
+	}
+	if workflow.GetVersion(ctx, "create-request-lifetime", workflow.DefaultVersion, 1) == workflow.DefaultVersion {
+		return nil
+	}
+	return expired
 }
 
 // observeLaunch acquires the evidence an unaccounted create request lacks:
@@ -525,6 +581,50 @@ func closeAttempt(ctx workflow.Context, q Queues, b Bounds, attempt activities.A
 			return err
 		}
 	}
+}
+
+// closeLaunchAttempt delivers the close of an attempt, keeping it for the
+// recovery when Control no longer knows the attempt of a launch this run
+// prepared. PrepareLaunch succeeded only after Control confirmed the launch
+// obligation in the independent inventory, so an attempt that Control now
+// answers NOT_FOUND for was lost by a restore of its database to a point
+// before it (point-in-time recovery). The recovery restores that attempt
+// from the inventory under the same identity, and this close is the
+// evidence it needs: the original owner observed the launch key empty after
+// its own delete, which a later observation of the deleted Job cannot
+// replace (absence is not cleanup evidence). The close is therefore
+// resubmitted on durable timers with capped backoff until Control knows the
+// attempt again or the reconciliation bound is reached, and only then is the
+// refusal returned. Without a launch no obligation restores the attempt and
+// nothing needs the evidence: the refusal ends the run as before.
+func closeLaunchAttempt(ctx workflow.Context, q Queues, b Bounds, attempt activities.AttemptRef, launched bool, commandID, outcome, cleanup, failureCode string) error {
+	err := closeAttempt(ctx, q, b, attempt, commandID, outcome, cleanup, failureCode)
+	if !launched || activities.RefusalCode(err) != "NOT_FOUND" {
+		return err
+	}
+	// Histories recorded before this path existed ended the run here.
+	if workflow.GetVersion(ctx, "close-awaits-restore", workflow.DefaultVersion, 1) == workflow.DefaultVersion {
+		return err
+	}
+	logger := workflow.GetLogger(ctx)
+	start := workflow.Now(ctx)
+	interval := b.ReconcileInitialInterval
+	for round := 1; activities.RefusalCode(err) == "NOT_FOUND"; round++ {
+		if workflow.Now(ctx).Sub(start)+interval > b.ReconcileMaxDuration {
+			logger.Error("attempt still unknown to Control at the reconciliation bound; the close is not delivered", "attemptId", attempt.AttemptID, "commandId", commandID)
+			return err
+		}
+		logger.Warn("attempt unknown to Control (its records were restored to before it); the close is kept for the recovery", "attemptId", attempt.AttemptID, "commandId", commandID, "round", round)
+		if serr := workflow.Sleep(ctx, interval); serr != nil {
+			return err
+		}
+		err = closeAttempt(ctx, q, b, attempt, commandID, outcome, cleanup, failureCode)
+		interval *= 2
+		if interval > b.ReconcileMaxInterval {
+			interval = b.ReconcileMaxInterval
+		}
+	}
+	return err
 }
 
 // verdictOutcome maps the trusted observer's verdict to the attempt outcome.
