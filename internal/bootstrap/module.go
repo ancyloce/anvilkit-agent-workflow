@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/interceptor"
@@ -99,7 +100,7 @@ func Bounds(e config.Execution) workflows.Bounds {
 		ControlActivityTimeout: e.ControlActivityTimeout, ControlRetryInitial: e.ControlRetryInitial, ControlRetryMaxInterval: e.ControlRetryMaxInterval,
 		ControlRetryMaxAttempts: e.ControlRetryMaxAttempts, LaunchWindow: e.LaunchWindow, ObserveHeartbeatTimeout: e.ObserveHeartbeatTimeout,
 		ObserveMaxAttempts: e.ObserveMaxAttempts, CleanupTimeout: e.Cleanup.Timeout, CleanupMaxAttempts: e.Cleanup.MaxAttempts,
-		UnresolvedSettleWindow: e.Cleanup.UnresolvedSettleWindow, ReconcileInitialInterval: e.Cleanup.ReconcileInitialInterval,
+		UnresolvedSettleWindow: e.Cleanup.UnresolvedSettleWindow, CreateRequestLifetime: e.Cleanup.CreateRequestLifetime, ReconcileInitialInterval: e.Cleanup.ReconcileInitialInterval,
 		ReconcileMaxInterval: e.Cleanup.ReconcileMaxInterval, ReconcileMaxDuration: e.Cleanup.ReconcileMaxDuration,
 	}
 }
@@ -187,9 +188,15 @@ func Module() fx.Option {
 			func() *slog.Logger {
 				return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 			},
-			func(cfg config.Config) *health { return newHealth(cfg.Health.Listen) },
-			func(cfg config.Config) (client.Client, error) {
-				return client.Dial(client.Options{HostPort: cfg.Temporal.Address, Namespace: cfg.Temporal.Namespace, Identity: cfg.Temporal.WorkerIdentity + "@" + cfg.Temporal.BuildID})
+			newTelemetry,
+			func(cfg config.Config, t *telemetry) *health {
+				h := newHealth(cfg.Health.Listen)
+				h.handle("/metrics", promhttp.HandlerFor(t.registry, promhttp.HandlerOpts{}))
+				return h
+			},
+			func(cfg config.Config, t *telemetry) (client.Client, error) {
+				return client.Dial(client.Options{HostPort: cfg.Temporal.Address, Namespace: cfg.Temporal.Namespace, Identity: cfg.Temporal.WorkerIdentity + "@" + cfg.Temporal.BuildID,
+					Interceptors: t.interceptors, MetricsHandler: t.metrics})
 			},
 			func(cfg config.Config) (*controladapter.Client, error) {
 				return controladapter.Dial(cfg.Control.Address, cfg.Kubernetes.LaunchBackend, cfg.Temporal.WorkerIdentity)

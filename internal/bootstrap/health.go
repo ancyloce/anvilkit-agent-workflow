@@ -23,6 +23,7 @@ var errStopping = errors.New("worker is stopping")
 // ready again. No business route, no Temporal or Control data.
 type health struct {
 	srv  *http.Server
+	mux  *http.ServeMux
 	done chan struct{}
 
 	mu        sync.Mutex
@@ -32,8 +33,8 @@ type health struct {
 }
 
 func newHealth(listen string) *health {
-	h := &health{done: make(chan struct{})}
 	mux := http.NewServeMux()
+	h := &health{done: make(chan struct{}), mux: mux}
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))
@@ -49,6 +50,10 @@ func newHealth(listen string) *health {
 	h.srv = &http.Server{Addr: listen, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	return h
 }
+
+// handle serves an additional read-only endpoint (the metrics) on the
+// health listener; it is registered before the listener starts.
+func (h *health) handle(path string, handler http.Handler) { h.mux.Handle(path, handler) }
 
 // becomeReady grants readiness unless a fatal error or the shutdown came
 // first, in which case it returns that reason and readiness stays withdrawn.
