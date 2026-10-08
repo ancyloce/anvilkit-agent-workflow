@@ -40,5 +40,5 @@ jobs:
       - uses: azure/setup-helm@v4
         with:
           version: "v3.19.0"
-      - run: helm lint deploy/chart --set temporal.address=temporal:7233 --set control.address=control:9101 --set launcher.backend=cluster --set launcher.imageRegistry=registry.example --set launcher.sidecarControlAddress=control:9101
-      - run: helm template anvilkit-agent-workflow deploy/chart --set temporal.address=temporal:7233 --set control.address=control:9101 --set launcher.backend=cluster --set launcher.imageRegistry=registry.example --set launcher.sidecarControlAddress=control:9101 > /dev/null
+      - run: helm lint deploy/chart --set temporal.address=temporal:7233 --set control.address=control:9101 --set launcher.backend=cluster --set launcher.imageRegistry=registry.example --set launcher.sidecarControlAddress=control:9101 --set identity.trustDomain=ci.example --set identity.certificate.issuerRef.name=ci-issuer --set temporal.tls.caSecret.name=temporal-ca
+      - run: helm template anvilkit-agent-workflow deploy/chart --set temporal.address=temporal:7233 --set control.address=control:9101 --set launcher.backend=cluster --set launcher.imageRegistry=registry.example --set launcher.sidecarControlAddress=control:9101 --set identity.trustDomain=ci.example --set identity.certificate.issuerRef.name=ci-issuer --set temporal.tls.caSecret.name=temporal-ca > /dev/null
