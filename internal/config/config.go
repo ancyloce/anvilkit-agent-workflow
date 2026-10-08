@@ -38,10 +38,58 @@ type Temporal struct {
 	ControlTaskQueue string `koanf:"control_task_queue"`
 	WorkerIdentity   string `koanf:"worker_identity"`
 	BuildID          string `koanf:"build_id"`
+	// TLS is the frontend transport (P0.1): development is the plaintext
+	// frontend of the development foundation (development.enabled only),
+	// tls verifies the frontend against ca_file and server_name, mtls also
+	// presents the workload certificate (cert_file/key_file, defaulting to
+	// the process identity).
+	TLS ClientTLS `koanf:"tls"`
 }
 
 type Control struct {
-	Address string `koanf:"address"`
+	Address  string         `koanf:"address"`
+	Identity ClientIdentity `koanf:"identity"`
+}
+
+// ClientIdentity is how one outbound gRPC or HTTP connection to an
+// AnvilKit workload authenticates (P0.1): mtls presents the workload
+// certificate (the files of MTLS, defaulting to the process identity) and
+// verifies the server by server_name; development is plaintext and is
+// admitted only with development.enabled.
+type ClientIdentity struct {
+	Mode string    `koanf:"mode"`
+	MTLS MTLSFiles `koanf:"mtls"`
+}
+
+// MTLSFiles names certificate, key, CA bundle and the expected server name
+// (a DNS SAN of the server certificate).
+type MTLSFiles struct {
+	CertFile   string `koanf:"cert_file"`
+	KeyFile    string `koanf:"key_file"`
+	CAFile     string `koanf:"ca_file"`
+	ServerName string `koanf:"server_name"`
+}
+
+// Identity is the process's own workload identity material (P0.1):
+// placements (ANVILKIT_WORKFLOW_IDENTITY_{CERT,KEY,CA}_FILE) every mtls
+// client block falls back to; watched and reloaded as a whole.
+type Identity struct {
+	CertFile       string        `koanf:"cert_file"`
+	KeyFile        string        `koanf:"key_file"`
+	CAFile         string        `koanf:"ca_file"`
+	ReloadInterval time.Duration `koanf:"reload_interval"`
+}
+
+// ClientTLS is the transport of an outbound connection whose server is not
+// an AnvilKit workload (Temporal, the OTLP collector): development is
+// plaintext (development.enabled only), tls verifies against ca_file and
+// server_name, mtls additionally presents cert_file and key_file.
+type ClientTLS struct {
+	Mode       string `koanf:"mode"`
+	CAFile     string `koanf:"ca_file"`
+	CertFile   string `koanf:"cert_file"`
+	KeyFile    string `koanf:"key_file"`
+	ServerName string `koanf:"server_name"`
 }
 
 // ModelProxy is the Model Proxy placement of the controlled model call
@@ -51,18 +99,10 @@ type Control struct {
 // workload certificate files. Without an address the Activities answer
 // DEPENDENCY_UNAVAILABLE and reach no network.
 type ModelProxy struct {
-	Address  string        `koanf:"address"`
-	Timeout  time.Duration `koanf:"timeout"`
-	Token    string        `koanf:"token"`
-	Identity struct {
-		Mode string `koanf:"mode"`
-		MTLS struct {
-			CertFile   string `koanf:"cert_file"`
-			KeyFile    string `koanf:"key_file"`
-			CAFile     string `koanf:"ca_file"`
-			ServerName string `koanf:"server_name"`
-		} `koanf:"mtls"`
-	} `koanf:"identity"`
+	Address  string         `koanf:"address"`
+	Timeout  time.Duration  `koanf:"timeout"`
+	Token    string         `koanf:"token"`
+	Identity ClientIdentity `koanf:"identity"`
 }
 
 type Kubernetes struct {
@@ -94,6 +134,10 @@ type Kubernetes struct {
 type Sidecar struct {
 	ControlAddress string `koanf:"control_address"`
 	IdentityMode   string `koanf:"identity_mode"`
+	// IdentitySecret is the Secret of the sidecar's workload certificate in
+	// the Job namespace (the Workflow chart's Certificate), mounted into the
+	// access sidecar container alone under identity_mode mtls.
+	IdentitySecret string `koanf:"identity_secret"`
 }
 
 // Cleanup bounds the protected cleanup and its reconciliation of an
@@ -182,9 +226,12 @@ const (
 type Telemetry struct {
 	OTLPEndpoint string  `koanf:"otlp_endpoint"`
 	SampleRatio  float64 `koanf:"sample_ratio"`
+	// OTLPTLS is validated only while an endpoint is placed.
+	OTLPTLS ClientTLS `koanf:"otlp_tls"`
 }
 
 type Config struct {
+	Identity    Identity    `koanf:"identity"`
 	Telemetry   Telemetry   `koanf:"telemetry"`
 	Temporal    Temporal    `koanf:"temporal"`
 	Control     Control     `koanf:"control"`
@@ -299,7 +346,12 @@ var defaults = map[string]any{
 	"temporal.worker_identity":                       "anvilkit-agent-workflow",
 	"temporal.build_id":                              "dev",
 	"model_proxy.timeout":                            "5m",
-	"model_proxy.identity.mode":                      "development",
+	"model_proxy.identity.mode":                      "mtls",
+	"control.identity.mode":                          "mtls",
+	"temporal.tls.mode":                              "tls",
+	"telemetry.otlp_tls.mode":                        "tls",
+	"identity.reload_interval":                       "5s",
+	"kubernetes.sidecar.identity_secret":             "anvilkit-job-access-sidecar-identity",
 	"kubernetes.namespace":                           "anvilkit-components",
 	"kubernetes.enabled_profiles":                    []string{"local-check-v1"},
 	"kubernetes.sidecar.identity_mode":               "disabled",
@@ -341,6 +393,9 @@ var envOverrides = map[string]string{
 	"ANVILKIT_WORKFLOW_TELEMETRY_OTLP_ENDPOINT": "telemetry.otlp_endpoint",
 	"ANVILKIT_WORKFLOW_PAGIX_DOUBLE_DIR":        "lifecycle.pagix_double_dir",
 	"ANVILKIT_WORKFLOW_RELEASE_ORIGIN_DIR":      "lifecycle.release.origin_dir",
+	"ANVILKIT_WORKFLOW_IDENTITY_CERT_FILE":      "identity.cert_file",
+	"ANVILKIT_WORKFLOW_IDENTITY_KEY_FILE":       "identity.key_file",
+	"ANVILKIT_WORKFLOW_IDENTITY_CA_FILE":        "identity.ca_file",
 }
 
 func Load() (Config, error) {
@@ -423,10 +478,19 @@ func (c Config) validate() error {
 	req("kubernetes.namespace", c.Kubernetes.Namespace)
 	req("kubernetes.launch_backend", c.Kubernetes.LaunchBackend)
 	switch c.Kubernetes.Sidecar.IdentityMode {
-	case "disabled", "development", "mtls":
+	case "disabled":
+	case "development":
+		if !c.Development.Enabled {
+			errs = append(errs, errors.New("kubernetes.sidecar.identity_mode development (a plaintext sidecar) requires development.enabled: true (DEVELOPMENT_ONLY)"))
+		}
+	case "mtls":
+		if c.Kubernetes.Sidecar.IdentitySecret == "" {
+			errs = append(errs, errors.New("kubernetes.sidecar.identity_secret is required under identity_mode mtls"))
+		}
 	default:
 		errs = append(errs, fmt.Errorf("kubernetes.sidecar.identity_mode %q is not one of disabled, development, mtls", c.Kubernetes.Sidecar.IdentityMode))
 	}
+	errs = append(errs, c.validateIdentity()...)
 	within := func(name string, v, lo, hi time.Duration) {
 		if v < lo || v > hi {
 			errs = append(errs, fmt.Errorf("%s %s outside [%s, %s]", name, v, lo, hi))
@@ -439,10 +503,13 @@ func (c Config) validate() error {
 		if mp.Address != "" && mp.Token == "" {
 			errs = append(errs, errors.New("ANVILKIT_WORKFLOW_MODEL_PROXY_TOKEN (model_proxy.token) is required with a model_proxy.address under identity mode development"))
 		}
+		if mp.Address != "" && !c.Development.Enabled {
+			errs = append(errs, errors.New("model_proxy.identity.mode development (plaintext bearer) requires development.enabled: true (DEVELOPMENT_ONLY)"))
+		}
 	case "mtls":
-		m := mp.Identity.MTLS
+		m := c.Resolved(mp.Identity)
 		if mp.Address != "" && (m.CertFile == "" || m.KeyFile == "" || m.CAFile == "") {
-			errs = append(errs, errors.New("model_proxy.identity.mtls.cert_file, key_file and ca_file are required with a model_proxy.address under identity mode mtls"))
+			errs = append(errs, errors.New("model_proxy.identity.mtls needs cert_file, key_file and ca_file, or the process identity (ANVILKIT_WORKFLOW_IDENTITY_{CERT,KEY,CA}_FILE)"))
 		}
 		if mp.Token != "" {
 			errs = append(errs, errors.New("model_proxy.token is not used under identity mode mtls"))
@@ -563,4 +630,81 @@ func (c Config) validate() error {
 		errs = append(errs, errors.New("development.hold_until_canceled_once requires development.enabled: true (DEVELOPMENT_ONLY fault injection)"))
 	}
 	return errors.Join(errs...)
+}
+
+// validateIdentity checks the Control client identity, the Temporal and
+// collector transports and the process identity (P0.1).
+func (c Config) validateIdentity() []error {
+	var errs []error
+	if c.Identity.ReloadInterval < 100*time.Millisecond || c.Identity.ReloadInterval > time.Hour {
+		errs = append(errs, fmt.Errorf("identity.reload_interval %s outside [100ms, 1h]", c.Identity.ReloadInterval))
+	}
+	switch c.Control.Identity.Mode {
+	case "mtls":
+		m := c.Resolved(c.Control.Identity)
+		if m.CertFile == "" || m.KeyFile == "" || m.CAFile == "" {
+			errs = append(errs, errors.New("control.identity.mtls needs cert_file, key_file and ca_file, or the process identity (ANVILKIT_WORKFLOW_IDENTITY_{CERT,KEY,CA}_FILE)"))
+		}
+	case "development":
+		if !c.Development.Enabled {
+			errs = append(errs, errors.New("control.identity.mode development (plaintext) requires development.enabled: true (DEVELOPMENT_ONLY)"))
+		}
+	default:
+		errs = append(errs, fmt.Errorf("control.identity.mode %q is not one of mtls, development", c.Control.Identity.Mode))
+	}
+	errs = append(errs, c.ResolvedTLS(c.Temporal.TLS).validate("temporal.tls", c.Development.Enabled)...)
+	if c.Telemetry.OTLPEndpoint != "" {
+		errs = append(errs, c.ResolvedTLS(c.Telemetry.OTLPTLS).validate("telemetry.otlp_tls", c.Development.Enabled)...)
+	}
+	return errs
+}
+
+// Resolved fills a client's mtls files from the process identity.
+func (c Config) Resolved(ci ClientIdentity) MTLSFiles {
+	m := ci.MTLS
+	if m.CertFile == "" {
+		m.CertFile = c.Identity.CertFile
+	}
+	if m.KeyFile == "" {
+		m.KeyFile = c.Identity.KeyFile
+	}
+	if m.CAFile == "" {
+		m.CAFile = c.Identity.CAFile
+	}
+	return m
+}
+
+// ResolvedTLS fills an mtls transport's certificate and key from the
+// process identity (its CA bundle is the target's, never the workload's).
+func (c Config) ResolvedTLS(t ClientTLS) ClientTLS {
+	if t.Mode == "mtls" {
+		if t.CertFile == "" {
+			t.CertFile = c.Identity.CertFile
+		}
+		if t.KeyFile == "" {
+			t.KeyFile = c.Identity.KeyFile
+		}
+	}
+	return t
+}
+
+func (t ClientTLS) validate(name string, development bool) []error {
+	var errs []error
+	switch t.Mode {
+	case "development":
+		if !development {
+			errs = append(errs, fmt.Errorf("%s.mode development (plaintext) requires development.enabled: true (DEVELOPMENT_ONLY)", name))
+		}
+	case "tls":
+		if t.CAFile == "" {
+			errs = append(errs, fmt.Errorf("%s.ca_file is required under %s.mode tls", name, name))
+		}
+	case "mtls":
+		if t.CAFile == "" || t.CertFile == "" || t.KeyFile == "" {
+			errs = append(errs, fmt.Errorf("%s.ca_file, cert_file and key_file are required under %s.mode mtls", name, name))
+		}
+	default:
+		errs = append(errs, fmt.Errorf("%s.mode %q is not one of development, tls, mtls", name, t.Mode))
+	}
+	return errs
 }
