@@ -23,7 +23,7 @@ const harnessProfile = "harness-wiring-dev-v1"
 func harnessOptions(enabled ...string) k8s.Options {
 	return k8s.Options{
 		Backend: "kind-anvilkit-dev", ImageRegistry: "localhost:5001", EnabledProfiles: enabled,
-		SidecarControlAddress: "172.22.0.1:9101", SidecarIdentityMode: "development", CandidateSeccompProfile: "anvilkit/candidate.json",
+		SidecarControlAddress: "172.22.0.1:9101", SidecarIdentityMode: "mtls", SidecarIdentitySecret: "anvilkit-job-access-sidecar-identity", CandidateSeccompProfile: "anvilkit/candidate.json",
 	}
 }
 
@@ -104,23 +104,52 @@ func TestHarnessTemplateIsFixed(t *testing.T) {
 	require.True(t, *side.SecurityContext.RunAsNonRoot)
 	require.Equal(t, []corev1.Capability{"ALL"}, side.SecurityContext.Capabilities.Drop)
 	require.Empty(t, side.SecurityContext.Capabilities.Add)
-	require.Len(t, side.VolumeMounts, 1)
+	require.Len(t, side.VolumeMounts, 2)
 	require.Equal(t, "/run/anvilkit", side.VolumeMounts[0].MountPath)
 	require.False(t, side.VolumeMounts[0].ReadOnly)
+	require.Equal(t, "identity", side.VolumeMounts[1].Name)
+	require.Equal(t, "/etc/anvilkit/identity", side.VolumeMounts[1].MountPath)
+	require.True(t, side.VolumeMounts[1].ReadOnly, "the sidecar's certificate is read-only in the sidecar alone")
 	sideEnv := map[string]corev1.EnvVar{}
 	for _, e := range side.Env {
 		sideEnv[e.Name] = e
 	}
 	require.Equal(t, "metadata.uid", sideEnv["ANVILKIT_SIDECAR_POD_UID"].ValueFrom.FieldRef.FieldPath, "the Pod UID comes from the kubelet, never from a value")
 	require.Equal(t, "172.22.0.1:9101", sideEnv["ANVILKIT_SIDECAR_CONTROL_ADDRESS"].Value)
-	require.Equal(t, "development", sideEnv["ANVILKIT_SIDECAR_IDENTITY_MODE"].Value)
+	require.Equal(t, "mtls", sideEnv["ANVILKIT_SIDECAR_IDENTITY_MODE"].Value)
 	require.Equal(t, "kind-anvilkit-dev", sideEnv["ANVILKIT_SIDECAR_BACKEND"].Value)
 	require.Equal(t, "cg-h1", sideEnv["ANVILKIT_SIDECAR_LAUNCH_KEY"].Value)
 	require.Equal(t, names["ANVILKIT_LAUNCH_ENVELOPE"], sideEnv["ANVILKIT_SIDECAR_LAUNCH_ENVELOPE"].Value)
-	require.Len(t, spec.Volumes, 3)
-	for _, v := range spec.Volumes {
-		require.NotNil(t, v.EmptyDir, "only emptyDir volumes: %s", v.Name)
+	require.Len(t, spec.Volumes, 4)
+	for _, v := range spec.Volumes[:3] {
+		require.NotNil(t, v.EmptyDir, "only emptyDir volumes beside the identity Secret: %s", v.Name)
 	}
+	identity := spec.Volumes[3]
+	require.Equal(t, "identity", identity.Name)
+	require.NotNil(t, identity.Secret)
+	require.Equal(t, "anvilkit-job-access-sidecar-identity", identity.Secret.SecretName)
+	require.Equal(t, int32(0o440), *identity.Secret.DefaultMode)
+	for _, m := range sup.VolumeMounts {
+		require.NotEqual(t, "identity", m.Name, "the supervisor never mounts the sidecar's certificate")
+	}
+}
+
+// Under the development sidecar identity (plaintext, DEVELOPMENT_ONLY) no
+// Secret enters the Pod; under mtls the Secret name is required.
+func TestHarnessSidecarIdentityVolume(t *testing.T) {
+	in := harnessInput(t)
+	dev := harnessOptions(harnessProfile)
+	dev.SidecarIdentityMode, dev.SidecarIdentitySecret = "development", ""
+	l := k8s.NewWithClient(fake.NewClientset(), namespace, dev)
+	job, err := l.Render(in, time.Now())
+	require.NoError(t, err)
+	require.Len(t, job.Spec.Template.Spec.Volumes, 3)
+	require.Len(t, job.Spec.Template.Spec.InitContainers[0].VolumeMounts, 1)
+	noSecret := harnessOptions(harnessProfile)
+	noSecret.SidecarIdentitySecret = ""
+	_, err = k8s.NewWithClient(fake.NewClientset(), namespace, noSecret).CreateJob(context.Background(), in)
+	require.Equal(t, "PROFILE_UNQUALIFIED", activities.RefusalCode(err))
+	require.Contains(t, err.Error(), "identity_secret")
 }
 
 // The gVisor profile pins the RuntimeClass and marks candidate code; it is

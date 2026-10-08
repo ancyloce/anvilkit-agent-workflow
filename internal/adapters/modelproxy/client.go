@@ -16,15 +16,13 @@ package modelproxy
 import (
 	"context"
 	"crypto/sha256"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"os"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -35,6 +33,7 @@ import (
 
 	"github.com/ancyloce/anvilkit-agent-contracts/go/modelproxyapi"
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/activities"
+	"github.com/ancyloce/anvilkit-agent-workflow/internal/transport/identity"
 )
 
 // contractSchemas are the component schemas of the contract the generated
@@ -93,8 +92,12 @@ type Options struct {
 	MaxFrameBytes int
 }
 
-// TLSFiles is the workload identity material.
-type TLSFiles struct{ CertFile, KeyFile, CAFile, ServerName string }
+// TLSFiles is the workload identity material; a shared Reloader (the
+// process identity) takes precedence over the file names.
+type TLSFiles struct {
+	CertFile, KeyFile, CAFile, ServerName string
+	Reloader                              *identity.Reloader
+}
 
 // Client implements activities.ModelCaller.
 type Client struct {
@@ -168,22 +171,29 @@ func New(o Options) (*Client, error) {
 		return nil, errors.New("model proxy: exactly one of a bearer token (development) or the mtls identity is required")
 	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.DisableCompression = true
 	if o.TLS != nil {
-		cert, err := tls.LoadX509KeyPair(o.TLS.CertFile, o.TLS.KeyFile)
-		if err != nil {
-			return nil, fmt.Errorf("model proxy: client certificate: %w", err)
+		// The identity files are watched and reloaded as a whole; every new
+		// connection handshakes with the current material and verifies the
+		// Proxy by server name (a DNS SAN of its certificate).
+		if o.TLS.Reloader == nil {
+			r, err := identity.New(identity.Files{CertFile: o.TLS.CertFile, KeyFile: o.TLS.KeyFile, CAFile: o.TLS.CAFile}, 0, nil)
+			if err != nil {
+				return nil, fmt.Errorf("model proxy: %w", err)
+			}
+			r.Start()
+			o.TLS.Reloader = r
 		}
-		ca, err := os.ReadFile(o.TLS.CAFile)
-		if err != nil {
-			return nil, fmt.Errorf("model proxy: ca: %w", err)
+		serverName := o.TLS.ServerName
+		if serverName == "" {
+			u, err := url.Parse(o.BaseURL)
+			if err != nil || u.Hostname() == "" {
+				return nil, errors.New("model proxy: base url has no host for hostname verification")
+			}
+			serverName = u.Hostname()
 		}
-		pool := x509.NewCertPool()
-		if !pool.AppendCertsFromPEM(ca) {
-			return nil, errors.New("model proxy: ca file holds no certificate")
-		}
-		transport.TLSClientConfig = &tls.Config{Certificates: []tls.Certificate{cert}, RootCAs: pool, ServerName: o.TLS.ServerName, MinVersion: tls.VersionTLS13}
+		transport = identity.HTTPTransport(o.TLS.Reloader, serverName)
 	}
+	transport.DisableCompression = true
 	// No redirect is followed: a call goes to the configured Proxy and nowhere else.
 	httpClient := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	editors := []modelproxyapi.ClientOption{modelproxyapi.WithHTTPClient(httpClient)}

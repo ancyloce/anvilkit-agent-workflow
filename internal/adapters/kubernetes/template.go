@@ -22,11 +22,16 @@ import (
 // harness template tells the access sidecar. Nothing in them changes an
 // image digest, an entrypoint, a mount or a privilege of a template.
 type Options struct {
-	Backend                 string
-	ImageRegistry           string
-	EnabledProfiles         []string
-	SidecarControlAddress   string
-	SidecarIdentityMode     string
+	Backend               string
+	ImageRegistry         string
+	EnabledProfiles       []string
+	SidecarControlAddress string
+	SidecarIdentityMode   string
+	// SidecarIdentitySecret is the Secret of the access sidecar's workload
+	// certificate (tls.crt, tls.key, ca.crt) in the Job namespace, mounted
+	// read-only into the sidecar container alone under identity mode mtls;
+	// the candidate side of the Pod never sees it.
+	SidecarIdentitySecret   string
 	CandidateSeccompProfile string
 }
 
@@ -44,6 +49,8 @@ const (
 	verdictMount         = "/anvilkit/verdict"
 	socketsMount         = "/run/anvilkit"
 	socketsDir           = "/run/anvilkit/sockets"
+	identityMount        = "/etc/anvilkit/identity"
+	identityMode         = int32(0o440)
 	envLaunchID          = "ANVILKIT_LAUNCH_ID"
 	envAttemptID         = "ANVILKIT_ATTEMPT_ID"
 	envLaunchEnvelope    = "ANVILKIT_LAUNCH_ENVELOPE"
@@ -154,6 +161,9 @@ func (l *Launcher) harnessPodSpec(in activities.CreateJobInput, profile jobschem
 	if l.options.SidecarControlAddress == "" || l.options.Backend == "" {
 		return corev1.PodSpec{}, fmt.Errorf("harness profile %s needs the sidecar's Control address and the launch backend identity", profile.ProfileID)
 	}
+	if l.options.SidecarIdentityMode == "mtls" && l.options.SidecarIdentitySecret == "" {
+		return corev1.PodSpec{}, fmt.Errorf("harness profile %s needs the sidecar's identity Secret under identity mode mtls (kubernetes.sidecar.identity_secret)", profile.ProfileID)
+	}
 	if l.options.CandidateSeccompProfile == "" {
 		return corev1.PodSpec{}, fmt.Errorf("harness profile %s needs the candidate syscall profile (kubernetes.candidate_seccomp_profile)", profile.ProfileID)
 	}
@@ -217,6 +227,15 @@ func (l *Launcher) harnessPodSpec(in activities.CreateJobInput, profile jobschem
 			{Name: "verdict", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{SizeLimit: ptr.To(resource.MustParse(verdictSizeLimit))}}},
 			{Name: "sockets", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{Medium: corev1.StorageMediumMemory, SizeLimit: ptr.To(resource.MustParse(socketsSizeLimit))}}},
 		},
+	}
+	if l.options.SidecarIdentityMode == "mtls" {
+		// The sidecar's workload certificate (P0.1): a Secret volume of the
+		// Job namespace mounted read-only into the sidecar container only; the
+		// supervisor and the candidate it spawns have no mount of it. The
+		// admission policy admits exactly this volume and mount and nothing
+		// else that is not an emptyDir.
+		spec.InitContainers[0].VolumeMounts = append(spec.InitContainers[0].VolumeMounts, corev1.VolumeMount{Name: "identity", MountPath: identityMount, ReadOnly: true})
+		spec.Volumes = append(spec.Volumes, corev1.Volume{Name: "identity", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: l.options.SidecarIdentitySecret, DefaultMode: ptr.To(identityMode)}}})
 	}
 	if profile.RuntimeClass != "" {
 		spec.RuntimeClassName = ptr.To(profile.RuntimeClass)

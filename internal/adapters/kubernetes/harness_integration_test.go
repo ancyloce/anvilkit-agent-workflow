@@ -16,7 +16,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -29,6 +28,7 @@ import (
 	"github.com/ancyloce/anvilkit-agent-contracts/go/jobschema"
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/activities"
 	k8s "github.com/ancyloce/anvilkit-agent-workflow/internal/adapters/kubernetes"
+	"github.com/ancyloce/anvilkit-agent-workflow/internal/transport/identity"
 )
 
 const (
@@ -49,6 +49,11 @@ type clusterEnv struct {
 	kubeconfig, gateway, registry string
 	controlAddr                   string // host side, where this test dials
 	sidecarControlAddr            string // the same Control as the Pod reaches it
+	// identityDir holds the Workflow's development certificate (tls.crt,
+	// tls.key, ca.crt; deploy/dev/certs.sh) this test dials Control with
+	// (P0.1); the Job's sidecar uses the Secret the Workflow chart's
+	// Certificate issued into the Job namespace.
+	identityDir string
 }
 
 func requireCluster(t *testing.T) clusterEnv {
@@ -56,8 +61,9 @@ func requireCluster(t *testing.T) clusterEnv {
 	c := clusterEnv{
 		kubeconfig: os.Getenv("KUBECONFIG"), gateway: os.Getenv("ANVILKIT_DEV_KIND_GATEWAY"), registry: os.Getenv("ANVILKIT_DEV_REGISTRY"),
 		controlAddr: os.Getenv("ANVILKIT_INTEGRATION_CONTROL_ADDRESS"), sidecarControlAddr: os.Getenv("ANVILKIT_INTEGRATION_SIDECAR_CONTROL_ADDRESS"),
+		identityDir: os.Getenv("ANVILKIT_INTEGRATION_IDENTITY_DIR"),
 	}
-	for name, v := range map[string]string{"KUBECONFIG": c.kubeconfig, "ANVILKIT_DEV_KIND_GATEWAY": c.gateway, "ANVILKIT_DEV_REGISTRY": c.registry} {
+	for name, v := range map[string]string{"KUBECONFIG": c.kubeconfig, "ANVILKIT_DEV_KIND_GATEWAY": c.gateway, "ANVILKIT_DEV_REGISTRY": c.registry, "ANVILKIT_INTEGRATION_IDENTITY_DIR": c.identityDir} {
 		if v == "" {
 			t.Skipf("%s not set; source .local/dev/env.sh after deploy/dev/up.sh", name)
 		}
@@ -121,7 +127,11 @@ func TestHarnessOnTheDevelopmentCluster(t *testing.T) {
 	c := requireCluster(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 	defer cancel()
-	conn, err := grpc.NewClient(c.controlAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	reloader, err := identity.New(identity.Files{CertFile: filepath.Join(c.identityDir, "tls.crt"), KeyFile: filepath.Join(c.identityDir, "tls.key"), CAFile: filepath.Join(c.identityDir, "ca.crt")}, 0, nil)
+	require.NoError(t, err)
+	creds, err := identity.NewClientCredentials(reloader, "anvilkit-agent-control")
+	require.NoError(t, err)
+	conn, err := grpc.NewClient(c.controlAddr, grpc.WithTransportCredentials(creds))
 	require.NoError(t, err)
 	defer conn.Close()
 	ops, execSvc := controlv1.NewOperationServiceClient(conn), controlv1.NewExecutionServiceClient(conn)
@@ -131,7 +141,7 @@ func TestHarnessOnTheDevelopmentCluster(t *testing.T) {
 	require.NoError(t, err)
 	launcher, err := k8s.New(c.kubeconfig, clusterNamespace, k8s.Options{
 		Backend: clusterBackend, ImageRegistry: c.registry, EnabledProfiles: []string{wiringProfile, validatorProfile},
-		SidecarControlAddress: c.sidecarControlAddr, SidecarIdentityMode: "development", CandidateSeccompProfile: "anvilkit/candidate.json",
+		SidecarControlAddress: c.sidecarControlAddr, SidecarIdentityMode: "mtls", SidecarIdentitySecret: "anvilkit-job-access-sidecar-identity", CandidateSeccompProfile: "anvilkit/candidate.json",
 	})
 	require.NoError(t, err)
 	profile, err := jobschema.ProfileByID(wiringProfile)
