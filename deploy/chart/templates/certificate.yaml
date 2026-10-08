@@ -1,0 +1,64 @@
+{{- include "anvilkit-agent-workflow.require" . -}}
+{{- if and (eq .Values.identity.mode "mtls") .Values.identity.certificate.create }}
+# The worker's workload certificate (P0.1): CN and DNS SANs name the
+# worker; the URI SAN is the identity Control authorizes
+# (spiffe://<trustDomain>/ns/<namespace>/sa/<service-account>). cert-manager
+# rotates it; the process reloads the files as a whole.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "anvilkit-agent-workflow.fullname" . }}-identity
+  labels:
+    {{- include "anvilkit-agent-workflow.labels" . | nindent 4 }}
+spec:
+  commonName: {{ include "anvilkit-agent-workflow.name" . }}
+  secretName: {{ include "anvilkit-agent-workflow.identitySecret" . }}
+  duration: {{ .Values.identity.certificate.duration }}
+  renewBefore: {{ .Values.identity.certificate.renewBefore }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  usages: [digital signature, key encipherment, server auth, client auth]
+  dnsNames:
+    - {{ include "anvilkit-agent-workflow.fullname" . }}
+    - {{ include "anvilkit-agent-workflow.fullname" . }}.{{ .Release.Namespace }}.svc
+  uris:
+    - spiffe://{{ default "anvilkit.local" .Values.identity.trustDomain }}/ns/{{ .Release.Namespace }}/sa/{{ include "anvilkit-agent-workflow.serviceAccountName" . }}
+  issuerRef:
+    {{- toYaml .Values.identity.certificate.issuerRef | nindent 4 }}
+{{- if eq .Values.sidecar.identityMode "mtls" }}
+---
+# The access sidecar's workload certificate (P0.1), rendered by this chart
+# because it owns everything the launcher puts into the Job namespace. The
+# launcher mounts its Secret read-only into the access sidecar container of
+# every harness Job Pod and nowhere else; the admission policy admits exactly
+# that mount. The identity is the URI SAN
+# spiffe://<trustDomain>/ns/<launcher.namespace>/sa/anvilkit-job-access-sidecar:
+# no ServiceAccount of that name exists (Job Pods run under the default
+# ServiceAccount with no token), the certificate alone names the sidecar.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ .Values.sidecar.identitySecret }}
+  namespace: {{ .Values.launcher.namespace }}
+  labels:
+    {{- include "anvilkit-agent-workflow.labels" . | nindent 4 }}
+spec:
+  commonName: anvilkit-job-access-sidecar
+  secretName: {{ .Values.sidecar.identitySecret }}
+  duration: {{ .Values.identity.certificate.duration }}
+  renewBefore: {{ .Values.identity.certificate.renewBefore }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  usages: [digital signature, key encipherment, client auth]
+  dnsNames:
+    - anvilkit-job-access-sidecar
+  uris:
+    - spiffe://{{ default "anvilkit.local" .Values.identity.trustDomain }}/ns/{{ .Values.launcher.namespace }}/sa/anvilkit-job-access-sidecar
+  issuerRef:
+    {{- toYaml .Values.identity.certificate.issuerRef | nindent 4 }}
+{{- end }}
+{{- end }}

@@ -52,11 +52,69 @@ launcher:
   sidecarControlAddress: ""
 
 # The Temporal frontend (ANVILKIT_WORKFLOW_TEMPORAL_ADDRESS) and the Control
-# gRPC endpoint (ANVILKIT_WORKFLOW_CONTROL_ADDRESS). Required.
+# gRPC endpoint (ANVILKIT_WORKFLOW_CONTROL_ADDRESS). Required. temporal.tls is
+# the frontend transport: tls verifies the frontend against the CA bundle of
+# caSecret (key ca.crt) and serverName; mtls additionally presents the
+# workload certificate of identity; development is the plaintext frontend of
+# the development foundation (development.enabled only). control.serverName
+# is the DNS SAN Control's certificate must carry (default its service name).
 temporal:
   address: ""
+  tls:
+    mode: tls
+    serverName: ""
+    caSecret:
+      name: ""
+      key: ca.crt
 control:
   address: ""
+  serverName: anvilkit-agent-control
+
+# The worker's workload identity (P0.1): the certificate every mtls client
+# of this worker presents (Control, the Model Proxy, Temporal under mtls)
+# and verifies its peers against. The certificate is a cert-manager
+# Certificate this chart renders (certificate.create) from issuerRef, or an
+# existing Secret (secretName, keys tls.crt, tls.key, ca.crt) when create
+# is false; the files are mounted at /etc/anvilkit/identity and reloaded
+# as a whole. mode development renders plaintext clients and only with
+# development.enabled: true.
+identity:
+  mode: mtls
+  trustDomain: ""
+  secretName: ""
+  certificate:
+    create: true
+    issuerRef:
+      name: ""
+      kind: ClusterIssuer
+      group: cert-manager.io
+    duration: 2160h
+    renewBefore: 720h
+
+# The Model Proxy client's server name under mtls (the DNS SAN the Proxy's
+# certificate carries); the placement itself is config.model_proxy /
+# ANVILKIT_WORKFLOW_MODEL_PROXY_ADDRESS of the environment.
+modelProxy:
+  serverName: anvilkit-agent-model-proxy
+
+# The access sidecar of every harness Job Pod (kubernetes.sidecar): under
+# identity mode mtls the launcher mounts the Secret of the sidecar's own
+# workload certificate (read-only, into the sidecar container alone) and
+# this chart renders that certificate into launcher.namespace from the same
+# issuer; development is the plaintext sidecar of the development foundation
+# (development.enabled only). The sidecar's identity is the certificate's URI
+# SAN (spiffe://<trustDomain>/ns/<launcher.namespace>/sa/anvilkit-job-access-sidecar);
+# no ServiceAccount of that name exists and Job Pods carry no token.
+sidecar:
+  identityMode: mtls
+  identitySecret: anvilkit-job-access-sidecar-identity
+
+# The top-level DEVELOPMENT_ONLY guard: every development transport
+# (identity.mode, temporal.tls.mode, telemetry.otlpTls.mode,
+# sidecar.identityMode) renders only while this is true; it downgrades
+# nothing by itself.
+development:
+  enabled: false
 
 # The Worker Build ID (ANVILKIT_WORKFLOW_BUILD_ID): the image digest when
 # one is pinned, else the tag; set buildId to name it explicitly.
@@ -84,8 +142,6 @@ config:
   kubernetes:
     namespace: anvilkit-components
     enabled_profiles: [local-check-v1]
-    sidecar:
-      identity_mode: development
     candidate_seccomp_profile: anvilkit/candidate.json
   execution:
     control_activity_timeout: 30s
@@ -103,8 +159,6 @@ config:
       reconcile_initial_interval: 5s
       reconcile_max_interval: 1m
       reconcile_max_duration: 24h
-  development:
-    enabled: false
   health:
     listen: 127.0.0.1:9102
   # shutdown_timeout is rendered from shutdown.drainSeconds below.
@@ -169,3 +223,12 @@ podLabels: {}
 # Scraping is the environment's pod annotations.
 telemetry:
   otlpEndpoint: ""
+  # The collector transport while otlpEndpoint is set: tls verifies the
+  # collector against caSecret (key ca.crt) and serverName, mtls also presents
+  # the workload certificate, development is plaintext (development.enabled).
+  otlpTls:
+    mode: tls
+    serverName: ""
+    caSecret:
+      name: ""
+      key: ca.crt

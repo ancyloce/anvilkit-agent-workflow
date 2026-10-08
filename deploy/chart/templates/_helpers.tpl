@@ -76,4 +76,100 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- if not .Values.launcher.sidecarControlAddress }}
 {{- fail "launcher.sidecarControlAddress is required: Control as a Job Pod's access sidecar reaches it (ANVILKIT_WORKFLOW_SIDECAR_CONTROL_ADDRESS)" }}
 {{- end }}
+{{- if not (has .Values.identity.mode (list "mtls" "development")) }}
+{{- fail "identity.mode must be mtls or development" }}
+{{- end }}
+{{- if and (eq .Values.identity.mode "development") (not .Values.development.enabled) }}
+{{- fail "identity.mode development is DEVELOPMENT_ONLY: it renders only with development.enabled: true (plaintext clients present no workload identity)" }}
+{{- end }}
+{{- if and (eq .Values.identity.mode "mtls") (not .Values.identity.trustDomain) (not .Values.development.enabled) }}
+{{- fail "identity.trustDomain is required outside development (the development default anvilkit.local applies only with development.enabled: true)" }}
+{{- end }}
+{{- if and (eq .Values.identity.mode "mtls") .Values.identity.certificate.create (not .Values.identity.certificate.issuerRef.name) }}
+{{- fail "identity.certificate.issuerRef.name is required: the cert-manager issuer of the workload certificate (or set identity.certificate.create false and identity.secretName)" }}
+{{- end }}
+{{- if and (eq .Values.identity.mode "mtls") (not .Values.identity.certificate.create) (not .Values.identity.secretName) }}
+{{- fail "identity.secretName is required while identity.certificate.create is false" }}
+{{- end }}
+{{- if not (has .Values.temporal.tls.mode (list "tls" "mtls" "development")) }}
+{{- fail "temporal.tls.mode must be tls, mtls or development" }}
+{{- end }}
+{{- if and (eq .Values.temporal.tls.mode "development") (not .Values.development.enabled) }}
+{{- fail "temporal.tls.mode development is DEVELOPMENT_ONLY: it renders only with development.enabled: true" }}
+{{- end }}
+{{- if and (ne .Values.temporal.tls.mode "development") (not .Values.temporal.tls.caSecret.name) }}
+{{- fail "temporal.tls.caSecret.name is required under temporal.tls.mode tls or mtls: the Secret holding the frontend's CA bundle (key ca.crt)" }}
+{{- end }}
+{{- if and (eq .Values.temporal.tls.mode "mtls") (ne .Values.identity.mode "mtls") }}
+{{- fail "temporal.tls.mode mtls presents the workload certificate and needs identity.mode mtls" }}
+{{- end }}
+{{- if not (has .Values.sidecar.identityMode (list "mtls" "development")) }}
+{{- fail "sidecar.identityMode must be mtls or development" }}
+{{- end }}
+{{- if and (eq .Values.sidecar.identityMode "development") (not .Values.development.enabled) }}
+{{- fail "sidecar.identityMode development is DEVELOPMENT_ONLY: it renders only with development.enabled: true (a plaintext sidecar)" }}
+{{- end }}
+{{- if and (eq .Values.sidecar.identityMode "mtls") (not .Values.sidecar.identitySecret) }}
+{{- fail "sidecar.identitySecret is required under sidecar.identityMode mtls" }}
+{{- end }}
+{{- if and (eq .Values.sidecar.identityMode "mtls") (ne .Values.identity.mode "mtls") }}
+{{- fail "sidecar.identityMode mtls needs identity.mode mtls: the sidecar's certificate comes from the same issuer" }}
+{{- end }}
+{{- if .Values.telemetry.otlpEndpoint }}
+{{- if not (has .Values.telemetry.otlpTls.mode (list "tls" "mtls" "development")) }}
+{{- fail "telemetry.otlpTls.mode must be tls, mtls or development" }}
+{{- end }}
+{{- if and (eq .Values.telemetry.otlpTls.mode "development") (not .Values.development.enabled) }}
+{{- fail "telemetry.otlpTls.mode development is DEVELOPMENT_ONLY: it renders only with development.enabled: true" }}
+{{- end }}
+{{- if and (ne .Values.telemetry.otlpTls.mode "development") (not .Values.telemetry.otlpTls.caSecret.name) }}
+{{- fail "telemetry.otlpTls.caSecret.name is required under telemetry.otlpTls.mode tls or mtls" }}
+{{- end }}
+{{- end }}
+{{- end -}}
+
+{{/* The identity Secret: the rendered Certificate's or the environment's. */}}
+{{- define "anvilkit-agent-workflow.identitySecret" -}}
+{{- if .Values.identity.certificate.create -}}
+{{- printf "%s-identity" (include "anvilkit-agent-workflow.fullname" .) -}}
+{{- else -}}
+{{- .Values.identity.secretName -}}
+{{- end -}}
+{{- end -}}
+
+{{/* The rendered configuration: the reviewed sections plus the chart-owned
+placement, identity, guard and transport settings, so every value above is
+wired to the loader's keys. */}}
+{{- define "anvilkit-agent-workflow.config" -}}
+{{- $cfg := deepCopy .Values.config -}}
+{{- $_ := set $cfg.kubernetes "namespace" .Values.launcher.namespace -}}
+{{- $drain := int .Values.shutdown.drainSeconds -}}
+{{- if or (lt $drain 1) (gt $drain 300) }}
+{{- fail (printf "shutdown.drainSeconds %d is outside [1, 300], the worker's supported shutdown_timeout range" $drain) }}
+{{- end }}
+{{- $_ = set $cfg "shutdown_timeout" (printf "%ds" $drain) -}}
+{{- $_ = set $cfg "development" (dict "enabled" .Values.development.enabled) -}}
+{{- $_ = set $cfg.kubernetes "sidecar" (dict "identity_mode" .Values.sidecar.identityMode "identity_secret" .Values.sidecar.identitySecret) -}}
+{{- if eq .Values.identity.mode "mtls" }}
+{{- $_ = set $cfg "identity" (dict "cert_file" "/etc/anvilkit/identity/tls.crt" "key_file" "/etc/anvilkit/identity/tls.key" "ca_file" "/etc/anvilkit/identity/ca.crt") }}
+{{- end -}}
+{{- $_ = set $cfg.control "identity" (dict "mode" .Values.identity.mode "mtls" (dict "server_name" .Values.control.serverName)) -}}
+{{- $mp := default (dict) $cfg.model_proxy -}}
+{{- $_ = set $mp "identity" (dict "mode" .Values.identity.mode "mtls" (dict "server_name" .Values.modelProxy.serverName)) -}}
+{{- $_ = set $cfg "model_proxy" $mp -}}
+{{- $tt := dict "mode" .Values.temporal.tls.mode -}}
+{{- if ne .Values.temporal.tls.mode "development" }}
+{{- $_ = set $tt "ca_file" "/etc/anvilkit/temporal-ca/ca.crt" }}
+{{- if .Values.temporal.tls.serverName }}{{- $_ = set $tt "server_name" .Values.temporal.tls.serverName }}{{- end }}
+{{- end -}}
+{{- $_ = set $cfg.temporal "tls" $tt -}}
+{{- if .Values.telemetry.otlpEndpoint }}
+{{- $ot := dict "mode" .Values.telemetry.otlpTls.mode -}}
+{{- if ne .Values.telemetry.otlpTls.mode "development" }}
+{{- $_ = set $ot "ca_file" "/etc/anvilkit/otlp-ca/ca.crt" }}
+{{- if .Values.telemetry.otlpTls.serverName }}{{- $_ = set $ot "server_name" .Values.telemetry.otlpTls.serverName }}{{- end }}
+{{- end -}}
+{{- $_ = set $cfg "telemetry" (merge (dict "otlp_tls" $ot) (default (dict) $cfg.telemetry)) -}}
+{{- end -}}
+{{- toYaml $cfg -}}
 {{- end -}}

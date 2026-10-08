@@ -1,11 +1,6 @@
 {{- include "anvilkit-agent-workflow.require" . -}}
-{{- $cfg := deepCopy .Values.config -}}
-{{- $_ := set $cfg.kubernetes "namespace" .Values.launcher.namespace -}}
+{{- $cfg := include "anvilkit-agent-workflow.config" . -}}
 {{- $drain := int .Values.shutdown.drainSeconds -}}
-{{- if or (lt $drain 1) (gt $drain 300) }}
-{{- fail (printf "shutdown.drainSeconds %d is outside [1, 300], the worker's supported shutdown_timeout range" $drain) }}
-{{- end }}
-{{- $_ = set $cfg "shutdown_timeout" (printf "%ds" $drain) -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -28,7 +23,7 @@ spec:
         {{- end }}
       annotations:
         # A changed configuration file rolls the Pods.
-        checksum/config: {{ toYaml $cfg | sha256sum }}
+        checksum/config: {{ $cfg | sha256sum }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -107,10 +102,47 @@ spec:
             - name: config
               mountPath: /etc/anvilkit/anvilkit-agent-workflow
               readOnly: true
+            {{- if eq .Values.identity.mode "mtls" }}
+            - name: identity
+              mountPath: /etc/anvilkit/identity
+              readOnly: true
+            {{- end }}
+            {{- if ne .Values.temporal.tls.mode "development" }}
+            - name: temporal-ca
+              mountPath: /etc/anvilkit/temporal-ca
+              readOnly: true
+            {{- end }}
+            {{- if and .Values.telemetry.otlpEndpoint (ne .Values.telemetry.otlpTls.mode "development") }}
+            - name: otlp-ca
+              mountPath: /etc/anvilkit/otlp-ca
+              readOnly: true
+            {{- end }}
       volumes:
         - name: config
           configMap:
             name: {{ include "anvilkit-agent-workflow.fullname" . }}
+        {{- if eq .Values.identity.mode "mtls" }}
+        - name: identity
+          secret:
+            secretName: {{ include "anvilkit-agent-workflow.identitySecret" . }}
+            defaultMode: 0440
+        {{- end }}
+        {{- if ne .Values.temporal.tls.mode "development" }}
+        - name: temporal-ca
+          secret:
+            secretName: {{ .Values.temporal.tls.caSecret.name }}
+            items:
+              - key: {{ .Values.temporal.tls.caSecret.key }}
+                path: ca.crt
+        {{- end }}
+        {{- if and .Values.telemetry.otlpEndpoint (ne .Values.telemetry.otlpTls.mode "development") }}
+        - name: otlp-ca
+          secret:
+            secretName: {{ .Values.telemetry.otlpTls.caSecret.name }}
+            items:
+              - key: {{ .Values.telemetry.otlpTls.caSecret.key }}
+                path: ca.crt
+        {{- end }}
       {{- with .Values.topologySpreadConstraints }}
       topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
