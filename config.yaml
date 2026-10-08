@@ -4,9 +4,16 @@
 # ANVILKIT_WORKFLOW_MODEL_PROXY_ADDRESS, ANVILKIT_WORKFLOW_MODEL_PROXY_TOKEN (secret),
 # ANVILKIT_WORKFLOW_KUBECONFIG, ANVILKIT_WORKFLOW_LAUNCH_BACKEND,
 # ANVILKIT_WORKFLOW_BUILD_ID, ANVILKIT_WORKFLOW_IMAGE_REGISTRY,
-# ANVILKIT_WORKFLOW_SIDECAR_CONTROL_ADDRESS, ANVILKIT_WORKFLOW_HEALTH_LISTEN).
+# ANVILKIT_WORKFLOW_SIDECAR_CONTROL_ADDRESS, ANVILKIT_WORKFLOW_HEALTH_LISTEN,
+# ANVILKIT_WORKFLOW_IDENTITY_{CERT,KEY,CA}_FILE).
 # Unknown keys fail startup. The execution section is frozen into each
 # Workflow run's history at its start.
+#
+# identity: the process's workload certificate, key and CA bundle (P0.1;
+# placements from the environment, .local/dev/certs on the foundation),
+# watched and reloaded as a whole; every mtls client below uses them.
+identity:
+  reload_interval: 5s
 temporal:
   address: 127.0.0.1:27233
   namespace: anvilkit
@@ -14,18 +21,34 @@ temporal:
   control_task_queue: anvilkit-workflow-control
   worker_identity: anvilkit-agent-workflow
   build_id: dev
+  # tls: the frontend transport; development is the foundation's plaintext
+  # Temporal (DEVELOPMENT_ONLY, needs development.enabled), tls verifies the
+  # frontend against ca_file/server_name, mtls also presents the workload
+  # certificate (server-side TLS is P0.6).
+  tls:
+    mode: development
 control:
   address: 127.0.0.1:9101
+  # identity: mtls presents the workload certificate and verifies Control
+  # by server_name (a DNS SAN of its certificate); development is plaintext
+  # and needs development.enabled.
+  identity:
+    mode: mtls
+    mtls:
+      server_name: anvilkit-agent-control
 # model_proxy: the Model Proxy placement of the controlled model call
 # Activities (P11; ANVILKIT_WORKFLOW_MODEL_PROXY_ADDRESS). Without an address
 # CallModel/GetModelCall/CancelModelCall answer DEPENDENCY_UNAVAILABLE. The
-# identity the worker presents: development is a DEVELOPMENT_ONLY bearer
-# token supplied only through ANVILKIT_WORKFLOW_MODEL_PROXY_TOKEN; mtls names
-# the workload certificate files (ENV-03).
+# identity the worker presents: mtls is the workload certificate (the
+# process identity, verified by server_name); development is a
+# DEVELOPMENT_ONLY bearer token supplied only through
+# ANVILKIT_WORKFLOW_MODEL_PROXY_TOKEN (needs development.enabled).
 model_proxy:
   timeout: 5m
   identity:
-    mode: development
+    mode: mtls
+    mtls:
+      server_name: anvilkit-agent-model-proxy
 # kubernetes.kubeconfig (the launcher identity of a worker outside the
 # cluster; empty selects the Pod's in-cluster ServiceAccount identity) and
 # kubernetes.launch_backend are deployment placements supplied through the
@@ -42,9 +65,12 @@ kubernetes:
   # development registry of deploy/dev, ANVILKIT_WORKFLOW_IMAGE_REGISTRY).
   # sidecar.control_address is the Control placement the access sidecar of a
   # Job Pod uses (ANVILKIT_WORKFLOW_SIDECAR_CONTROL_ADDRESS); identity_mode
-  # development is the plaintext identity of the development foundation.
+  # mtls mounts the sidecar's workload certificate (identity_secret, the
+  # Workflow chart's Certificate in the Job namespace) into the sidecar
+  # container alone; development (plaintext) needs development.enabled.
   sidecar:
-    identity_mode: development
+    identity_mode: mtls
+    identity_secret: anvilkit-job-access-sidecar-identity
   candidate_seccomp_profile: anvilkit/candidate.json
 execution:
   control_activity_timeout: 30s
@@ -116,10 +142,14 @@ lifecycle:
     polls_per_run: 200
     reconcile_rounds: 20
     reconcile_pause: 30s
-# development: DEVELOPMENT_ONLY fault injection; never enable outside the
-# integration scenarios (see docs/architecture/delivery.md P05).
+# development: the top-level DEVELOPMENT_ONLY guard (P0.1) and the fault
+# injection switch. This checked-in file configures host-side runs on the
+# development foundation, whose Temporal frontend and OTLP collector are
+# plaintext (temporal.tls.mode development above); the guard downgrades
+# nothing by itself: the gRPC and Proxy clients and the sidecar stay mtls.
+# Never enable outside the foundation; the chart renders its own file.
 development:
-  enabled: false
+  enabled: true
 # health: the worker's only HTTP surface (ANVILKIT_WORKFLOW_HEALTH_LISTEN):
 # /healthz while the process runs, /readyz while both pollers are started
 # and neither the shutdown nor a fatal worker error has ended it.
