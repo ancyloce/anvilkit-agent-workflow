@@ -36,7 +36,7 @@ type telemetry struct {
 	registry     *prometheus.Registry
 }
 
-func newTelemetry(lc fx.Lifecycle, cfg config.Config) (*telemetry, error) {
+func newTelemetry(lc fx.Lifecycle, cfg config.Config, ids *identities) (*telemetry, error) {
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	exporter, err := otelprom.New(otelprom.WithRegisterer(reg))
@@ -47,7 +47,11 @@ func newTelemetry(lc fx.Lifecycle, cfg config.Config) (*telemetry, error) {
 	t := &telemetry{registry: reg, metrics: temporalotel.NewMetricsHandler(temporalotel.MetricsHandlerOptions{Meter: meters.Meter("temporal-sdk-go")})}
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 	if cfg.Telemetry.OTLPEndpoint != "" {
-		spans, err := otlptracegrpc.New(context.Background(), otlptracegrpc.WithEndpoint(cfg.Telemetry.OTLPEndpoint), otlptracegrpc.WithInsecure())
+		transport, err := ids.collector("telemetry.otlp_tls", cfg.Telemetry.OTLPTLS)
+		if err != nil {
+			return nil, err
+		}
+		spans, err := otlptracegrpc.New(context.Background(), otlptracegrpc.WithEndpoint(cfg.Telemetry.OTLPEndpoint), otlptracegrpc.WithDialOption(transport))
 		if err != nil {
 			return nil, err
 		}

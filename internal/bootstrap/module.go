@@ -22,6 +22,7 @@ import (
 	"go.temporal.io/sdk/workflow"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxevent"
+	"google.golang.org/grpc"
 
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/activities"
 	artifactadapter "github.com/ancyloce/anvilkit-agent-workflow/internal/adapters/artifacts"
@@ -194,21 +195,32 @@ func Module() fx.Option {
 				h.handle("/metrics", promhttp.HandlerFor(t.registry, promhttp.HandlerOpts{}))
 				return h
 			},
-			func(cfg config.Config, t *telemetry) (client.Client, error) {
+			newIdentities,
+			func(cfg config.Config, t *telemetry, ids *identities) (client.Client, error) {
+				// The transport is a dial option the SDK applies after its own
+				// (insecure) default, so it is the one in force.
+				transport, err := ids.collector("temporal.tls", cfg.Temporal.TLS)
+				if err != nil {
+					return nil, err
+				}
 				return client.Dial(client.Options{HostPort: cfg.Temporal.Address, Namespace: cfg.Temporal.Namespace, Identity: cfg.Temporal.WorkerIdentity + "@" + cfg.Temporal.BuildID,
-					Interceptors: t.interceptors, MetricsHandler: t.metrics})
+					Interceptors: t.interceptors, MetricsHandler: t.metrics, ConnectionOptions: client.ConnectionOptions{DialOptions: []grpc.DialOption{transport}}})
 			},
-			func(cfg config.Config) (*controladapter.Client, error) {
-				return controladapter.Dial(cfg.Control.Address, cfg.Kubernetes.LaunchBackend, cfg.Temporal.WorkerIdentity)
+			func(cfg config.Config, ids *identities) (*controladapter.Client, error) {
+				transport, err := ids.client("control", cfg.Control.Identity, "anvilkit-agent-control")
+				if err != nil {
+					return nil, err
+				}
+				return controladapter.Dial(cfg.Control.Address, cfg.Kubernetes.LaunchBackend, cfg.Temporal.WorkerIdentity, transport)
 			},
 			func(cfg config.Config) (*k8sadapter.Launcher, error) {
 				return k8sadapter.New(cfg.Kubernetes.Kubeconfig, cfg.Kubernetes.Namespace, k8sadapter.Options{
 					Backend: cfg.Kubernetes.LaunchBackend, ImageRegistry: cfg.Kubernetes.ImageRegistry, EnabledProfiles: cfg.Kubernetes.EnabledProfiles,
-					SidecarControlAddress: cfg.Kubernetes.Sidecar.ControlAddress, SidecarIdentityMode: cfg.Kubernetes.Sidecar.IdentityMode,
+					SidecarControlAddress: cfg.Kubernetes.Sidecar.ControlAddress, SidecarIdentityMode: cfg.Kubernetes.Sidecar.IdentityMode, SidecarIdentitySecret: cfg.Kubernetes.Sidecar.IdentitySecret,
 					CandidateSeccompProfile: cfg.Kubernetes.CandidateSeccompProfile,
 				})
 			},
-			func(cfg config.Config, log *slog.Logger) (activities.ModelCaller, error) {
+			func(cfg config.Config, ids *identities, log *slog.Logger) (activities.ModelCaller, error) {
 				mp := cfg.ModelProxy
 				if mp.Address == "" {
 					log.Warn("model proxy address not configured; the model call Activities answer DEPENDENCY_UNAVAILABLE")
@@ -216,8 +228,11 @@ func Module() fx.Option {
 				}
 				o := modelproxy.Options{BaseURL: mp.Address, Timeout: mp.Timeout}
 				if mp.Identity.Mode == "mtls" {
-					m := mp.Identity.MTLS
-					o.TLS = &modelproxy.TLSFiles{CertFile: m.CertFile, KeyFile: m.KeyFile, CAFile: m.CAFile, ServerName: m.ServerName}
+					r, m, err := ids.proxyTLS(mp.Identity)
+					if err != nil {
+						return nil, fmt.Errorf("model_proxy.identity: %w", err)
+					}
+					o.TLS = &modelproxy.TLSFiles{CertFile: m.CertFile, KeyFile: m.KeyFile, CAFile: m.CAFile, ServerName: m.ServerName, Reloader: r}
 				} else {
 					log.Warn("DEVELOPMENT_ONLY model proxy identity: bearer token; qualifies no production identity")
 					o.Token = mp.Token
