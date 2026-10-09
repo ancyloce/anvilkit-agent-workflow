@@ -123,18 +123,21 @@ lifecycle:
   artifacts:
     transfer_window: 15m
   # preview (P20): the reviewed job profile that builds a preview's saved
-  # revision (DEVELOPMENT_ONLY: the fixed validator profile).
+  # revision: bound source is candidate code (P0.8), validator-source-v1
+  # under gVisor by default; DEVELOPMENT_ONLY here the same chain on the
+  # foundation's containerd runtime (state development, this guard).
   preview:
-    build_profile: validator-fixed-dev-v1
+    build_profile: validator-source-dev-v1
   # release (P21): the reviewed validator profile that certifies the exact
-  # source (DEVELOPMENT_ONLY: the fixed validator profile), the release
+  # source (validator-source-v1 by default; DEVELOPMENT_ONLY here
+  # validator-source-dev-v1, P0.8), the release
   # profile's destinations (DEVELOPMENT_ONLY names served by the Pagix
   # double until ENV-07/08), the maintainer's approval wait (never beyond
   # the operation deadline), its poll interval, the polls one run makes
   # before it continues as new, and the bounded original-identity queries of
   # an unknown target.
   release:
-    validator_profile: validator-fixed-dev-v1
+    validator_profile: validator-source-dev-v1
     npm_registry: https://registry.anvilkit.invalid/
     browser_origin: https://components.anvilkit.invalid
     approval_wait: 336h
