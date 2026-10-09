@@ -148,10 +148,12 @@ func Release(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Context, 
 			if err := workflow.ExecuteActivity(business, activities.NameGetReleaseBinding, tenantID, operationID).Get(ctx, &rel.Binding); err != nil {
 				return fail(refusal(err, "SOURCE_UNAVAILABLE"), "source_rejected")
 			}
-			// 2. Independent certification of exactly those bytes.
+			// 2. Independent certification of exactly those bytes at the bound
+			// revision (P0.8: the launch names it, the certification binds it).
 			stage, _, _, code := runJobStep(ctx, q, bounds, stepSpec{
 				operationID: operationID, tenantID: tenantID, stepID: releaseCertifyStep, profileID: lbounds.ReleaseValidatorProfile, launchPrefix: "rel",
-				inputs: []activities.LaunchInput{{Name: "source", Digest: rel.Binding.Source.Digest, Handle: rel.Binding.Source.Handle}},
+				inputs:    []activities.LaunchInput{{Name: "source", Digest: rel.Binding.Source.Digest, Handle: rel.Binding.Source.Handle}},
+				component: &activities.ComponentIdentity{SourceRevision: rel.Binding.SourceRevision},
 			}, state)
 			if code != "" {
 				return fail(code, "certification_failed")

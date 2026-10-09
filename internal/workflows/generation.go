@@ -176,6 +176,19 @@ func Generation(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Contex
 			outcome, failureCode = settleOutcome(ctx, err, "BUDGET_EXHAUSTED")
 			return nil
 		}
+		// P0.8: the identity the brief allocated, which every step's launch
+		// envelope carries (the team builds it, the validator certifies only it).
+		var component *activities.ComponentIdentity
+		if workflow.GetVersion(ctx, "launch-component-identity", workflow.DefaultVersion, 1) == 1 {
+			var id activities.ComponentIdentity
+			if err := workflow.ExecuteActivity(business, activities.NameBriefIdentity, activities.BriefIdentityInput{
+				TenantID: tenantID, OperationID: operationID, Brief: view.Brief, SourceRevision: view.SourceRevision,
+			}).Get(ctx, &id); err != nil {
+				outcome, failureCode = settleOutcome(ctx, err, "BRIEF_INVALID")
+				return nil
+			}
+			component = &id
+		}
 		if code := acquireLease(ctx, q, bounds, lbounds, operationID, tenantID, view, state); code != "" {
 			outcome, failureCode, phase = "failed", code, "lease_unavailable"
 			return nil
@@ -214,6 +227,7 @@ func Generation(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Contex
 			}
 			stage, attempt, instance, code := runJobStep(workCtx, q, bounds, stepSpec{
 				operationID: operationID, tenantID: tenantID, stepID: codegenStepID, visit: repairs, profileID: codegenProfile, launchPrefix: "gen-c", inputs: inputs,
+				component: component,
 			}, state)
 			if state.fenced {
 				outcome, failureCode = "failed", state.fenceCode
@@ -244,6 +258,7 @@ func Generation(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Contex
 			}
 			validation, vattempt, vinstance, code := runJobStep(workCtx, q, bounds, stepSpec{
 				operationID: operationID, tenantID: tenantID, stepID: validateStepID, visit: repairs, profileID: validatorProfile, launchPrefix: "gen-v", inputs: stageInputs(&stage, "source"),
+				component: component,
 			}, state)
 			if state.fenced {
 				outcome, failureCode = "failed", state.fenceCode
@@ -574,6 +589,7 @@ type stepSpec struct {
 	profileID    string
 	launchPrefix string
 	inputs       []activities.LaunchInput
+	component    *activities.ComponentIdentity
 }
 
 // launchKeyForAttempt derives the stable DNS-label launch key of an attempt.
@@ -659,7 +675,7 @@ func runJobStep(ctx workflow.Context, q Queues, b Bounds, spec stepSpec, state *
 		return stage, attempt, current, failureCode
 	}
 	launched = true
-	if _, err := createJob(ctx, q, b, jobSpec{ProfileID: spec.profileID, OperationID: spec.operationID, ExecutionEpoch: attempt.ExecutionEpoch, Inputs: spec.inputs}, launch, jobDeadline, &creates); err != nil {
+	if _, err := createJob(ctx, q, b, jobSpec{ProfileID: spec.profileID, OperationID: spec.operationID, ExecutionEpoch: attempt.ExecutionEpoch, Inputs: spec.inputs, Component: spec.component}, launch, jobDeadline, &creates); err != nil {
 		outcome, failureCode = settle(ctx, err, "OBSERVER_FAILED")
 		return stage, attempt, current, failureCode
 	}

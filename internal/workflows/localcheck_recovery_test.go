@@ -69,7 +69,7 @@ func (c *controlDouble) RegisterInstance(_ context.Context, in activities.Regist
 	return ref, nil
 }
 
-func (c *controlDouble) ObserveInstance(context.Context, string, string, activities.PodObservation) error {
+func (c *controlDouble) ObserveInstance(context.Context, string, string, string, activities.PodObservation) error {
 	return nil
 }
 

@@ -82,7 +82,7 @@ func releaseEnv(t *testing.T, script releaseScript) (*testsuite.TestWorkflowEnvi
 		polls = 100
 	}
 	lb := workflows.LifecycleBounds{
-		ReleaseValidatorProfile: "validator-fixed-dev-v1", ReleaseDestinations: activities.ReleaseDestinations{NpmRegistry: "https://npm.invalid/", BrowserOrigin: "https://browser.invalid/"},
+		ReleaseValidatorProfile: "validator-source-v1", ReleaseDestinations: activities.ReleaseDestinations{NpmRegistry: "https://npm.invalid/", BrowserOrigin: "https://browser.invalid/"},
 		ReleaseApprovalWait: 48 * time.Hour, ReleaseApprovalPoll: time.Minute, ReleasePollsPerRun: polls, ReleaseReconcileRounds: 3, ReleaseReconcilePause: time.Minute,
 	}
 	env.RegisterWorkflowWithOptions(workflows.Release(queues, bounds, lb), workflow.RegisterOptions{Name: workflows.ReleaseWorkflowName})
@@ -205,6 +205,7 @@ func TestReleaseWorkflow(t *testing.T) {
 		require.Equal(t, []string{"certifying", "awaiting_approval", "publishing", "publishing", "published", "activated"}, r.states())
 		require.Len(t, r.creates, 1)
 		require.Equal(t, []activities.LaunchInput{{Name: "source", Digest: "sha256:edit", Handle: "h_edit"}}, r.creates[0].Inputs, "the validator certifies exactly the bound bytes")
+		require.Equal(t, &activities.ComponentIdentity{SourceRevision: "4"}, r.creates[0].Component, "at the bound revision")
 		require.Len(t, r.publishes["npm"], 1)
 		require.Len(t, r.publishes["browser"], 1)
 		npm, browser := r.publishes["npm"][0].Effect, r.publishes["browser"][0].Effect

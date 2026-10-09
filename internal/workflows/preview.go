@@ -131,10 +131,13 @@ func PreviewBuild(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Cont
 			return nil
 		}
 
-		// 2. The isolated build of exactly the saved bytes.
+		// 2. The isolated build of exactly the saved bytes, certified at the
+		// saved revision (P0.8: the launch names it; no allocated identity is
+		// recorded for a lineage, so the source's declaration names the component).
 		stage, _, _, code := runJobStep(ctx, q, bounds, stepSpec{
 			operationID: operationID, tenantID: tenantID, stepID: previewStepID, profileID: buildProfile, launchPrefix: "prv",
-			inputs: []activities.LaunchInput{{Name: "source", Digest: src.Source.Digest, Handle: src.Source.Handle}},
+			inputs:    []activities.LaunchInput{{Name: "source", Digest: src.Source.Digest, Handle: src.Source.Handle}},
+			component: &activities.ComponentIdentity{SourceRevision: saved.Revision},
 		}, state)
 		if code != "" {
 			fail(code)

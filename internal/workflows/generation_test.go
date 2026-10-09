@@ -87,9 +87,11 @@ func generationEnvWith(t *testing.T, b workflows.Bounds, lb workflows.LifecycleB
 		activities.NameGetGeneration: a.GetGeneration, activities.NameRequestExecutionPermit: a.RequestExecutionPermit, activities.NameCheckSourceScope: a.CheckSourceScope,
 		activities.NameAcquireLease: a.AcquireLease, activities.NameRenewLease: a.RenewLease, activities.NameQueryLease: a.QueryLease, activities.NameReleaseLease: a.ReleaseLease,
 		activities.NameRecordLease: a.RecordLease, activities.NameGetAcceptedStage: a.GetAcceptedStage, activities.NameRegisterCandidate: a.RegisterCandidate,
+		activities.NameBriefIdentity: a.BriefIdentity,
 	} {
 		env.RegisterActivityWithOptions(fn, activity.RegisterOptions{Name: name})
 	}
+	env.OnActivity(activities.NameBriefIdentity, mock.Anything, mock.Anything).Return(briefIdentity, nil)
 	r := &genRecord{}
 	r.record(env)
 	definition := script.definition
@@ -98,7 +100,7 @@ func generationEnvWith(t *testing.T, b workflows.Bounds, lb workflows.LifecycleB
 	}
 	env.OnActivity(activities.NameGetGeneration, mock.Anything, mock.Anything).Return(activities.GenerationView{
 		SubjectDigest: "sha256:subject", Brief: brief, QueueDeadline: env.Now().Add(2 * time.Hour), DefinitionActivation: definition, MaxRepairs: 1,
-		CodegenProfileID: "codegen-team-dev-v1", ValidatorProfileID: "validator-fixed-dev-v1", Lease: script.leaseState,
+		CodegenProfileID: "codegen-team-dev-v1", ValidatorProfileID: "validator-source-v1", Lease: script.leaseState,
 	}, nil)
 	permits := append([]bool(nil), script.permits...)
 	env.OnActivity(activities.NameRequestExecutionPermit, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.RequestExecutionPermitInput) (activities.PermitAnswer, error) {
@@ -240,10 +242,13 @@ func TestGenerationCandidateReadyAfterIndependentCertification(t *testing.T) {
 	require.Equal(t, "codegen", r.opens[0].StepID)
 	require.Equal(t, "codegen-team-dev-v1", r.opens[0].ProfileID)
 	require.Equal(t, "validate", r.opens[1].StepID)
-	require.Equal(t, "validator-fixed-dev-v1", r.opens[1].ProfileID)
+	require.Equal(t, "validator-source-v1", r.opens[1].ProfileID)
 	require.Len(t, r.creates, 2)
 	require.Equal(t, []activities.LaunchInput{{Name: "brief", Digest: "sha256:b1", Handle: "h_brief"}}, r.creates[0].Inputs, "the codegen Job receives the brief by handle")
 	require.Equal(t, []activities.LaunchInput{{Name: "source", Digest: "sha256:s1", Handle: "h_src1"}}, r.creates[1].Inputs, "the validator receives the accepted source by handle")
+	// P0.8: both steps carry the brief's allocated identity.
+	require.Equal(t, &briefIdentity, r.creates[0].Component)
+	require.Equal(t, &briefIdentity, r.creates[1].Component)
 	require.Equal(t, "1", r.creates[0].LaunchEpoch)
 	require.Len(t, r.registers, 1)
 	require.Equal(t, "op_GEN:candidate:1", r.registers[0].CommandID)
@@ -487,6 +492,10 @@ func (f *fakeGenerationPorts) RecordFunding(context.Context, activities.RecordFu
 func (f *fakeGenerationPorts) RecordLease(context.Context, activities.RecordLeaseInput) (activities.LeaseRecord, error) {
 	return activities.LeaseRecord{}, nil
 }
+
+// briefIdentity is the identity the generation's brief allocates (P0.8).
+var briefIdentity = activities.ComponentIdentity{ComponentID: "cmp_0123456789abcdef01234567", PuckType: "Hero", PackageName: "@anvilkit/hero-gen", SourceRevision: "1"}
+
 func (f *fakeGenerationPorts) GetAcceptedStage(context.Context, activities.GetAcceptedStageInput) (activities.AcceptedStage, error) {
 	return activities.AcceptedStage{}, nil
 }

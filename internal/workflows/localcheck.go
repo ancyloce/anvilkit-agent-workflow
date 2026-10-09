@@ -324,6 +324,7 @@ type jobSpec struct {
 	OperationID    string
 	ExecutionEpoch string
 	Inputs         []activities.LaunchInput
+	Component      *activities.ComponentIdentity
 }
 
 // createJob issues create requests for the launch, one at a time under the
@@ -350,7 +351,7 @@ func createJob(ctx workflow.Context, q Queues, b Bounds, spec jobSpec, launch ac
 		var job activities.JobRef
 		err := workflow.ExecuteActivity(createCtx, activities.NameCreateJob, activities.CreateJobInput{
 			Launch: launch, ProfileID: spec.ProfileID, Deadline: deadline, Request: request,
-			OperationID: spec.OperationID, ExecutionEpoch: spec.ExecutionEpoch, LaunchEpoch: launch.LaunchEpoch, Inputs: spec.Inputs,
+			OperationID: spec.OperationID, ExecutionEpoch: spec.ExecutionEpoch, LaunchEpoch: launch.LaunchEpoch, Inputs: spec.Inputs, Component: spec.Component,
 		}).Get(ctx, &job)
 		if err == nil {
 			ledger.account([]int{job.Request})

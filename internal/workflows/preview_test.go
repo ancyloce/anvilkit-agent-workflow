@@ -45,7 +45,7 @@ func previewEnv(t *testing.T, script previewScript) (*testsuite.TestWorkflowEnvi
 	env := ts.NewTestWorkflowEnvironment()
 	registerWith(env, bounds)
 	var a lifecycleStub
-	lb := workflows.LifecycleBounds{PreviewBuildProfile: "validator-fixed-dev-v1"}
+	lb := workflows.LifecycleBounds{PreviewBuildProfile: "validator-source-v1"}
 	env.RegisterWorkflowWithOptions(workflows.PreviewBuild(queues, bounds, lb), workflow.RegisterOptions{Name: workflows.PreviewWorkflowName})
 	for name, fn := range map[string]any{
 		activities.NameSettleOperation: a.SettleOperation, activities.NameGetPreviewSource: a.GetPreviewSource, activities.NameRecordPreview: a.RecordPreview,
@@ -136,7 +136,8 @@ func TestPreviewBuild(t *testing.T) {
 		require.Equal(t, "op_PRV:save:1", r.saves[0].CommandID)
 		require.Len(t, r.creates, 1)
 		require.Equal(t, []activities.LaunchInput{{Name: "source", Digest: "sha256:edit", Handle: "h_edit"}}, r.creates[0].Inputs, "the build gets exactly the saved bytes")
-		require.Equal(t, "validator-fixed-dev-v1", r.creates[0].ProfileID)
+		require.Equal(t, "validator-source-v1", r.creates[0].ProfileID)
+		require.Equal(t, &activities.ComponentIdentity{SourceRevision: "4"}, r.creates[0].Component, "the build certifies the saved revision")
 		last := r.last()
 		require.Equal(t, "succeeded", last.Outcome)
 		require.Equal(t, "preview_ready", last.Phase)
