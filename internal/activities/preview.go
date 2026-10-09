@@ -25,6 +25,9 @@ type PreviewSource struct {
 	Lineage      string // the component source lineage (subject digest)
 	BaseRevision string
 	Source       StageArtifact
+	// Identity is the component identity allocated to the lineage (P0.8),
+	// when it has one: the build certifies the saved bytes under it.
+	Identity *ComponentIdentity
 }
 
 // PreviewRecordInput is one transition of the preview projection.

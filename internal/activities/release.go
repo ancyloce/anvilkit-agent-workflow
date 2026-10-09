@@ -46,6 +46,9 @@ type ReleaseBinding struct {
 	Source         StageArtifact
 	ExecutionEpoch uint64
 	Deadline       time.Time
+	// Identity is the component identity allocated to the lineage (P0.8),
+	// resolved by Control; the release is certified and published under it.
+	Identity *ComponentIdentity
 }
 
 // ReleaseTargetRecord is one target as the release records it.
@@ -253,6 +256,9 @@ func (a *LifecycleActivities) BuildReleaseSubject(ctx context.Context, in BuildS
 		return BuiltSubject{}, refusedf("CERTIFICATION_MISMATCH", "the certified npm or browser digests are not the stage's artifacts")
 	case len(b.CSS) != len(css):
 		return BuiltSubject{}, refusedf("CERTIFICATION_MISMATCH", "the certification binds %d stylesheets, the stage holds %d", len(b.CSS), len(css))
+	case in.Binding.Identity != nil && (b.ComponentID != in.Binding.Identity.ComponentID || b.PuckType != in.Binding.Identity.PuckType || b.PackageName != in.Binding.Identity.PackageName):
+		id := in.Binding.Identity
+		return BuiltSubject{}, refusedf("CERTIFICATION_MISMATCH", "the certification binds %s %s %s, the lineage was allocated %s %s %s", b.ComponentID, b.PuckType, b.PackageName, id.ComponentID, id.PuckType, id.PackageName)
 	case b.SourceRevision != in.Binding.SourceRevision:
 		return BuiltSubject{}, refusedf("CERTIFICATION_MISMATCH", "the certification binds source revision %q, the release binds %s", b.SourceRevision, in.Binding.SourceRevision)
 	case b.Version != in.Binding.PackageVersion:

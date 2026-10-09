@@ -88,11 +88,13 @@ type CreateJobInput struct {
 }
 
 // ComponentIdentity is what a launch certifies or produces: the source
-// revision it binds (always, for a validator on bound source) and, for a
-// generation, the allocated identity of its frozen brief (componentId,
-// puckType and packageName, all three or none). A validator refuses source
-// declaring another identity. Preview and release launches name only the
-// revision: no allocated identity is recorded for a lineage.
+// revision it binds (always, for a validator on bound source) and the
+// allocated identity (componentId, puckType and packageName, all three or
+// none) — a generation's from its frozen brief, a preview's and a release's
+// from the record Control keeps for the lineage (bound when the generation's
+// candidate registration was prepared). A validator refuses source declaring
+// another identity; a preview of a lineage without a record names the
+// revision alone, a release of one is refused.
 type ComponentIdentity struct {
 	ComponentID    string
 	PuckType       string

@@ -225,7 +225,8 @@ func TestReleaseBindingAndSubject(t *testing.T) {
 	f := newReleaseFixture(t)
 	_, err := f.double.SaveRevision(ctx, "eff_save", activities.SaveSourceInput{Lineage: "sha256:lin", BaseRevision: "1", Occurrence: 1, Source: activities.StageArtifact{Digest: "sha256:saved"}})
 	require.NoError(t, err)
-	f.ctl.binding = activities.ReleaseBinding{Lineage: "sha256:lin", SourceRevision: "2", PackageVersion: "1.0.0", Source: activities.StageArtifact{Digest: "sha256:other"}}
+	f.ctl.binding = activities.ReleaseBinding{Lineage: "sha256:lin", SourceRevision: "2", PackageVersion: "1.0.0", Source: activities.StageArtifact{Digest: "sha256:other"},
+		Identity: &activities.ComponentIdentity{ComponentID: "cmp_x", PuckType: "Hero", PackageName: "@anvilkit/x"}}
 	_, err = f.acts.GetReleaseBinding(ctx, "t", "op")
 	require.Equal(t, "SOURCE_REVISION_MISMATCH", activities.RefusalCode(err), "bytes that are not the revision's")
 	f.ctl.binding.Source.Digest = "sha256:saved"
@@ -246,6 +247,13 @@ func TestReleaseBindingAndSubject(t *testing.T) {
 	// image's default "1" included) is not this release's certification.
 	_, err = build("1", "1.0.0")
 	require.Equal(t, "CERTIFICATION_MISMATCH", activities.RefusalCode(err))
+	// P0.8: and it binds the identity allocated to the lineage, never one the
+	// source declared for itself.
+	allocated := *b.Identity
+	b.Identity = &activities.ComponentIdentity{ComponentID: "cmp_x", PuckType: "Banner", PackageName: "@anvilkit/x"}
+	_, err = build("2", "1.0.0")
+	require.Equal(t, "CERTIFICATION_MISMATCH", activities.RefusalCode(err), "another Puck type than the allocated one")
+	b.Identity = &allocated
 	built, err := build("2", "1.0.0")
 	require.NoError(t, err)
 	require.Equal(t, "2", built.Subject.SourceRevision, "the revision is the source authority's")
