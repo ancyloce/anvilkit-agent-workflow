@@ -391,7 +391,8 @@ func (a *LifecycleActivities) FreezeBrief(ctx context.Context, in FreezeBriefInp
 	if err != nil {
 		return BriefRef{}, fmt.Errorf("upload brief: %w", err)
 	}
-	return a.Preparation.RecordBrief(ctx, in.OperationID, in.TenantID, in.CommandID, binding, requirementsDigest, doc.SourceRevisions, in.Frozen)
+	return a.Preparation.RecordBrief(ctx, in.OperationID, in.TenantID, in.CommandID, binding, requirementsDigest, doc.SourceRevisions, in.Frozen,
+		ComponentIdentity{ComponentID: doc.ComponentID, PuckType: doc.PuckType, PackageName: doc.PackageName})
 }
 
 func (a *LifecycleActivities) SettleOperation(ctx context.Context, in SettleOperationInput) (OperationRef, error) {

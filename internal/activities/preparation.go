@@ -208,7 +208,9 @@ type PreparationControl interface {
 	GetPreparation(ctx context.Context, in GetPreparationInput) (PreparationView, error)
 	RecordQuestionSet(ctx context.Context, in RecordQuestionSetInput) (QuestionSetRef, error)
 	GetAnswer(ctx context.Context, in GetAnswerInput) (AnswerRef, error)
-	RecordBrief(ctx context.Context, operationID, tenantID, commandID string, brief ArtifactBinding, requirementsDigest string, sources []SourceReference, frozen FrozenReferences) (BriefRef, error)
+	// RecordBrief records the frozen brief with the identity it allocates
+	// (P0.8: Control binds it to the Generation's lineage).
+	RecordBrief(ctx context.Context, operationID, tenantID, commandID string, brief ArtifactBinding, requirementsDigest string, sources []SourceReference, frozen FrozenReferences, identity ComponentIdentity) (BriefRef, error)
 	SettleOperation(ctx context.Context, in SettleOperationInput) (OperationRef, error)
 }
 
