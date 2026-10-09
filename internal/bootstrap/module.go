@@ -217,7 +217,7 @@ func Module() fx.Option {
 				return k8sadapter.New(cfg.Kubernetes.Kubeconfig, cfg.Kubernetes.Namespace, k8sadapter.Options{
 					Backend: cfg.Kubernetes.LaunchBackend, ImageRegistry: cfg.Kubernetes.ImageRegistry, EnabledProfiles: cfg.Kubernetes.EnabledProfiles,
 					SidecarControlAddress: cfg.Kubernetes.Sidecar.ControlAddress, SidecarIdentityMode: cfg.Kubernetes.Sidecar.IdentityMode, SidecarIdentitySecret: cfg.Kubernetes.Sidecar.IdentitySecret,
-					CandidateSeccompProfile: cfg.Kubernetes.CandidateSeccompProfile,
+					CandidateSeccompProfile: cfg.Kubernetes.CandidateSeccompProfile, Development: cfg.Development.Enabled,
 				})
 			},
 			func(cfg config.Config, ids *identities, log *slog.Logger) (activities.ModelCaller, error) {
@@ -292,7 +292,7 @@ func RegisterLifecycle(business, control worker.Worker, acts *activities.Lifecyc
 		activities.NameGetPreparation: acts.GetPreparation, activities.NameAnalyzeRequirements: acts.AnalyzeRequirements, activities.NameRecordQuestionSet: acts.RecordQuestionSet,
 		activities.NameGetAnswer: acts.GetAnswer, activities.NameFreezeReferences: acts.FreezeReferences, activities.NameFreezeBrief: acts.FreezeBrief,
 		activities.NameGetGeneration: acts.GetGeneration, activities.NameRequestExecutionPermit: acts.RequestExecutionPermit, activities.NameRecordFunding: acts.RecordFunding,
-		activities.NameCheckSourceScope: acts.CheckSourceScope, activities.NameGetAcceptedStage: acts.GetAcceptedStage,
+		activities.NameCheckSourceScope: acts.CheckSourceScope, activities.NameGetAcceptedStage: acts.GetAcceptedStage, activities.NameBriefIdentity: acts.BriefIdentity,
 		activities.NameGetPreviewSource: acts.GetPreviewSource, activities.NameCurrentSourceRevision: acts.CurrentSourceRevision,
 		activities.NameGetReleaseBinding: acts.GetReleaseBinding, activities.NameBuildReleaseSubj: acts.BuildReleaseSubject,
 		activities.NameReviewDecision: acts.ReviewDecision, activities.NameCatalogRevision: acts.CatalogRevision,
