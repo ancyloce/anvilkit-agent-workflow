@@ -3,6 +3,7 @@ package kubernetes_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,12 +27,12 @@ import (
 // these files. Without the variable it only checks that the render works.
 func TestRenderPolicyFixtures(t *testing.T) {
 	l := k8s.NewWithClient(fake.NewClientset(), namespace, k8s.Options{
-		Backend: "kind-anvilkit-dev", ImageRegistry: "localhost:5001", EnabledProfiles: []string{"local-check-v1", "harness-wiring-dev-v1", "codegen-fixed-v1", "validator-fixed-dev-v1"},
+		Backend: "kind-anvilkit-dev", ImageRegistry: "localhost:5001", EnabledProfiles: []string{"local-check-v1", "harness-wiring-dev-v1", "codegen-fixed-v1", "validator-fixture-v1", "validator-source-v1", "validator-source-dev-v1"},
 		SidecarControlAddress: "172.22.0.1:9101", SidecarIdentityMode: "mtls", SidecarIdentitySecret: "anvilkit-job-access-sidecar-identity", CandidateSeccompProfile: "anvilkit/candidate.json",
 	})
 	now := time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC)
 	out := os.Getenv("ANVILKIT_RENDER_POLICY_FIXTURES")
-	for _, id := range []string{"local-check-v1", "harness-wiring-dev-v1", "codegen-fixed-v1", "validator-fixed-dev-v1"} {
+	for _, id := range []string{"local-check-v1", "harness-wiring-dev-v1", "codegen-fixed-v1", "validator-fixture-v1", "validator-source-v1", "validator-source-dev-v1"} {
 		profile, err := jobschema.ProfileByID(id)
 		require.NoError(t, err)
 		in := activities.CreateJobInput{
@@ -40,6 +41,11 @@ func TestRenderPolicyFixtures(t *testing.T) {
 		}
 		if profile.SidecarImage != nil {
 			in.Inputs = []activities.LaunchInput{{Name: "fixed-input", Digest: "sha256:abeb263b000189efdd8206ff39eeb4f2f7f3217f1c480491868b46da4a21c6a8"}}
+		}
+		if profile.BindsSource {
+			// P0.8: a bound-source profile runs on its source archive and the allocated identity.
+			in.Inputs = []activities.LaunchInput{{Name: "source", Digest: "sha256:" + strings.Repeat("5", 64), Handle: "h_policy_source"}}
+			in.Component = &activities.ComponentIdentity{ComponentID: "cmp_policy", PuckType: "Hero", PackageName: "@anvilkit/hero-policy", SourceRevision: "3"}
 		}
 		job, err := l.Render(in, now)
 		require.NoError(t, err, id)

@@ -3,10 +3,12 @@ package kubernetes_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -24,6 +26,8 @@ func harnessOptions(enabled ...string) k8s.Options {
 	return k8s.Options{
 		Backend: "kind-anvilkit-dev", ImageRegistry: "localhost:5001", EnabledProfiles: enabled,
 		SidecarControlAddress: "172.22.0.1:9101", SidecarIdentityMode: "mtls", SidecarIdentitySecret: "anvilkit-job-access-sidecar-identity", CandidateSeccompProfile: "anvilkit/candidate.json",
+		// The wiring profile is in the development state (P0.8).
+		Development: true,
 	}
 }
 
@@ -152,17 +156,126 @@ func TestHarnessSidecarIdentityVolume(t *testing.T) {
 	require.Contains(t, err.Error(), "identity_secret")
 }
 
+// P0.8: a profile's state is enforced before the environment's allowlist:
+// disabled everywhere, development only behind the worker's guard.
+func TestProfileStateIsEnforced(t *testing.T) {
+	source, err := jobschema.ProfileByID("validator-source-v1")
+	require.NoError(t, err)
+	require.Equal(t, jobschema.StateDisabled, source.State)
+	in := sourceInput(t, "validator-source-v1")
+	_, err = k8s.NewWithClient(fake.NewClientset(), namespace, harnessOptions("validator-source-v1")).CreateJob(context.Background(), in)
+	require.Equal(t, "PROFILE_DISABLED", activities.RefusalCode(err))
+
+	dev := sourceInput(t, "validator-source-dev-v1")
+	noGuard := harnessOptions("validator-source-dev-v1")
+	noGuard.Development = false
+	_, err = k8s.NewWithClient(fake.NewClientset(), namespace, noGuard).CreateJob(context.Background(), dev)
+	require.Equal(t, "PROFILE_UNQUALIFIED", activities.RefusalCode(err))
+	require.Contains(t, err.Error(), "development guard")
+	job, err := k8s.NewWithClient(fake.NewClientset(), namespace, harnessOptions("validator-source-dev-v1")).CreateJob(context.Background(), dev)
+	require.NoError(t, err)
+	require.Equal(t, 1, job.Request, "the development profile is created behind the guard")
+}
+
+// P0.8: only a bound-source profile receives a source archive, a validator
+// that binds source needs one, and the allocated identity rides in the
+// launch envelope of both the supervisor and the sidecar.
+func TestBoundSourceAndIdentityInTheEnvelope(t *testing.T) {
+	l := k8s.NewWithClient(fake.NewClientset(), namespace, harnessOptions("validator-fixture-v1", "validator-source-dev-v1"))
+	fixture := sourceInput(t, "validator-fixture-v1")
+	_, err := l.CreateJob(context.Background(), fixture)
+	require.Equal(t, "PROFILE_UNQUALIFIED", activities.RefusalCode(err))
+	require.Contains(t, err.Error(), "does not execute bound source")
+
+	unbound := sourceInput(t, "validator-source-dev-v1")
+	unbound.Inputs = nil
+	_, err = l.CreateJob(context.Background(), unbound)
+	require.Equal(t, "PROFILE_UNQUALIFIED", activities.RefusalCode(err))
+	require.Contains(t, err.Error(), "needs a \"source\" input")
+
+	// The certified revision is the launch's: no component, no revision, a
+	// non-sequence revision or a partial identity is refused before any Job.
+	for name, c := range map[string]*activities.ComponentIdentity{
+		"no component":      nil,
+		"no revision":       {ComponentID: "cmp_hero_fixed", PuckType: "Hero", PackageName: "@anvilkit/hero-fixed"},
+		"a non-sequence":    {SourceRevision: "07"},
+		"a partial":         {PuckType: "Hero", SourceRevision: "7"},
+		"a lower-case type": {ComponentID: "cmp_hero_fixed", PuckType: "hero", PackageName: "@anvilkit/hero-fixed", SourceRevision: "7"},
+	} {
+		bad := sourceInput(t, "validator-source-dev-v1")
+		bad.Component = c
+		_, err = l.Render(bad, time.Now())
+		require.Error(t, err, name)
+	}
+	// A preview or release launch names the revision alone.
+	revOnly := sourceInput(t, "validator-source-dev-v1")
+	revOnly.Component = &activities.ComponentIdentity{SourceRevision: "4"}
+	job, err := l.Render(revOnly, time.Now())
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"sourceRevision": "4"}, envelopeComponent(t, job))
+
+	in := sourceInput(t, "validator-source-dev-v1")
+	job, err = l.Render(in, time.Now())
+	require.NoError(t, err)
+	require.Equal(t, "true", job.Spec.Template.Labels["anvilkit.io/candidate-code"])
+	require.Nil(t, job.Spec.Template.Spec.RuntimeClassName, "the development profile runs on the foundation's runtime")
+	for _, c := range append(job.Spec.Template.Spec.InitContainers, job.Spec.Template.Spec.Containers...) {
+		for _, e := range c.Env {
+			if e.Name != "ANVILKIT_LAUNCH_ENVELOPE" && e.Name != "ANVILKIT_SIDECAR_LAUNCH_ENVELOPE" {
+				continue
+			}
+			var env struct {
+				Component map[string]string `json:"component"`
+			}
+			require.NoError(t, json.Unmarshal([]byte(e.Value), &env))
+			require.Equal(t, map[string]string{"componentId": "cmp_hero_fixed", "puckType": "Hero", "packageName": "@anvilkit/hero-fixed", "sourceRevision": "7"}, env.Component, e.Name)
+		}
+	}
+}
+
+func envelopeComponent(t *testing.T, job *batchv1.Job) map[string]string {
+	t.Helper()
+	for _, c := range job.Spec.Template.Spec.Containers {
+		for _, e := range c.Env {
+			if e.Name == "ANVILKIT_LAUNCH_ENVELOPE" {
+				var env struct {
+					Component map[string]string `json:"component"`
+				}
+				require.NoError(t, json.Unmarshal([]byte(e.Value), &env))
+				return env.Component
+			}
+		}
+	}
+	t.Fatal("no container carries the launch envelope")
+	return nil
+}
+
+func sourceInput(t *testing.T, id string) activities.CreateJobInput {
+	t.Helper()
+	profile, err := jobschema.ProfileByID(id)
+	require.NoError(t, err)
+	return activities.CreateJobInput{
+		Launch:    activities.LaunchRef{LaunchID: "lch_s1", AttemptID: "att_s1", LaunchKey: "val-s1", ImageDigest: profile.Image.Digest},
+		ProfileID: id, Deadline: time.Now().Add(5 * time.Minute), Request: 1,
+		OperationID: "op_s1", ExecutionEpoch: "1", LaunchEpoch: "1",
+		Inputs:    []activities.LaunchInput{{Name: "source", Digest: "sha256:" + strings.Repeat("5", 64), Handle: "h_src"}},
+		Component: &activities.ComponentIdentity{ComponentID: "cmp_hero_fixed", PuckType: "Hero", PackageName: "@anvilkit/hero-fixed", SourceRevision: "7"},
+	}
+}
+
 // The gVisor profile pins the RuntimeClass and marks candidate code; it is
-// disabled unless the environment lists it.
+// disabled until its qualification (state disabled, P0.8) even where the
+// environment lists it, and Render still shows its template to the
+// admission checks.
 func TestCandidateProfilePinsRuntimeClassAndIsDisabledByDefault(t *testing.T) {
-	l := k8s.NewWithClient(fake.NewClientset(), namespace, harnessOptions(harnessProfile))
+	l := k8s.NewWithClient(fake.NewClientset(), namespace, harnessOptions(harnessProfile, "codegen-fixed-v1"))
 	in := harnessInput(t)
 	in.ProfileID = "codegen-fixed-v1"
 	profile, _ := jobschema.ProfileByID("codegen-fixed-v1")
 	in.Launch.ImageDigest = profile.Image.Digest
 	_, err := l.CreateJob(context.Background(), in)
-	require.Equal(t, "PROFILE_UNQUALIFIED", activities.RefusalCode(err))
-	require.Contains(t, err.Error(), "not enabled in this environment")
+	require.Equal(t, "PROFILE_DISABLED", activities.RefusalCode(err))
+	require.Contains(t, err.Error(), "disabled until its qualification")
 
 	enabled := k8s.NewWithClient(fake.NewClientset(), namespace, harnessOptions(harnessProfile, "codegen-fixed-v1"))
 	job, err := enabled.Render(in, time.Now())

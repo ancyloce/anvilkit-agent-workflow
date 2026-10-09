@@ -29,7 +29,7 @@ func (c *Client) GetReleaseBinding(ctx context.Context, tenantID, operationID st
 	if view.GetKind() != controlv1.OperationKind_OPERATION_KIND_RELEASE || subject.GetSourceHandle() == "" || subject.GetPackageVersion() == "" {
 		return activities.ReleaseBinding{}, activities.Refused("INVALID_ARGUMENT", fmt.Errorf("operation %s is not a release with its bound source", operationID))
 	}
-	read, err := controlv1.NewArtifactServiceClient(c.conn).ReadArtifact(ctx, &controlv1.ReadArtifactRequest{Handle: subject.GetSourceHandle(), OperationId: operationID})
+	read, err := controlv1.NewArtifactServiceClient(c.conn).ReadArtifact(ctx, &controlv1.ReadArtifactRequest{Handle: subject.GetSourceHandle(), OperationId: operationID, TenantId: tenantID})
 	if err != nil {
 		return activities.ReleaseBinding{}, nonRetryable(err)
 	}
@@ -108,7 +108,10 @@ func optTimestamp(t *time.Time) *timestamppb.Timestamp {
 }
 
 func (c *Client) RecordRelease(ctx context.Context, in activities.ReleaseRecordInput) (uint64, error) {
+	// The recording command is bound to the operation's tenant; its id names
+	// the transition, so a retried record is the same command (P0.2).
 	req := &controlv1.RecordReleaseRequest{
+		Command:     c.command(in.TenantID, fmt.Sprintf("release-record:%s:%d", in.OperationID, in.ExpectedRevision), in),
 		OperationId: in.OperationID, ExpectedRevision: strconv.FormatUint(in.ExpectedRevision, 10), State: releaseStates[in.State], Subject: toSubject(in.Subject),
 		ReleaseId: optional(in.ReleaseID), ReviewEffectId: optional(in.ReviewEffectID), ApprovalDeadline: optTimestamp(in.ApprovalDeadline),
 		Npm: toTarget(in.Npm), Browser: toTarget(in.Browser), Activation: toTarget(in.Activation), CatalogRevision: optional(in.CatalogRevision),

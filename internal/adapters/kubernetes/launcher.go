@@ -190,19 +190,46 @@ func (l *Launcher) jobSpec(in activities.CreateJobInput, profile jobschema.Profi
 }
 
 // Render returns the Job a create request would submit, for offline
-// policy checks and inspection; nothing is created.
+// policy checks and inspection; nothing is created. It renders any reviewed
+// profile this environment lists whatever its state: the admission policies
+// are checked against the templates of profiles not runnable yet too (a
+// disabled candidate profile's gVisor layout).
 func (l *Launcher) Render(in activities.CreateJobInput, now time.Time) (*batchv1.Job, error) {
-	profile, err := l.profile(in.ProfileID)
+	profile, err := l.reviewed(in.ProfileID)
 	if err != nil {
 		return nil, err
 	}
 	return l.jobSpec(in, profile, now)
 }
 
-// profile resolves a reviewed profile and checks that this environment
-// enabled it; a profile that is reviewed but not enabled here is refused
-// exactly like an unreviewed one.
+// profile resolves a reviewed profile and checks its state and that this
+// environment enabled it: a disabled profile is refused everywhere
+// (PROFILE_DISABLED), a development one outside the worker's development
+// guard and one reviewed but not enabled here exactly like an unreviewed one.
 func (l *Launcher) profile(id string) (jobschema.Profile, error) {
+	profile, err := jobschema.ProfileByID(id)
+	if err != nil {
+		return jobschema.Profile{}, activities.Refused("PROFILE_UNQUALIFIED", err)
+	}
+	// The contract's state first: it is the profile's own verdict, the
+	// environment's allowlist only narrows what the state allows.
+	switch profile.State {
+	case jobschema.StateDisabled:
+		return jobschema.Profile{}, activities.Refused("PROFILE_DISABLED", fmt.Errorf("profile %s is disabled until its qualification", id))
+	case jobschema.StateDevelopment:
+		if !l.options.Development {
+			return jobschema.Profile{}, activities.Refused("PROFILE_UNQUALIFIED", fmt.Errorf("profile %s runs only behind the development guard (development.enabled)", id))
+		}
+	case jobschema.StateEnabled:
+	default:
+		return jobschema.Profile{}, activities.Refused("PROFILE_UNQUALIFIED", fmt.Errorf("profile %s has no known state", id))
+	}
+	return l.reviewed(id)
+}
+
+// reviewed resolves a reviewed profile this environment enabled; one that is
+// reviewed but not enabled here is refused exactly like an unreviewed one.
+func (l *Launcher) reviewed(id string) (jobschema.Profile, error) {
 	profile, err := jobschema.ProfileByID(id)
 	if err != nil {
 		return jobschema.Profile{}, activities.Refused("PROFILE_UNQUALIFIED", err)

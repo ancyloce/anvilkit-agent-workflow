@@ -33,6 +33,9 @@ type Options struct {
 	// the candidate side of the Pod never sees it.
 	SidecarIdentitySecret   string
 	CandidateSeccompProfile string
+	// Development is the worker's DEVELOPMENT_ONLY guard (development.enabled):
+	// only with it may a profile in the development state be launched (P0.8).
+	Development bool
 }
 
 // Fixed identities of the harness layout (DD-03 §5).
@@ -72,6 +75,8 @@ var (
 	digestPattern    = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 	inputNamePattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,63}$`)
 	sequencePattern  = regexp.MustCompile(`^(0|[1-9][0-9]{0,19})$`)
+	componentPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
+	puckTypePattern  = regexp.MustCompile(`^[A-Z][A-Za-z0-9]{0,63}$`)
 )
 
 // enabled reports whether the environment enabled the profile.
@@ -120,11 +125,51 @@ func launchEnvelope(in activities.CreateJobInput, profile jobschema.Profile) ([]
 		}
 		inputs = append(inputs, entry)
 	}
-	raw, err := json.Marshal(map[string]any{
+	// P0.8: only a profile that binds source receives one, and such a profile
+	// runs on nothing else (no silent fallback to a fixture).
+	if seen[jobschema.SourceInput] && !profile.BindsSource {
+		return nil, fmt.Errorf("profile %s does not execute bound source and refuses a %q input", profile.ProfileID, jobschema.SourceInput)
+	}
+	if profile.BindsSource {
+		bound := false
+		for _, i := range in.Inputs {
+			bound = bound || (i.Name == jobschema.SourceInput && i.Handle != "")
+		}
+		if !bound && profile.JobKind == "validator" {
+			return nil, fmt.Errorf("profile %s executes bound source and needs a %q input with its handle", profile.ProfileID, jobschema.SourceInput)
+		}
+		// The certified revision is the launch's, never the image's default.
+		if profile.JobKind == "validator" && (in.Component == nil || in.Component.SourceRevision == "") {
+			return nil, fmt.Errorf("profile %s executes bound source and needs the source revision it certifies", profile.ProfileID)
+		}
+	}
+	var component map[string]string
+	if c := in.Component; c != nil {
+		// The revision always; the allocated identity whole or not at all.
+		named := 0
+		for _, v := range []string{c.ComponentID, c.PuckType, c.PackageName} {
+			if v != "" {
+				named++
+			}
+		}
+		if !sequencePattern.MatchString(c.SourceRevision) || (named != 0 && named != 3) ||
+			(named == 3 && (!componentPattern.MatchString(c.ComponentID) || !puckTypePattern.MatchString(c.PuckType) || len(c.PackageName) > 214)) {
+			return nil, fmt.Errorf("launch component is not a source revision with an optional whole allocated identity")
+		}
+		component = map[string]string{"sourceRevision": c.SourceRevision}
+		if named == 3 {
+			component["componentId"], component["puckType"], component["packageName"] = c.ComponentID, c.PuckType, c.PackageName
+		}
+	}
+	envelope := map[string]any{
 		"schemaVersion": launchEnvelopeSchema, "launchId": in.Launch.LaunchID, "launchKey": in.Launch.LaunchKey, "operationId": in.OperationID,
 		"attemptId": in.Launch.AttemptID, "profileId": profile.ProfileID, "profileRevision": profile.Revision, "jobKind": profile.JobKind,
 		"executionEpoch": in.ExecutionEpoch, "launchEpoch": in.LaunchEpoch, "deadline": in.Deadline.UTC().Format("2006-01-02T15:04:05Z"), "inputs": inputs,
-	})
+	}
+	if component != nil {
+		envelope["component"] = component
+	}
+	raw, err := json.Marshal(envelope)
 	if err != nil {
 		return nil, err
 	}

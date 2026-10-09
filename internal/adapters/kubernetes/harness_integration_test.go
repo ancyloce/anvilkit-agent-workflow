@@ -35,7 +35,7 @@ const (
 	clusterNamespace = "anvilkit-components"
 	clusterBackend   = "kind-anvilkit-dev"
 	wiringProfile    = "harness-wiring-dev-v1"
-	validatorProfile = "validator-fixed-dev-v1"
+	validatorProfile = "validator-fixture-v1"
 	fixtureDigest    = "sha256:abeb263b000189efdd8206ff39eeb4f2f7f3217f1c480491868b46da4a21c6a8"
 )
 
@@ -142,6 +142,7 @@ func TestHarnessOnTheDevelopmentCluster(t *testing.T) {
 	launcher, err := k8s.New(c.kubeconfig, clusterNamespace, k8s.Options{
 		Backend: clusterBackend, ImageRegistry: c.registry, EnabledProfiles: []string{wiringProfile, validatorProfile},
 		SidecarControlAddress: c.sidecarControlAddr, SidecarIdentityMode: "mtls", SidecarIdentitySecret: "anvilkit-job-access-sidecar-identity", CandidateSeccompProfile: "anvilkit/candidate.json",
+		Development: true, // both profiles are in the development state (P0.8)
 	})
 	require.NoError(t, err)
 	profile, err := jobschema.ProfileByID(wiringProfile)
@@ -300,7 +301,7 @@ func TestHarnessOnTheDevelopmentCluster(t *testing.T) {
 	})
 
 	t.Run("the fixed validator Job certifies its component in the cluster and Control binds npm, browser, css and evidence", func(t *testing.T) {
-		// P10d: the anvilkit-validator image (validator-fixed-dev-v1) under
+		// P10d: the anvilkit-validator image (validator-fixture-v1, P0.8) under
 		// the same harness layout, admission and sidecar; the chain runs on
 		// the reviewed fixed component baked into the image, the deliverables
 		// reach the foundation's store through the kind network and Control

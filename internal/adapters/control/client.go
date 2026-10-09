@@ -120,12 +120,12 @@ var phases = map[string]controlv1.InstancePhase{
 	"succeeded": controlv1.InstancePhase_INSTANCE_PHASE_SUCCEEDED, "failed": controlv1.InstancePhase_INSTANCE_PHASE_FAILED,
 }
 
-func (c *Client) ObserveInstance(ctx context.Context, attemptID, instanceID string, obs activities.PodObservation) error {
+func (c *Client) ObserveInstance(ctx context.Context, tenantID, attemptID, instanceID string, obs activities.PodObservation) error {
 	phase, ok := phases[obs.Phase]
 	if !ok {
 		phase = controlv1.InstancePhase_INSTANCE_PHASE_UNKNOWN
 	}
-	_, err := c.exec.ObserveInstance(ctx, &controlv1.ObserveInstanceRequest{AttemptId: attemptID, InstanceId: instanceID, Phase: phase, ExitCode: obs.ExitCode, ObservedAt: timestamppb.New(obs.ObservedAt)})
+	_, err := c.exec.ObserveInstance(ctx, &controlv1.ObserveInstanceRequest{TenantId: tenantID, AttemptId: attemptID, InstanceId: instanceID, Phase: phase, ExitCode: obs.ExitCode, ObservedAt: timestamppb.New(obs.ObservedAt)})
 	return nonRetryable(err)
 }
 

@@ -25,7 +25,7 @@ func (c *Client) GetPreviewSource(ctx context.Context, tenantID, operationID str
 	if op.GetOperation().GetKind() != controlv1.OperationKind_OPERATION_KIND_PREVIEW_BUILD || subject.GetSourceHandle() == "" {
 		return activities.PreviewSource{}, activities.Refused("INVALID_ARGUMENT", fmt.Errorf("operation %s is not a preview build with its source", operationID))
 	}
-	read, err := controlv1.NewArtifactServiceClient(c.conn).ReadArtifact(ctx, &controlv1.ReadArtifactRequest{Handle: subject.GetSourceHandle(), OperationId: operationID})
+	read, err := controlv1.NewArtifactServiceClient(c.conn).ReadArtifact(ctx, &controlv1.ReadArtifactRequest{Handle: subject.GetSourceHandle(), OperationId: operationID, TenantId: tenantID})
 	if err != nil {
 		return activities.PreviewSource{}, nonRetryable(err)
 	}
@@ -56,6 +56,7 @@ func optional(s string) *string {
 
 func (c *Client) RecordPreview(ctx context.Context, in activities.PreviewRecordInput) (uint64, error) {
 	req := &controlv1.RecordPreviewRequest{
+		Command:     c.command(in.TenantID, fmt.Sprintf("preview-record:%s:%d", in.OperationID, in.ExpectedRevision), in),
 		OperationId: in.OperationID, ExpectedRevision: strconv.FormatUint(in.ExpectedRevision, 10), State: previewStates[in.State],
 		SourceRevision: optional(in.SourceRevision), CurrentRevision: optional(in.CurrentRevision), SourceDigest: in.SourceDigest,
 		BuildProfileId: in.BuildProfileID, HostProfileId: in.HostProfileID, FailureCode: optional(in.FailureCode),

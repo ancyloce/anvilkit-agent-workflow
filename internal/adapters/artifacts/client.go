@@ -133,8 +133,8 @@ func (c *Client) put(ctx context.Context, cap *controlv1.TransferCapability, bod
 // Read obtains the download capability under the reading operation's
 // relationship and verifies the bytes against the digest and size Control
 // answered before returning them.
-func (c *Client) Read(ctx context.Context, operationID, transferID, handle string, maxBytes int64) ([]byte, activities.ArtifactBinding, error) {
-	resp, err := c.artifacts.ReadArtifact(ctx, &controlv1.ReadArtifactRequest{TransferId: transferID, Handle: handle, OperationId: operationID})
+func (c *Client) Read(ctx context.Context, tenantID, operationID, transferID, handle string, maxBytes int64) ([]byte, activities.ArtifactBinding, error) {
+	resp, err := c.artifacts.ReadArtifact(ctx, &controlv1.ReadArtifactRequest{TransferId: transferID, Handle: handle, OperationId: operationID, TenantId: tenantID})
 	if err != nil {
 		return nil, activities.ArtifactBinding{}, fmt.Errorf("read artifact: %w", err)
 	}
