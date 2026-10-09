@@ -29,6 +29,8 @@ type previewScript struct {
 	saveErr error
 	stage   activities.AcceptedStage
 	current string
+	// identity: the identity Control resolved for the lineage, if any.
+	identity *activities.ComponentIdentity
 }
 
 type previewRecord struct {
@@ -56,7 +58,7 @@ func previewEnv(t *testing.T, script previewScript) (*testsuite.TestWorkflowEnvi
 	r := &previewRecord{}
 	r.record(env)
 	env.OnActivity(activities.NameGetPreviewSource, mock.Anything, "tenant_a", "op_PRV").Return(activities.PreviewSource{
-		ProfileID: "preview-build-v1", Lineage: "sha256:lineage", BaseRevision: "3", Source: editedSource,
+		ProfileID: "preview-build-v1", Lineage: "sha256:lineage", BaseRevision: "3", Source: editedSource, Identity: script.identity,
 	}, nil)
 	rev := uint64(0)
 	env.OnActivity(activities.NameRecordPreview, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.PreviewRecordInput) (uint64, error) {
@@ -137,10 +139,20 @@ func TestPreviewBuild(t *testing.T) {
 		require.Len(t, r.creates, 1)
 		require.Equal(t, []activities.LaunchInput{{Name: "source", Digest: "sha256:edit", Handle: "h_edit"}}, r.creates[0].Inputs, "the build gets exactly the saved bytes")
 		require.Equal(t, "validator-source-v1", r.creates[0].ProfileID)
-		require.Equal(t, &activities.ComponentIdentity{SourceRevision: "4"}, r.creates[0].Component, "the build certifies the saved revision")
+		require.Equal(t, &activities.ComponentIdentity{SourceRevision: "4"}, r.creates[0].Component, "a lineage without an allocated identity: the saved revision only")
 		last := r.last()
 		require.Equal(t, "succeeded", last.Outcome)
 		require.Equal(t, "preview_ready", last.Phase)
+	})
+
+	t.Run("the build of a lineage with an allocated identity certifies the saved bytes under it", func(t *testing.T) {
+		env, r := previewEnv(t, previewScript{save: activities.SaveSourceResult{EffectID: "eff_1", State: "saved", Revision: "4"},
+			stage: certified("", moduleA, cssA, evidence), current: "4",
+			identity: &activities.ComponentIdentity{ComponentID: "cmp_hero", PuckType: "Hero", PackageName: "@anvilkit/hero"}})
+		env.ExecuteWorkflow(workflows.PreviewWorkflowName, previewInput)
+		require.NoError(t, env.GetWorkflowError())
+		require.Len(t, r.creates, 1)
+		require.Equal(t, &activities.ComponentIdentity{ComponentID: "cmp_hero", PuckType: "Hero", PackageName: "@anvilkit/hero", SourceRevision: "4"}, r.creates[0].Component)
 	})
 
 	t.Run("a conflicting save keeps the edits: no build, the current revision is named", func(t *testing.T) {

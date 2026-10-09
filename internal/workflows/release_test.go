@@ -34,6 +34,8 @@ type releaseScript struct {
 	activation []activities.ReleaseEffectResult
 	bindingErr error
 	pollsRun   int
+	// unallocated: the lineage has no allocated component identity.
+	unallocated bool
 }
 
 type releaseRecord struct {
@@ -96,9 +98,13 @@ func releaseEnv(t *testing.T, script releaseScript) (*testsuite.TestWorkflowEnvi
 	}
 	r := &releaseRecord{publishes: map[string][]activities.ReleaseEffectCall{}}
 	r.record(env)
+	identity := &activities.ComponentIdentity{ComponentID: "cmp_hero", PuckType: "Hero", PackageName: "@anvilkit/hero"}
+	if script.unallocated {
+		identity = nil
+	}
 	env.OnActivity(activities.NameGetReleaseBinding, mock.Anything, "tenant_a", "op_REL").Return(activities.ReleaseBinding{
 		ProfileID: "release-v1", Lineage: "sha256:lineage", SourceRevision: "4", PackageVersion: "1.0.0", Source: editedSource, ExecutionEpoch: 1,
-		Deadline: env.Now().Add(720 * time.Hour),
+		Deadline: env.Now().Add(720 * time.Hour), Identity: identity,
 	}, script.bindingErr)
 	env.OnActivity(activities.NameBuildReleaseSubj, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.BuildSubjectInput) (activities.BuiltSubject, error) {
 		return activities.BuiltSubject{Subject: subjectA, Artifacts: activities.ReleaseArtifacts{Npm: npmA, Browser: moduleA, CSS: []activities.ReleaseStyle{{Path: "styles/hero.css", Artifact: cssA}}}}, nil
@@ -205,7 +211,8 @@ func TestReleaseWorkflow(t *testing.T) {
 		require.Equal(t, []string{"certifying", "awaiting_approval", "publishing", "publishing", "published", "activated"}, r.states())
 		require.Len(t, r.creates, 1)
 		require.Equal(t, []activities.LaunchInput{{Name: "source", Digest: "sha256:edit", Handle: "h_edit"}}, r.creates[0].Inputs, "the validator certifies exactly the bound bytes")
-		require.Equal(t, &activities.ComponentIdentity{SourceRevision: "4"}, r.creates[0].Component, "at the bound revision")
+		require.Equal(t, &activities.ComponentIdentity{ComponentID: "cmp_hero", PuckType: "Hero", PackageName: "@anvilkit/hero", SourceRevision: "4"}, r.creates[0].Component,
+			"at the bound revision, under the identity allocated to the lineage")
 		require.Len(t, r.publishes["npm"], 1)
 		require.Len(t, r.publishes["browser"], 1)
 		npm, browser := r.publishes["npm"][0].Effect, r.publishes["browser"][0].Effect
@@ -280,6 +287,16 @@ func TestReleaseWorkflow(t *testing.T) {
 		require.Empty(t, r.activations)
 		require.Equal(t, "EFFECT_UNCERTAIN", r.last().FailureCode)
 		require.Len(t, r.publishes["browser"], 4, "the first send and three bounded queries of the same identity")
+	})
+
+	t.Run("a lineage without an allocated component identity is neither certified nor released", func(t *testing.T) {
+		env, r := releaseEnv(t, releaseScript{stage: certifiedRelease(), unallocated: true})
+		env.ExecuteWorkflow(workflows.ReleaseWorkflowName, releaseInput)
+		require.NoError(t, env.GetWorkflowError())
+		require.Equal(t, "failed", r.final().State)
+		require.Equal(t, "IDENTITY_UNALLOCATED", r.final().FailureCode)
+		require.Empty(t, r.creates, "no validator launch")
+		require.Empty(t, r.publishes)
 	})
 
 	t.Run("a definitely failed npm target stops before the browser target", func(t *testing.T) {

@@ -132,12 +132,17 @@ func PreviewBuild(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Cont
 		}
 
 		// 2. The isolated build of exactly the saved bytes, certified at the
-		// saved revision (P0.8: the launch names it; no allocated identity is
-		// recorded for a lineage, so the source's declaration names the component).
+		// saved revision and, when Control resolved one, under the identity
+		// allocated to the lineage (P0.8: an edit that declares another
+		// component, type or package is not certified).
+		component := &activities.ComponentIdentity{SourceRevision: saved.Revision}
+		if id := src.Identity; id != nil {
+			component.ComponentID, component.PuckType, component.PackageName = id.ComponentID, id.PuckType, id.PackageName
+		}
 		stage, _, _, code := runJobStep(ctx, q, bounds, stepSpec{
 			operationID: operationID, tenantID: tenantID, stepID: previewStepID, profileID: buildProfile, launchPrefix: "prv",
 			inputs:    []activities.LaunchInput{{Name: "source", Digest: src.Source.Digest, Handle: src.Source.Handle}},
-			component: &activities.ComponentIdentity{SourceRevision: saved.Revision},
+			component: component,
 		}, state)
 		if code != "" {
 			fail(code)

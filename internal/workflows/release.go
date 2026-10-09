@@ -149,11 +149,21 @@ func Release(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Context, 
 				return fail(refusal(err, "SOURCE_UNAVAILABLE"), "source_rejected")
 			}
 			// 2. Independent certification of exactly those bytes at the bound
-			// revision (P0.8: the launch names it, the certification binds it).
+			// revision and under the identity allocated to the lineage (P0.8:
+			// the launch names both, the certification binds both; a lineage
+			// without an allocated identity is never released).
+			component := &activities.ComponentIdentity{SourceRevision: rel.Binding.SourceRevision}
+			if workflow.GetVersion(ctx, "release-lineage-identity", workflow.DefaultVersion, 1) == 1 {
+				id := rel.Binding.Identity
+				if id == nil {
+					return fail("IDENTITY_UNALLOCATED", "source_rejected")
+				}
+				component.ComponentID, component.PuckType, component.PackageName = id.ComponentID, id.PuckType, id.PackageName
+			}
 			stage, _, _, code := runJobStep(ctx, q, bounds, stepSpec{
 				operationID: operationID, tenantID: tenantID, stepID: releaseCertifyStep, profileID: lbounds.ReleaseValidatorProfile, launchPrefix: "rel",
 				inputs:    []activities.LaunchInput{{Name: "source", Digest: rel.Binding.Source.Digest, Handle: rel.Binding.Source.Handle}},
-				component: &activities.ComponentIdentity{SourceRevision: rel.Binding.SourceRevision},
+				component: component,
 			}, state)
 			if code != "" {
 				return fail(code, "certification_failed")
