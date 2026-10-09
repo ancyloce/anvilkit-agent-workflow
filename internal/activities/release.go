@@ -193,6 +193,7 @@ type certificationDoc struct {
 		Bindings struct {
 			ComponentID            string         `json:"componentId"`
 			PuckType               string         `json:"puckType"`
+			SourceRevision         string         `json:"sourceRevision"`
 			SourceDigest           string         `json:"sourceDigest"`
 			PackageName            string         `json:"packageName"`
 			Version                string         `json:"version"`
@@ -235,7 +236,7 @@ func (a *LifecycleActivities) BuildReleaseSubject(ctx context.Context, in BuildS
 	if in.Stage.Verdict != "certified" || evidence == nil || npm == nil || browser == nil || len(css) == 0 {
 		return BuiltSubject{}, refusedf("CERTIFICATION_MISSING", "the certified stage lacks its evidence, npm, browser or css artifacts")
 	}
-	raw, _, err := a.Artifacts.Read(ctx, in.OperationID, evidence.TransferID, evidence.Handle, maxCertificationBytes)
+	raw, _, err := a.Artifacts.Read(ctx, in.TenantID, in.OperationID, evidence.TransferID, evidence.Handle, maxCertificationBytes)
 	if err != nil {
 		return BuiltSubject{}, err
 	}
@@ -252,6 +253,8 @@ func (a *LifecycleActivities) BuildReleaseSubject(ctx context.Context, in BuildS
 		return BuiltSubject{}, refusedf("CERTIFICATION_MISMATCH", "the certified npm or browser digests are not the stage's artifacts")
 	case len(b.CSS) != len(css):
 		return BuiltSubject{}, refusedf("CERTIFICATION_MISMATCH", "the certification binds %d stylesheets, the stage holds %d", len(b.CSS), len(css))
+	case b.SourceRevision != in.Binding.SourceRevision:
+		return BuiltSubject{}, refusedf("CERTIFICATION_MISMATCH", "the certification binds source revision %q, the release binds %s", b.SourceRevision, in.Binding.SourceRevision)
 	case b.Version != in.Binding.PackageVersion:
 		return BuiltSubject{}, refusedf("VERSION_MISMATCH", "the certified source declares version %s, the release names %s", b.Version, in.Binding.PackageVersion)
 	}
@@ -415,7 +418,7 @@ func (a *LifecycleActivities) PublishTarget(ctx context.Context, call ReleaseEff
 	// read, and never consumes a permit or becomes a possible send.
 	in := PublishInput{Target: call.Target, Occurrence: call.Effect.Occurrence, ReleaseID: call.ReleaseID, Subject: s, Destination: destination}
 	read := func(art StageArtifact, path string) error {
-		body, _, err := a.Artifacts.Read(ctx, call.Effect.OperationID, art.TransferID, art.Handle, maxPublicationArtifact)
+		body, _, err := a.Artifacts.Read(ctx, call.Effect.TenantID, call.Effect.OperationID, art.TransferID, art.Handle, maxPublicationArtifact)
 		if err != nil {
 			return fmt.Errorf("certified artifact %s: %w", art.Class, err)
 		}

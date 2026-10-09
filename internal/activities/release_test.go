@@ -78,7 +78,7 @@ type fakeArtifacts struct {
 	bodies map[string][]byte
 }
 
-func (f fakeArtifacts) Read(_ context.Context, _, _, handle string, _ int64) ([]byte, activities.ArtifactBinding, error) {
+func (f fakeArtifacts) Read(_ context.Context, _, _, _, handle string, _ int64) ([]byte, activities.ArtifactBinding, error) {
 	b, ok := f.bodies[handle]
 	if !ok {
 		return nil, activities.ArtifactBinding{}, errors.New("artifact unavailable")
@@ -232,17 +232,21 @@ func TestReleaseBindingAndSubject(t *testing.T) {
 	b, err := f.acts.GetReleaseBinding(ctx, "t", "op")
 	require.NoError(t, err)
 
-	evidence := []byte(fmt.Sprintf(`{"verdict":"certified","certification":{"verdict":"certified","complete":true,"bindings":{"componentId":"cmp_x","puckType":"Hero","sourceDigest":"sha256:m","packageName":"@anvilkit/x","version":"%%s","buildProfileId":"b","buildProfileDigest":"sha256:b","validatorProfileId":"v","validatorProfileDigest":"sha256:v","hostAbi":"host-abi-dev-v1","hostAbiDigest":"sha256:h","npm":{"digest":"%s","sizeBytes":"%s"},"browser":{"digest":"%s","sizeBytes":"%s"},"css":[{"path":"styles/x.css","digest":"%s","sizeBytes":"%s"}]}}}`,
+	evidence := []byte(fmt.Sprintf(`{"verdict":"certified","certification":{"verdict":"certified","complete":true,"bindings":{"componentId":"cmp_x","puckType":"Hero","sourceRevision":"%%s","sourceDigest":"sha256:m","packageName":"@anvilkit/x","version":"%%s","buildProfileId":"b","buildProfileDigest":"sha256:b","validatorProfileId":"v","validatorProfileDigest":"sha256:v","hostAbi":"host-abi-dev-v1","hostAbiDigest":"sha256:h","npm":{"digest":"%s","sizeBytes":"%s"},"browser":{"digest":"%s","sizeBytes":"%s"},"css":[{"path":"styles/x.css","digest":"%s","sizeBytes":"%s"}]}}}`,
 		f.arts.Npm.Digest, f.arts.Npm.SizeBytes, f.arts.Browser.Digest, f.arts.Browser.SizeBytes, f.arts.CSS[0].Artifact.Digest, f.arts.CSS[0].Artifact.SizeBytes))
-	build := func(version string) (activities.BuiltSubject, error) {
-		body := []byte(fmt.Sprintf(string(evidence), version))
+	build := func(revision, version string) (activities.BuiltSubject, error) {
+		body := []byte(fmt.Sprintf(string(evidence), revision, version))
 		f.acts.Artifacts = fakeArtifacts{bodies: map[string][]byte{"h_ev": body}}
 		stage := activities.AcceptedStage{Verdict: "certified", Artifacts: []activities.StageArtifact{f.arts.Npm, f.arts.Browser, f.arts.CSS[0].Artifact, art("h_ev", "evidence", body)}}
 		return f.acts.BuildReleaseSubject(ctx, activities.BuildSubjectInput{Binding: b, Stage: stage, Destinations: f.subject.Destinations})
 	}
-	_, err = build("1.0.1")
+	_, err = build("2", "1.0.1")
 	require.Equal(t, "VERSION_MISMATCH", activities.RefusalCode(err))
-	built, err := build("1.0.0")
+	// P0.8: the certification binds the launch's revision; another one (the
+	// image's default "1" included) is not this release's certification.
+	_, err = build("1", "1.0.0")
+	require.Equal(t, "CERTIFICATION_MISMATCH", activities.RefusalCode(err))
+	built, err := build("2", "1.0.0")
 	require.NoError(t, err)
 	require.Equal(t, "2", built.Subject.SourceRevision, "the revision is the source authority's")
 	require.Equal(t, []activities.ReleaseStyle{{Path: "styles/x.css", Artifact: f.arts.CSS[0].Artifact}}, built.Artifacts.CSS)

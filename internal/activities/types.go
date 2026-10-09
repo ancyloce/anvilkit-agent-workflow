@@ -82,6 +82,22 @@ type CreateJobInput struct {
 	ExecutionEpoch string
 	LaunchEpoch    string
 	Inputs         []LaunchInput
+	// Component is the allocated identity the launch certifies or produces
+	// (P0.8, the envelope's component): nil when the step has none.
+	Component *ComponentIdentity `json:",omitempty"`
+}
+
+// ComponentIdentity is what a launch certifies or produces: the source
+// revision it binds (always, for a validator on bound source) and, for a
+// generation, the allocated identity of its frozen brief (componentId,
+// puckType and packageName, all three or none). A validator refuses source
+// declaring another identity. Preview and release launches name only the
+// revision: no allocated identity is recorded for a lineage.
+type ComponentIdentity struct {
+	ComponentID    string
+	PuckType       string
+	PackageName    string
+	SourceRevision string
 }
 
 // LaunchInput is one typed input of a launch: a name bound to a digest and,
@@ -279,7 +295,7 @@ type Control interface {
 	OpenAttempt(ctx context.Context, in OpenAttemptInput) (AttemptRef, error)
 	PrepareLaunch(ctx context.Context, in PrepareLaunchInput) (LaunchRef, error)
 	RegisterInstance(ctx context.Context, in RegisterInstanceInput) (InstanceRef, error)
-	ObserveInstance(ctx context.Context, attemptID, instanceID string, obs PodObservation) error
+	ObserveInstance(ctx context.Context, tenantID, attemptID, instanceID string, obs PodObservation) error
 	AcceptResult(ctx context.Context, in AcceptResultInput) (StageRef, error)
 	CloseAttempt(ctx context.Context, in CloseAttemptInput) (CloseResult, error)
 }

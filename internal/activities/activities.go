@@ -46,7 +46,7 @@ func (a *Activities) RegisterInstance(ctx context.Context, in RegisterInstanceIn
 }
 
 func (a *Activities) ObserveInstance(ctx context.Context, in ObserveInstanceInput) error {
-	return a.Control.ObserveInstance(ctx, in.Attempt.AttemptID, in.Instance.InstanceID, in.Observation)
+	return a.Control.ObserveInstance(ctx, in.Attempt.TenantID, in.Attempt.AttemptID, in.Instance.InstanceID, in.Observation)
 }
 
 func (a *Activities) AcceptResult(ctx context.Context, in AcceptResultInput) (StageRef, error) {

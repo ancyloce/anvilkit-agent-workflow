@@ -23,6 +23,7 @@ const (
 	NameRecordLease            = "RecordLease"
 	NameGetAcceptedStage       = "GetAcceptedStage"
 	NameRegisterCandidate      = "RegisterCandidate"
+	NameBriefIdentity          = "BriefIdentity"
 )
 
 type GetGenerationInput struct {

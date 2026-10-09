@@ -221,7 +221,7 @@ type PreparationControl interface {
 // size Control answered.
 type Artifacts interface {
 	Upload(ctx context.Context, tenantID, operationID, commandID, class, mediaType string, body []byte) (ArtifactBinding, error)
-	Read(ctx context.Context, operationID, transferID, handle string, maxBytes int64) ([]byte, ArtifactBinding, error)
+	Read(ctx context.Context, tenantID, operationID, transferID, handle string, maxBytes int64) ([]byte, ArtifactBinding, error)
 }
 
 // Knowledge is the port that freezes the content digests of the selected

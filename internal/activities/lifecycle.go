@@ -196,13 +196,13 @@ func (a *LifecycleActivities) AnalyzeRequirements(ctx context.Context, in Analyz
 	if limit <= 0 {
 		limit = 256 << 10
 	}
-	prompt, _, err := a.Artifacts.Read(ctx, in.OperationID, in.Prompt.TransferID, in.Prompt.Handle, limit)
+	prompt, _, err := a.Artifacts.Read(ctx, in.TenantID, in.OperationID, in.Prompt.TransferID, in.Prompt.Handle, limit)
 	if err != nil {
 		return Analysis{}, fmt.Errorf("read prompt: %w", err)
 	}
 	messages := []ModelMessage{{Role: "system", Content: analysisSystemPrompt}, {Role: "user", Content: "Request:\n" + string(prompt)}}
 	for _, ans := range in.Answers {
-		body, _, err := a.Artifacts.Read(ctx, in.OperationID, ans.Answer.TransferID, ans.Answer.Handle, limit)
+		body, _, err := a.Artifacts.Read(ctx, in.TenantID, in.OperationID, ans.Answer.TransferID, ans.Answer.Handle, limit)
 		if err != nil {
 			return Analysis{}, fmt.Errorf("read answer of round %d: %w", ans.Round, err)
 		}
@@ -307,6 +307,52 @@ type briefAnswer struct {
 	Questions []Question      `json:"questions"`
 	Answer    ArtifactBinding `json:"answer"`
 }
+
+// BriefIdentityInput names the frozen brief of a generation and the source
+// revision Control recorded for the generation, if any (it must be the
+// brief's).
+type BriefIdentityInput struct {
+	TenantID       string
+	OperationID    string
+	Brief          BriefRef
+	SourceRevision string
+}
+
+// BriefIdentity reads the generation's frozen brief (its bytes verified
+// against the recorded digest) and returns the identity it allocated, with
+// the source revision it froze (P0.8): the launch envelopes of the
+// generation's steps carry it, and the validator certifies nothing else.
+func (a *LifecycleActivities) BriefIdentity(ctx context.Context, in BriefIdentityInput) (ComponentIdentity, error) {
+	raw, _, err := a.Artifacts.Read(ctx, in.TenantID, in.OperationID, in.Brief.Brief.TransferID, in.Brief.Brief.Handle, 1<<20)
+	if err != nil {
+		return ComponentIdentity{}, err
+	}
+	if got := fmt.Sprintf("sha256:%x", sha256.Sum256(raw)); got != in.Brief.Brief.Digest {
+		return ComponentIdentity{}, Refused("BRIEF_DIGEST_MISMATCH", errors.New("the brief's bytes differ from its recorded digest"))
+	}
+	var doc BriefDocument
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return ComponentIdentity{}, Refused("BRIEF_INVALID", fmt.Errorf("the brief is not a brief document: %w", err))
+	}
+	if doc.ComponentID == "" || doc.PuckType == "" || doc.PackageName == "" {
+		return ComponentIdentity{}, Refused("BRIEF_INVALID", errors.New("the brief allocates no complete identity"))
+	}
+	// The revision is the one the brief froze; a generation that names its own
+	// must name the same (the team refuses a launch that differs from its brief).
+	revision := doc.SourceRevision
+	switch {
+	case revision == "":
+		revision = in.SourceRevision
+	case in.SourceRevision != "" && in.SourceRevision != revision:
+		return ComponentIdentity{}, Refused("BRIEF_INVALID", fmt.Errorf("the generation names source revision %s, its brief froze %s", in.SourceRevision, revision))
+	}
+	if !briefRevisionPattern.MatchString(revision) {
+		return ComponentIdentity{}, Refused("BRIEF_INVALID", fmt.Errorf("the brief's source revision %q is not a sequence", revision))
+	}
+	return ComponentIdentity{ComponentID: doc.ComponentID, PuckType: doc.PuckType, PackageName: doc.PackageName, SourceRevision: revision}, nil
+}
+
+var briefRevisionPattern = regexp.MustCompile(`^(0|[1-9][0-9]{0,19})$`)
 
 // FreezeBrief composes the brief document deterministically, uploads it as
 // a brief artifact bound to the operation under stable transfer commands
