@@ -118,10 +118,11 @@ func (c *Client) GetAnswer(ctx context.Context, in activities.GetAnswerInput) (a
 	return activities.AnswerRef{Found: true, AnswerID: a.GetAnswerId(), QuestionSetID: a.GetQuestionSetId(), QuestionSetRevision: a.GetQuestionSetRevision(), Answer: fromBinding(a.GetAnswer(), a.GetHandle()), Relay: enumWord(a.GetRelay().String(), "RELAY_STATE_")}, nil
 }
 
-func (c *Client) RecordBrief(ctx context.Context, operationID, tenantID, commandID string, brief activities.ArtifactBinding, requirementsDigest string, sources []activities.SourceReference, frozen activities.FrozenReferences) (activities.BriefRef, error) {
+func (c *Client) RecordBrief(ctx context.Context, operationID, tenantID, commandID string, brief activities.ArtifactBinding, requirementsDigest string, sources []activities.SourceReference, frozen activities.FrozenReferences, identity activities.ComponentIdentity) (activities.BriefRef, error) {
 	req := &controlv1.RecordBriefRequest{
 		OperationId: operationID, Brief: &controlv1.ArtifactBinding{TransferId: brief.TransferID, Digest: brief.Digest}, RequirementsDigest: requirementsDigest,
 		SourceRevisions: toSourceRefs(sources), BrandDigests: toContentDigests(frozen.BrandDigests), AssetDigests: toContentDigests(frozen.AssetDigests),
+		Component: toComponentIdentity(&identity),
 	}
 	req.Command = c.command(tenantID, commandID, req)
 	resp, err := c.preparation().RecordBrief(ctx, req)
@@ -282,4 +283,20 @@ func (c *Client) GetEffect(ctx context.Context, tenantID, effectID string) (acti
 		return activities.EffectPermit{}, nonRetryable(err)
 	}
 	return fromEffect(resp.GetEffect(), false), nil
+}
+
+// toComponentIdentity is the allocated identity on the wire; nil when none is named.
+func toComponentIdentity(id *activities.ComponentIdentity) *controlv1.ComponentIdentity {
+	if id == nil || id.ComponentID == "" {
+		return nil
+	}
+	return &controlv1.ComponentIdentity{ComponentId: id.ComponentID, PuckType: id.PuckType, PackageName: id.PackageName}
+}
+
+// fromComponentIdentity is the lineage's allocated identity; nil when Control resolved none.
+func fromComponentIdentity(id *controlv1.ComponentIdentity) *activities.ComponentIdentity {
+	if id == nil {
+		return nil
+	}
+	return &activities.ComponentIdentity{ComponentID: id.GetComponentId(), PuckType: id.GetPuckType(), PackageName: id.GetPackageName()}
 }

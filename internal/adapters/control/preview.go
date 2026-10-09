@@ -31,7 +31,7 @@ func (c *Client) GetPreviewSource(ctx context.Context, tenantID, operationID str
 	}
 	t := read.GetTransfer()
 	return activities.PreviewSource{
-		ProfileID: subject.GetProfileId(), Lineage: subject.GetSubjectDigest(), BaseRevision: subject.GetSourceRevision(),
+		ProfileID: subject.GetProfileId(), Lineage: subject.GetSubjectDigest(), BaseRevision: subject.GetSourceRevision(), Identity: fromComponentIdentity(op.GetOperation().GetLineageIdentity()),
 		Source: activities.StageArtifact{Handle: t.GetHandle(), Class: "source", Digest: t.GetExpectedDigest(), SizeBytes: t.GetExpectedSize(),
 			TransferID: t.GetTransferId(), ObjectVersion: t.GetObjectVersion()},
 	}, nil

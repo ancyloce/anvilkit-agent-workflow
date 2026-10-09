@@ -42,7 +42,7 @@ func (c *Client) GetReleaseBinding(ctx context.Context, tenantID, operationID st
 		ProfileID: subject.GetProfileId(), Lineage: subject.GetSubjectDigest(), SourceRevision: subject.GetSourceRevision(), PackageVersion: subject.GetPackageVersion(),
 		Source: activities.StageArtifact{Handle: t.GetHandle(), Class: "source", Digest: t.GetExpectedDigest(), SizeBytes: t.GetExpectedSize(),
 			TransferID: t.GetTransferId(), ObjectVersion: t.GetObjectVersion()},
-		ExecutionEpoch: epoch, Deadline: view.GetDeadline().AsTime(),
+		ExecutionEpoch: epoch, Deadline: view.GetDeadline().AsTime(), Identity: fromComponentIdentity(view.GetLineageIdentity()),
 	}, nil
 }
 
