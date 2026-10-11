@@ -249,7 +249,7 @@ func analyzeRound(ctx workflow.Context, q Queues, b Bounds, lb LifecycleBounds, 
 	closeOutcome, closeCode := "completed", ""
 	defer func() {
 		disconnected, _ := workflow.NewDisconnectedContext(ctx)
-		if cerr := closeSettled(closeAttempt(disconnected, q, b, attempt, attempt.AttemptID+":close", closeOutcome, "not_required", closeCode)); cerr != nil {
+		if cerr := closeForSettlement(disconnected, q, b, attempt, attempt.AttemptID+":close", closeOutcome, "not_required", closeCode); cerr != nil {
 			workflow.GetLogger(ctx).Error("analysis attempt close refused", "attemptId", attempt.AttemptID, "error", cerr)
 		}
 	}()

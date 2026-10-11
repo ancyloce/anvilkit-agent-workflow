@@ -114,7 +114,7 @@ func PreviewBuild(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Cont
 			closeOutcome = "failed"
 		}
 		disconnected, _ := workflow.NewDisconnectedContext(ctx)
-		if cerr := closeSettled(closeAttempt(disconnected, q, bounds, saveAttempt, saveAttempt.AttemptID+":close", closeOutcome, "not_required", "")); cerr != nil {
+		if cerr := closeForSettlement(disconnected, q, bounds, saveAttempt, saveAttempt.AttemptID+":close", closeOutcome, "not_required", ""); cerr != nil {
 			logger.Error("save attempt close refused", "attemptId", saveAttempt.AttemptID, "error", cerr)
 		}
 		switch {

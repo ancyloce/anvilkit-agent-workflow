@@ -336,7 +336,7 @@ func Generation(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Contex
 		}
 		defer func() {
 			disconnected, _ := workflow.NewDisconnectedContext(ctx)
-			if closeErr := closeSettled(closeAttempt(disconnected, q, bounds, registration, registration.AttemptID+":close", "completed", "not_required", "")); closeErr != nil {
+			if closeErr := closeForSettlement(disconnected, q, bounds, registration, registration.AttemptID+":close", "completed", "not_required", ""); closeErr != nil {
 				err = closeErr
 			}
 		}()
@@ -682,7 +682,7 @@ func runJobStep(ctx workflow.Context, q Queues, b Bounds, spec stepSpec, state *
 				cleanup = "complete"
 			}
 		}
-		if cerr := closeSettled(closeLaunchAttempt(disconnected, q, b, attempt, launched, attempt.AttemptID+":close", outcome, cleanup, failureCode)); cerr != nil {
+		if cerr := closeLaunchForSettlement(disconnected, q, b, attempt, launched, attempt.AttemptID+":close", outcome, cleanup, failureCode); cerr != nil {
 			logger.Error("attempt close refused", "attemptId", attempt.AttemptID, "error", cerr)
 			if code == "" {
 				code = activities.RefusalCode(cerr)
@@ -697,7 +697,7 @@ func runJobStep(ctx workflow.Context, q Queues, b Bounds, spec stepSpec, state *
 			code = "CLEANUP_UNCONFIRMED"
 			return
 		}
-		if cerr := closeSettled(closeLaunchAttempt(disconnected, q, b, attempt, launched, attempt.AttemptID+":close:settled", outcome, "complete", failureCode)); cerr != nil {
+		if cerr := closeLaunchForSettlement(disconnected, q, b, attempt, launched, attempt.AttemptID+":close:settled", outcome, "complete", failureCode); cerr != nil {
 			logger.Error("cleanup settlement refused", "attemptId", attempt.AttemptID, "error", cerr)
 		}
 	}()

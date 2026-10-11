@@ -449,7 +449,7 @@ func releaseEffect(ctx workflow.Context, q Queues, b Bounds, operationID, tenant
 		}).Get(disconnected, &closed); cerr != nil {
 			logger.Error("release attempt close refused", "attemptId", attempt.AttemptID, "error", cerr)
 		}
-	} else if cerr := closeSettled(closeAttempt(disconnected, q, b, attempt, closeCmd, closeOutcome, "not_required", "")); cerr != nil {
+	} else if cerr := closeForSettlement(disconnected, q, b, attempt, closeCmd, closeOutcome, "not_required", ""); cerr != nil {
 		logger.Error("release attempt close refused", "attemptId", attempt.AttemptID, "error", cerr)
 	}
 	if callErr != nil {
