@@ -99,20 +99,20 @@ func (ids *identities) client(name string, ci config.ClientIdentity, defaultServ
 // a non-AnvilKit server (the Temporal frontend, the OTLP exporter) under a
 // ClientTLS section (tls verifies against the bundle read once; mtls
 // rotates with the workload's files).
-func (ids *identities) collector(name string, t config.ClientTLS) (grpc.DialOption, error) {
+func (ids *identities) collectorCredentials(name string, t config.ClientTLS) (credentials.TransportCredentials, error) {
 	switch t.Mode {
 	case "development":
 		if !ids.cfg.Development.Enabled {
 			return nil, fmt.Errorf("%s: development mode without development.enabled", name)
 		}
 		ids.log.Warn("DEVELOPMENT_ONLY plaintext transport", "connection", name)
-		return grpc.WithTransportCredentials(insecure.NewCredentials()), nil
+		return insecure.NewCredentials(), nil
 	case "tls":
 		pool, err := caPool(t.CAFile)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", name, err)
 		}
-		return grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{RootCAs: pool, ServerName: t.ServerName, MinVersion: tls.VersionTLS13})), nil
+		return credentials.NewTLS(&tls.Config{RootCAs: pool, ServerName: t.ServerName, MinVersion: tls.VersionTLS13}), nil
 	case "mtls":
 		t = ids.cfg.ResolvedTLS(t)
 		r, err := ids.reloader(config.MTLSFiles{CertFile: t.CertFile, KeyFile: t.KeyFile, CAFile: t.CAFile})
@@ -123,9 +123,18 @@ func (ids *identities) collector(name string, t config.ClientTLS) (grpc.DialOpti
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", name, err)
 		}
-		return grpc.WithTransportCredentials(creds), nil
+		return creds, nil
 	}
 	return nil, fmt.Errorf("%s: unknown mode %q", name, t.Mode)
+}
+
+// collector is collectorCredentials as a dial option (Temporal).
+func (ids *identities) collector(name string, t config.ClientTLS) (grpc.DialOption, error) {
+	c, err := ids.collectorCredentials(name, t)
+	if err != nil {
+		return nil, err
+	}
+	return grpc.WithTransportCredentials(c), nil
 }
 
 func caPool(path string) (*x509.CertPool, error) {

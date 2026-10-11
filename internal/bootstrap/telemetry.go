@@ -18,6 +18,7 @@ import (
 	temporalotel "go.temporal.io/sdk/contrib/opentelemetry"
 	"go.temporal.io/sdk/interceptor"
 	"go.uber.org/fx"
+	"google.golang.org/grpc/credentials"
 
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/config"
 )
@@ -47,11 +48,11 @@ func newTelemetry(lc fx.Lifecycle, cfg config.Config, ids *identities) (*telemet
 	t := &telemetry{registry: reg, metrics: temporalotel.NewMetricsHandler(temporalotel.MetricsHandlerOptions{Meter: meters.Meter("temporal-sdk-go")})}
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 	if cfg.Telemetry.OTLPEndpoint != "" {
-		transport, err := ids.collector("telemetry.otlp_tls", cfg.Telemetry.OTLPTLS)
+		creds, err := ids.collectorCredentials("telemetry.otlp_tls", cfg.Telemetry.OTLPTLS)
 		if err != nil {
 			return nil, err
 		}
-		spans, err := otlptracegrpc.New(context.Background(), otlptracegrpc.WithEndpoint(cfg.Telemetry.OTLPEndpoint), otlptracegrpc.WithDialOption(transport))
+		spans, err := otlptracegrpc.New(context.Background(), otlptracegrpc.WithEndpoint(cfg.Telemetry.OTLPEndpoint), otlpCredentials(creds))
 		if err != nil {
 			return nil, err
 		}
@@ -74,4 +75,14 @@ func newTelemetry(lc fx.Lifecycle, cfg config.Config, ids *identities) (*telemet
 	}
 	lc.Append(fx.Hook{OnStop: func(ctx context.Context) error { return meters.Shutdown(ctx) }})
 	return t, nil
+}
+
+// otlpCredentials hands the transport to the OTLP exporter itself: a dial
+// option alone loses to the exporter's default (TLS with the host's roots),
+// which dialed a development collector over TLS and a TLS one without its CA.
+func otlpCredentials(c credentials.TransportCredentials) otlptracegrpc.Option {
+	if c.Info().SecurityProtocol == "insecure" {
+		return otlptracegrpc.WithInsecure()
+	}
+	return otlptracegrpc.WithTLSCredentials(c)
 }
