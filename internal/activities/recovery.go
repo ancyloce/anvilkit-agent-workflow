@@ -2,6 +2,8 @@ package activities
 
 import (
 	"context"
+
+	"go.temporal.io/sdk/activity"
 )
 
 // Stable Activity names of the recovery reconciliation (DD-01 §7).
@@ -9,6 +11,7 @@ const (
 	NameEnumerateInventory  = "EnumerateInventory"
 	NameListFindings        = "ListFindings"
 	NameReconcileFinding    = "ReconcileFinding"
+	NameReconcileFindings   = "ReconcileFindings"
 	NameRecordLaunchOutcome = "RecordLaunchOutcome"
 	NameEvaluateRecovery    = "EvaluateRecovery"
 )
@@ -73,6 +76,22 @@ type ReconcileFindingInput struct {
 	FindingID string
 }
 
+// ReconcileFindingsInput is one page of findings advanced by one Activity
+// (P1.6): the Workflow's history grows by one Activity per page, not per
+// finding.
+type ReconcileFindingsInput struct {
+	RunID      string
+	FindingIDs []string
+}
+
+// ReconcileFindingsResult holds the advanced findings in input order; a
+// finding Control could not advance this round is absent from Findings and
+// named in Failures with the reason.
+type ReconcileFindingsResult struct {
+	Findings []Finding
+	Failures map[string]string
+}
+
 // RecordLaunchOutcomeInput carries the trusted launcher's evidence about a
 // job-launch finding in two steps: first the observation of the original
 // launch key (Job UID and Pods, Stopped false), which Control records
@@ -115,6 +134,37 @@ func (a *Activities) ListFindings(ctx context.Context, in ListFindingsInput) (Fi
 
 func (a *Activities) ReconcileFinding(ctx context.Context, in ReconcileFindingInput) (Finding, error) {
 	return a.Recovery.ReconcileFinding(ctx, in)
+}
+
+// ReconcileFindings advances a page of findings, each under its own
+// ReconcileFinding command with Control, heartbeating per finding. A
+// finding that fails is reported and left to the next round; when every
+// finding of the page failed transiently (Control unreachable) the
+// Activity fails so its retry policy applies.
+func (a *Activities) ReconcileFindings(ctx context.Context, in ReconcileFindingsInput) (ReconcileFindingsResult, error) {
+	out := ReconcileFindingsResult{Failures: map[string]string{}}
+	var last error
+	for _, id := range in.FindingIDs {
+		if err := ctx.Err(); err != nil {
+			return out, err
+		}
+		f, err := a.Recovery.ReconcileFinding(ctx, ReconcileFindingInput{RunID: in.RunID, FindingID: id})
+		activity.RecordHeartbeat(ctx, id)
+		if err != nil {
+			last = err
+			reason := RefusalCode(err)
+			if reason == "" {
+				reason = "UNAVAILABLE"
+			}
+			out.Failures[id] = reason
+			continue
+		}
+		out.Findings = append(out.Findings, f)
+	}
+	if len(out.Findings) == 0 && last != nil && RefusalCode(last) == "" {
+		return ReconcileFindingsResult{}, last
+	}
+	return out, nil
 }
 
 func (a *Activities) RecordLaunchOutcome(ctx context.Context, in RecordLaunchOutcomeInput) (Finding, error) {
