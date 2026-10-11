@@ -18,6 +18,7 @@ import (
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/interceptor"
+	tlog "go.temporal.io/sdk/log"
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
 	"go.uber.org/fx"
@@ -31,6 +32,7 @@ import (
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/adapters/modelproxy"
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/adapters/pagix"
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/config"
+	"github.com/ancyloce/anvilkit-agent-workflow/internal/redact"
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/workflows"
 )
 
@@ -103,6 +105,8 @@ func Bounds(e config.Execution) workflows.Bounds {
 		ObserveMaxAttempts: e.ObserveMaxAttempts, CleanupTimeout: e.Cleanup.Timeout, CleanupMaxAttempts: e.Cleanup.MaxAttempts,
 		UnresolvedSettleWindow: e.Cleanup.UnresolvedSettleWindow, CreateRequestLifetime: e.Cleanup.CreateRequestLifetime, ReconcileInitialInterval: e.Cleanup.ReconcileInitialInterval,
 		ReconcileMaxInterval: e.Cleanup.ReconcileMaxInterval, ReconcileMaxDuration: e.Cleanup.ReconcileMaxDuration,
+		ControlOutageWindow: e.ControlOutageWindow, ControlReadWindow: e.ControlReadWindow,
+		SettleMaxInterval: e.Settle.MaxInterval, SettlePollBound: e.Settle.PollBound,
 	}
 }
 
@@ -187,7 +191,8 @@ func Module() fx.Option {
 		fx.Provide(
 			config.Load,
 			func() *slog.Logger {
-				return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+				// Every record is redacted before it is written (P1.6).
+				return slog.New(redact.NewHandler(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
 			},
 			newTelemetry,
 			func(cfg config.Config, t *telemetry) *health {
@@ -196,7 +201,7 @@ func Module() fx.Option {
 				return h
 			},
 			newIdentities,
-			func(cfg config.Config, t *telemetry, ids *identities) (client.Client, error) {
+			func(cfg config.Config, t *telemetry, ids *identities, log *slog.Logger) (client.Client, error) {
 				// The transport is a dial option the SDK applies after its own
 				// (insecure) default, so it is the one in force.
 				transport, err := ids.collector("temporal.tls", cfg.Temporal.TLS)
@@ -204,7 +209,11 @@ func Module() fx.Option {
 					return nil, err
 				}
 				return client.Dial(client.Options{HostPort: cfg.Temporal.Address, Namespace: cfg.Temporal.Namespace, Identity: cfg.Temporal.WorkerIdentity + "@" + cfg.Temporal.BuildID,
-					Interceptors: t.interceptors, MetricsHandler: t.metrics, ConnectionOptions: client.ConnectionOptions{DialOptions: []grpc.DialOption{transport}}})
+					Interceptors: t.interceptors, MetricsHandler: t.metrics, ConnectionOptions: client.ConnectionOptions{DialOptions: []grpc.DialOption{transport}},
+					// P1.6: the SDK logs through the redacting logger, and
+					// every failure is redacted before it is written to
+					// history.
+					Logger: tlog.NewStructuredLogger(log), FailureConverter: redact.NewFailureConverter(nil)})
 			},
 			func(cfg config.Config, ids *identities) (*controladapter.Client, error) {
 				transport, err := ids.client("control", cfg.Control.Identity, "anvilkit-agent-control")
@@ -218,6 +227,7 @@ func Module() fx.Option {
 					Backend: cfg.Kubernetes.LaunchBackend, ImageRegistry: cfg.Kubernetes.ImageRegistry, EnabledProfiles: cfg.Kubernetes.EnabledProfiles,
 					SidecarControlAddress: cfg.Kubernetes.Sidecar.ControlAddress, SidecarIdentityMode: cfg.Kubernetes.Sidecar.IdentityMode, SidecarIdentitySecret: cfg.Kubernetes.Sidecar.IdentitySecret,
 					CandidateSeccompProfile: cfg.Kubernetes.CandidateSeccompProfile, Development: cfg.Development.Enabled,
+					ClientQPS: cfg.Kubernetes.ClientQPS, ClientBurst: cfg.Kubernetes.ClientBurst, ObserveInterval: cfg.Kubernetes.ObserveInterval,
 				})
 			},
 			func(cfg config.Config, ids *identities, log *slog.Logger) (activities.ModelCaller, error) {
@@ -324,6 +334,7 @@ func registerFixed(business, control worker.Worker, acts *activities.Activities)
 		activities.NameObserveLaunch: acts.ObserveLaunch, activities.NameDeleteJob: acts.DeleteJob, activities.NameCloseAttempt: acts.CloseAttempt,
 		activities.NameCancelModelCall:    acts.CancelModelCall,
 		activities.NameEnumerateInventory: acts.EnumerateInventory, activities.NameListFindings: acts.ListFindings, activities.NameReconcileFinding: acts.ReconcileFinding,
+		activities.NameReconcileFindings:   acts.ReconcileFindings,
 		activities.NameRecordLaunchOutcome: acts.RecordLaunchOutcome, activities.NameEvaluateRecovery: acts.EvaluateRecovery,
 	} {
 		control.RegisterActivityWithOptions(fn, activity.RegisterOptions{Name: name})
@@ -380,6 +391,10 @@ func newWorkers(cfg config.Config, c client.Client, acts *activities.Activities,
 	w.control = &queueWorker{name: cfg.Temporal.ControlTaskQueue}
 	identity := cfg.Temporal.WorkerIdentity + "@" + cfg.Temporal.BuildID
 	businessOpts, controlOpts := w.options(identity, w.business), w.options(identity, w.control)
+	// Each queue's worker runs a bounded number of Activities at once
+	// (P1.6): a burst of observations cannot starve the control queue.
+	businessOpts.MaxConcurrentActivityExecutionSize = cfg.Execution.MaxConcurrentActivities
+	controlOpts.MaxConcurrentActivityExecutionSize = cfg.Execution.MaxConcurrentActivities
 	if cfg.Development.Enabled && (len(cfg.Development.LoseReceiptOnce) > 0 || len(cfg.Development.HoldUntilCanceledOnce) > 0) {
 		log.Warn("DEVELOPMENT_ONLY fault injection enabled", "loseReceiptOnce", cfg.Development.LoseReceiptOnce, "holdUntilCanceledOnce", cfg.Development.HoldUntilCanceledOnce)
 		// The hold wraps the call (outermost) so a held result is withheld

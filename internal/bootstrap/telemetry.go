@@ -21,6 +21,7 @@ import (
 	"google.golang.org/grpc/credentials"
 
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/config"
+	"github.com/ancyloce/anvilkit-agent-workflow/internal/redact"
 )
 
 const serviceName = "anvilkit-agent-workflow"
@@ -57,7 +58,8 @@ func newTelemetry(lc fx.Lifecycle, cfg config.Config, ids *identities) (*telemet
 			return nil, err
 		}
 		provider := sdktrace.NewTracerProvider(
-			sdktrace.WithBatcher(spans),
+			// Span status and exception events are redacted before export (P1.6).
+			sdktrace.WithBatcher(redact.NewExporter(spans)),
 			sdktrace.WithResource(resource.NewSchemaless(semconv.ServiceName(serviceName))),
 			sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(cfg.Telemetry.SampleRatio))),
 		)
