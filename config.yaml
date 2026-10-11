@@ -72,6 +72,12 @@ kubernetes:
     identity_mode: mtls
     identity_secret: anvilkit-job-access-sidecar-identity
   candidate_seccomp_profile: anvilkit/candidate.json
+  # the launcher's client-go rate limit and Job observation cadence (P1.6):
+  # one observed Job costs two reads per observe_interval, so 200 Jobs per
+  # replica at 1s need 400 reads/s
+  client_qps: 500
+  client_burst: 1000
+  observe_interval: 1s
 execution:
   control_activity_timeout: 30s
   control_retry_initial: 1s
@@ -90,6 +96,22 @@ execution:
     reconcile_initial_interval: 5s
     reconcile_max_interval: 1m
     reconcile_max_duration: 24h
+  # P1.6: ordinary Control commands retry a transient failure within the
+  # outage window (refusals end at once); read-only commands within the
+  # wider read window.
+  control_outage_window: 5m
+  control_read_window: 15m
+  # the Model Proxy's SSE keepalive period; observe_heartbeat_timeout must
+  # be at least twice it (a model call heartbeats on every event)
+  model_keepalive: 15s
+  # Activities one queue's worker runs at once
+  max_concurrent_activities: 200
+  # settle/close/lease-release waits on Control: backoff from
+  # cleanup.reconcile_initial_interval to max_interval; after poll_bound
+  # polls the settlement continues as new (bounded history)
+  settle:
+    max_interval: 5m
+    poll_bound: 500
 # lifecycle (P13): the Preparation analysis call (the controlled route the
 # analysis uses, its output and exposure bounds, the frozen content-repair
 # allowance) and the Generation admission and lease supervision (the permit
