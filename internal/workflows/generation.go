@@ -65,6 +65,9 @@ func (s *generationState) nextOrdinal(stepID string, visit uint64) uint64 {
 // repair counter.
 func Generation(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Context, in Input) error {
 	return func(ctx workflow.Context, in Input) (err error) {
+		if in.Settle != nil {
+			return settleOnly(ctx, q, b, in)
+		}
 		logger := workflow.GetLogger(ctx)
 		var bounds Bounds
 		if err := workflow.SideEffect(ctx, func(workflow.Context) any { return b }).Get(&bounds); err != nil {
@@ -131,27 +134,35 @@ func Generation(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Contex
 		}
 		defer awaitHandlers(ctx)
 
+		// The settlement is registered before the first read (P1.6): a run
+		// that cannot read its operation through a Control outage still
+		// states an outcome instead of failing unsettled.
 		var view activities.GenerationView
-		if err := workflow.ExecuteActivity(business, activities.NameGetGeneration, activities.GetGenerationInput{OperationID: operationID, TenantID: tenantID}).Get(ctx, &view); err != nil {
-			return err
-		}
-		state.definition = view.DefinitionActivation
-		if view.Lease.State == "lost" {
-			state.fenced, state.fenceCode = true, "LEASE_LOST"
-		}
-
 		outcome, failureCode, phase := "failed", "", ""
 		defer func() {
 			state.done = true
 			disconnected, _ := workflow.NewDisconnectedContext(ctx)
 			releaseLease(disconnected, q, bounds, lbounds, operationID, tenantID, view, state)
 			if serr := settleOperation(disconnected, q, bounds, operationID, tenantID, operationID+":settle", outcome, failureCode, phase); serr != nil {
+				if IsContinueAsNew(serr) {
+					err = serr
+					return
+				}
 				logger.Error("generation settlement refused", "operationId", operationID, "error", serr)
 				if err == nil {
 					err = serr
 				}
 			}
 		}()
+
+		if err := workflow.ExecuteActivity(readOptions(ctx, q, bounds), activities.NameGetGeneration, activities.GetGenerationInput{OperationID: operationID, TenantID: tenantID}).Get(ctx, &view); err != nil {
+			outcome, failureCode = settleOutcome(ctx, err, "CONTROL_UNAVAILABLE")
+			return nil
+		}
+		state.definition = view.DefinitionActivation
+		if view.Lease.State == "lost" {
+			state.fenced, state.fenceCode = true, "LEASE_LOST"
+		}
 
 		// 1. Admission: the permit, asked under one command identity until
 		// granted or the original queue deadline passes; the first grant
@@ -173,7 +184,7 @@ func Generation(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Contex
 			return nil
 		}
 		if err := workflow.ExecuteActivity(business, activities.NameRecordFunding, activities.RecordFundingInput{OperationID: operationID, TenantID: tenantID, CommandID: operationID + ":funding"}).Get(ctx, nil); err != nil {
-			outcome, failureCode = settleOutcome(ctx, err, "BUDGET_EXHAUSTED")
+			outcome, failureCode = fundingOutcome(ctx, err)
 			return nil
 		}
 		// P0.8: the identity the brief allocated, which every step's launch
@@ -233,11 +244,13 @@ func Generation(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Contex
 				outcome, failureCode = "failed", state.fenceCode
 				return nil
 			}
-			if state.held && !state.fenced && ctx.Err() == nil {
+			if state.held && !state.fenced && ctx.Err() == nil && !keepsAcceptedStage(ctx, code, stage) {
 				// A hold applied while the step ran: its sends were fenced by
 				// Control, the attempt is closed with what the evidence
 				// supports, and the step reruns after the resume under a new
-				// attempt; the repair counter and the deadline stay.
+				// attempt; the repair counter and the deadline stay. A step
+				// whose stage was accepted before the hold keeps it (P1.6):
+				// the run waits out the hold below and proceeds from it.
 				logger.Info("step ended under a hold; it reruns after the resume", "operationId", operationID, "step", codegenStepID)
 				continue
 			}
@@ -264,7 +277,7 @@ func Generation(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Contex
 				outcome, failureCode = "failed", state.fenceCode
 				return nil
 			}
-			if state.held && !state.fenced && ctx.Err() == nil {
+			if state.held && !state.fenced && ctx.Err() == nil && !keepsAcceptedStage(ctx, code, validation) {
 				logger.Info("validation ended under a hold; the round reruns after the resume", "operationId", operationID)
 				continue
 			}
@@ -323,7 +336,7 @@ func Generation(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Contex
 		}
 		defer func() {
 			disconnected, _ := workflow.NewDisconnectedContext(ctx)
-			if closeErr := closeAttempt(disconnected, q, bounds, registration, registration.AttemptID+":close", "completed", "not_required", ""); closeErr != nil {
+			if closeErr := closeSettled(closeAttempt(disconnected, q, bounds, registration, registration.AttemptID+":close", "completed", "not_required", "")); closeErr != nil {
 				err = closeErr
 			}
 		}()
@@ -398,6 +411,21 @@ func awaitPermit(ctx workflow.Context, q Queues, b Bounds, lb LifecycleBounds, o
 			return "CANCELED"
 		}
 	}
+}
+
+// holdAfterCleanup guards the P1.6 hold accounting: a step is counted in
+// flight until its cleanup and close are confirmed, and a step whose stage
+// was accepted before a hold keeps that stage.
+const holdAfterCleanup = "hold-after-cleanup"
+
+// keepsAcceptedStage reports whether a step that ended under a hold keeps
+// its accepted stage instead of rerunning (P1.6): only when the step
+// produced one and the run's history carries the P1.6 marker.
+func keepsAcceptedStage(ctx workflow.Context, code string, stage activities.AcceptedStage) bool {
+	if code != "" || !stage.Found {
+		return false
+	}
+	return workflow.GetVersion(ctx, holdAfterCleanup, workflow.DefaultVersion, 1) == 1
 }
 
 // awaitRunnable waits out a hold and reports a fence or a cancellation.
@@ -554,10 +582,18 @@ func releaseLease(ctx workflow.Context, q Queues, b Bounds, lb LifecycleBounds, 
 	if err := workflow.ExecuteActivity(leaseOptions(ctx, q, b, lb), activities.NameReleaseLease, in).Get(ctx, &res); err != nil {
 		res.State = "unknown"
 	}
+	p := newPoller(ctx, b, 0)
 	for res.State != "lost" && res.State != "released" {
 		// A timeout or UNKNOWN is not release evidence. Observe the original
 		// occurrence through durable history; never issue another release id.
-		if err := workflow.Sleep(ctx, b.ReconcileInitialInterval); err != nil {
+		// At the poll bound (P1.6) the run stops observing: the lease is
+		// left to its expiry, which the port ends on its own, and nothing
+		// is recorded that was not confirmed.
+		if p.exhausted(ctx) {
+			workflow.GetLogger(ctx).Warn("lease release not confirmed within the poll bound; the lease is left to its expiry", "operationId", operationID, "leaseId", state.lease.LeaseID)
+			return
+		}
+		if err := p.wait(ctx); err != nil {
 			return
 		}
 		if err := workflow.ExecuteActivity(leaseOptions(ctx, q, b, lb), activities.NameQueryLease, in).Get(ctx, &res); err != nil {
@@ -630,7 +666,15 @@ func runJobStep(ctx workflow.Context, q Queues, b Bounds, spec stepSpec, state *
 	var launch activities.LaunchRef
 	var creates createLedger
 	defer func() {
-		state.inflight--
+		// The step stays in flight until its cleanup and close are
+		// confirmed (P1.6): a hold or a definition change applies only when
+		// nothing of the step can still act. Histories recorded before
+		// counted the step out before its cleanup.
+		if workflow.GetVersion(ctx, holdAfterCleanup, workflow.DefaultVersion, 1) == 1 {
+			defer func() { state.inflight-- }()
+		} else {
+			state.inflight--
+		}
 		disconnected, _ := workflow.NewDisconnectedContext(ctx)
 		if launched {
 			cleanup = "unknown"
@@ -638,7 +682,7 @@ func runJobStep(ctx workflow.Context, q Queues, b Bounds, spec stepSpec, state *
 				cleanup = "complete"
 			}
 		}
-		if cerr := closeLaunchAttempt(disconnected, q, b, attempt, launched, attempt.AttemptID+":close", outcome, cleanup, failureCode); cerr != nil {
+		if cerr := closeSettled(closeLaunchAttempt(disconnected, q, b, attempt, launched, attempt.AttemptID+":close", outcome, cleanup, failureCode)); cerr != nil {
 			logger.Error("attempt close refused", "attemptId", attempt.AttemptID, "error", cerr)
 			if code == "" {
 				code = activities.RefusalCode(cerr)
@@ -653,7 +697,7 @@ func runJobStep(ctx workflow.Context, q Queues, b Bounds, spec stepSpec, state *
 			code = "CLEANUP_UNCONFIRMED"
 			return
 		}
-		if cerr := closeLaunchAttempt(disconnected, q, b, attempt, launched, attempt.AttemptID+":close:settled", outcome, "complete", failureCode); cerr != nil {
+		if cerr := closeSettled(closeLaunchAttempt(disconnected, q, b, attempt, launched, attempt.AttemptID+":close:settled", outcome, "complete", failureCode)); cerr != nil {
 			logger.Error("cleanup settlement refused", "attemptId", attempt.AttemptID, "error", cerr)
 		}
 	}()
@@ -741,7 +785,7 @@ func runJobStep(ctx workflow.Context, q Queues, b Bounds, spec stepSpec, state *
 	// The stage the Job's trusted process had Control accept: Control's
 	// record is the only evidence; the Pod's exit code and message never
 	// certify (DD-04 §3).
-	if err := workflow.ExecuteActivity(business, activities.NameGetAcceptedStage, activities.GetAcceptedStageInput{AttemptID: attempt.AttemptID, TenantID: spec.tenantID, OperationID: spec.operationID}).Get(ctx, &stage); err != nil {
+	if err := workflow.ExecuteActivity(readOptions(ctx, q, b), activities.NameGetAcceptedStage, activities.GetAcceptedStageInput{AttemptID: attempt.AttemptID, TenantID: spec.tenantID, OperationID: spec.operationID}).Get(ctx, &stage); err != nil {
 		outcome, failureCode = settle(ctx, err, "OBSERVER_FAILED")
 		return stage, attempt, current, failureCode
 	}

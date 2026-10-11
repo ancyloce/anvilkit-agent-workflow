@@ -56,10 +56,13 @@ var (
 
 // settled records the settle and close commands a run issued.
 type settled struct {
-	mu      sync.Mutex
-	settles []activities.SettleOperationInput
-	closes  []activities.CloseAttemptInput
-	calls   []activities.AnalyzeRequirementsInput
+	mu sync.Mutex
+	// reconciling, when positive, answers that many settle polls with
+	// Control still reconciling the operation (P1.6).
+	reconciling int
+	settles     []activities.SettleOperationInput
+	closes      []activities.CloseAttemptInput
+	calls       []activities.AnalyzeRequirementsInput
 }
 
 func (s *settled) record(env *testsuite.TestWorkflowEnvironment) {
@@ -67,6 +70,10 @@ func (s *settled) record(env *testsuite.TestWorkflowEnvironment) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		s.settles = append(s.settles, in)
+		if s.reconciling > 0 {
+			s.reconciling--
+			return activities.OperationRef{Lifecycle: "reconciling", Phase: in.Phase}, nil
+		}
 		return activities.OperationRef{Lifecycle: in.Outcome, Phase: in.Phase}, nil
 	})
 	env.OnActivity(activities.NameCloseAttempt, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.CloseAttemptInput) (activities.CloseResult, error) {

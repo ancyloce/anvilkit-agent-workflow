@@ -1,6 +1,7 @@
 package workflows
 
 import (
+	"errors"
 	"time"
 
 	"go.temporal.io/sdk/temporal"
@@ -116,11 +117,32 @@ func (lb LifecycleBounds) definition(id string, view activities.GenerationView) 
 
 // activityOptions are the ordinary Control-command options: bounded,
 // retried under the same command identity.
+//
+// A transient failure (Control unreachable, a deadline) is retried within
+// the outage window rather than for a fixed attempt count (P1.6): a short
+// Control outage is a retried success, never a business failure such as
+// BUDGET_EXHAUSTED; a refusal is non-retryable and ends at once. A history
+// recorded before the window existed holds zero and keeps the attempt cap.
 func activityOptions(ctx workflow.Context, q Queues, b Bounds) workflow.Context {
-	return workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
-		TaskQueue: q.Business, StartToCloseTimeout: b.ControlActivityTimeout,
+	return workflow.WithActivityOptions(ctx, windowed(q.Business, b, b.ControlOutageWindow))
+}
+
+// readOptions are the options of read-only Control commands: retried
+// within the wider read window (P1.6).
+func readOptions(ctx workflow.Context, q Queues, b Bounds) workflow.Context {
+	return workflow.WithActivityOptions(ctx, windowed(q.Business, b, b.ControlReadWindow))
+}
+
+func windowed(queue string, b Bounds, window time.Duration) workflow.ActivityOptions {
+	o := workflow.ActivityOptions{
+		TaskQueue: queue, StartToCloseTimeout: b.ControlActivityTimeout,
 		RetryPolicy: &temporal.RetryPolicy{InitialInterval: b.ControlRetryInitial, BackoffCoefficient: 2, MaximumInterval: b.ControlRetryMaxInterval, MaximumAttempts: b.ControlRetryMaxAttempts},
-	})
+	}
+	if window > 0 {
+		o.RetryPolicy.MaximumAttempts = 0
+		o.ScheduleToCloseTimeout = window
+	}
+	return o
 }
 
 // controlOptions are the protected control-queue options of the settling
@@ -133,12 +155,33 @@ func controlOptions(ctx workflow.Context, q Queues, b Bounds) workflow.Context {
 }
 
 // settleOperation states the business outcome to Control under a stable
-// command; a refusal is a visible non-retryable failure of the run.
+// command; a refusal is a visible non-retryable failure of the run. While
+// Control keeps the operation reconciling the same command is re-polled
+// with capped backoff; after the poll bound (or when the server suggests
+// it) the run continues as new into a run that only settles, carrying the
+// minimal settlement state (P1.6). Control is the authority for everything
+// else and re-applies the stored intent itself once the last obligation
+// resolves, so a run that stopped polling still settles.
 func settleOperation(ctx workflow.Context, q Queues, b Bounds, operationID, tenantID, commandID, outcome, failureCode, phase string) error {
+	return settleWith(ctx, q, b, operationID, tenantID, SettleCarry{CommandID: commandID, Outcome: outcome, FailureCode: failureCode, Phase: phase})
+}
+
+// SettleCarry is the settlement state a settling run continues as new
+// with (P1.6): the command, the stated outcome and the current backoff.
+type SettleCarry struct {
+	CommandID   string        `json:"commandId"`
+	Outcome     string        `json:"outcome"`
+	FailureCode string        `json:"failureCode,omitempty"`
+	Phase       string        `json:"phase,omitempty"`
+	Interval    time.Duration `json:"interval,omitempty"`
+}
+
+func settleWith(ctx workflow.Context, q Queues, b Bounds, operationID, tenantID string, carry SettleCarry) error {
+	p := newPoller(ctx, b, carry.Interval)
 	for {
 		var ref activities.OperationRef
 		if err := workflow.ExecuteActivity(controlOptions(ctx, q, b), activities.NameSettleOperation, activities.SettleOperationInput{
-			OperationID: operationID, TenantID: tenantID, CommandID: commandID, Outcome: outcome, FailureCode: failureCode, Phase: phase,
+			OperationID: operationID, TenantID: tenantID, CommandID: carry.CommandID, Outcome: carry.Outcome, FailureCode: carry.FailureCode, Phase: carry.Phase,
 		}).Get(ctx, &ref); err != nil {
 			return temporal.NewNonRetryableApplicationError("settle "+operationID+" refused; the operation is not settled", activities.RefusalCode(err), err)
 		}
@@ -147,10 +190,85 @@ func settleOperation(ctx workflow.Context, q Queues, b Bounds, operationID, tena
 		}
 		// Temporal retains the original command and outcome through restarts.
 		// No new effect is sent while Control waits for outstanding obligations.
-		if err := workflow.Sleep(ctx, b.ReconcileInitialInterval); err != nil {
+		if p.exhausted(ctx) {
+			carry.Interval = p.interval
+			workflow.GetLogger(ctx).Info("settlement continues as new", "operationId", operationID, "polls", p.polls)
+			return workflow.NewContinueAsNewError(ctx, workflow.GetInfo(ctx).WorkflowType.Name, Input{OperationID: operationID, TenantID: tenantID, Settle: &carry})
+		}
+		if err := p.wait(ctx); err != nil {
 			return err
 		}
 	}
+}
+
+// settleOnly is the run a settlement continued as new into: it only
+// re-polls the original settle command (P1.6). It is not canceled with the
+// run: the settlement completes under its original identity.
+func settleOnly(ctx workflow.Context, q Queues, b Bounds, in Input) error {
+	var bounds Bounds
+	if err := workflow.SideEffect(ctx, func(workflow.Context) any { return b }).Get(&bounds); err != nil {
+		return err
+	}
+	disconnected, _ := workflow.NewDisconnectedContext(ctx)
+	return settleWith(disconnected, q, bounds, in.OperationID, in.TenantID, *in.Settle)
+}
+
+// IsContinueAsNew reports whether err continues the run as new.
+func IsContinueAsNew(err error) bool {
+	var can *workflow.ContinueAsNewError
+	return errors.As(err, &can)
+}
+
+// pollChange guards the P1.6 pacing of the settle, close and lease waits:
+// a history recorded before it keeps the fixed interval and no bound.
+const pollChange = "settle-poll-backoff"
+
+// Pacing defaults for a history whose recorded Bounds predate P1.6.
+const (
+	defaultSettleMaxInterval = 5 * time.Minute
+	defaultSettlePollBound   = 500
+)
+
+// poller paces one wait on Control: capped exponential backoff and a
+// count of the polls this run made.
+type poller struct {
+	on           bool
+	interval     time.Duration
+	max          time.Duration
+	polls, bound int32
+}
+
+func newPoller(ctx workflow.Context, b Bounds, start time.Duration) *poller {
+	p := &poller{
+		on:       workflow.GetVersion(ctx, pollChange, workflow.DefaultVersion, 1) == 1,
+		interval: b.ReconcileInitialInterval, max: b.SettleMaxInterval, bound: b.SettlePollBound,
+	}
+	if p.max <= 0 {
+		p.max = defaultSettleMaxInterval
+	}
+	if p.bound <= 0 {
+		p.bound = defaultSettlePollBound
+	}
+	if p.on && start > 0 {
+		p.interval = start
+	}
+	return p
+}
+
+// wait sleeps the next interval on a durable timer.
+func (p *poller) wait(ctx workflow.Context) error {
+	d := p.interval
+	if p.on {
+		p.polls++
+		p.interval = min(2*p.interval, p.max)
+	}
+	return workflow.Sleep(ctx, d)
+}
+
+// exhausted reports whether this run has polled enough that its history
+// should roll over.
+func (p *poller) exhausted(ctx workflow.Context) bool {
+	return p.on && (p.polls >= p.bound || workflow.GetInfo(ctx).GetContinueAsNewSuggested())
 }
 
 // awaitHandlers lets every Update handler finish before the run returns

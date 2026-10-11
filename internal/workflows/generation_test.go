@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/sdk/activity"
+	"go.temporal.io/sdk/converter"
 	"go.temporal.io/sdk/testsuite"
 	"go.temporal.io/sdk/workflow"
 
@@ -43,6 +44,11 @@ type genScript struct {
 	candidate        activities.CandidateRef
 	definition       string
 	leaseState       activities.LeaseRecord
+	// fundingOutage answers RecordFunding with a transient failure (Control
+	// unreachable) until that much simulated time has passed; fundingErr,
+	// when set, is the answer of every RecordFunding call (P1.6 AC7).
+	fundingOutage time.Duration
+	fundingErr    error
 }
 
 // genRecord is what a run issued.
@@ -94,6 +100,7 @@ func generationEnvWith(t *testing.T, b workflows.Bounds, lb workflows.LifecycleB
 	env.OnActivity(activities.NameBriefIdentity, mock.Anything, mock.Anything).Return(briefIdentity, nil)
 	r := &genRecord{}
 	r.record(env)
+	started := env.Now()
 	definition := script.definition
 	if definition == "" {
 		definition = "generation-v1:def-1"
@@ -118,6 +125,12 @@ func generationEnvWith(t *testing.T, b workflows.Bounds, lb workflows.LifecycleB
 	env.OnActivity(activities.NameCheckSourceScope, mock.Anything, mock.Anything).Return(script.scope, nil)
 	env.OnActivity(activities.NameRecordFunding, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.RecordFundingInput) (activities.FundingRef, error) {
 		r.add(func() { r.fundings = append(r.fundings, in.CommandID) })
+		if script.fundingErr != nil {
+			return activities.FundingRef{}, script.fundingErr
+		}
+		if env.Now().Sub(started) < script.fundingOutage {
+			return activities.FundingRef{}, errors.New("rpc error: code = Unavailable desc = connection refused")
+		}
 		return activities.FundingRef{Currency: "USD", Amount: "1000000"}, nil
 	})
 	leaseAnswer := func(kind string) func(_ context.Context, in activities.LeaseInput) (activities.LeaseResult, error) {
@@ -555,4 +568,141 @@ func TestUnknownLeaseReleaseQueriesOriginalBeforeRecording(t *testing.T) {
 	require.NoError(t, env.GetWorkflowError())
 	env.AssertActivityNumberOfCalls(t, activities.NameQueryLease, 1)
 	require.Equal(t, "released", r.leases[len(r.leases)-1].State)
+}
+
+// TestGenerationHoldKeepsTheAcceptedStage is P1.6 AC6: a hold that arrives
+// while the codegen step is in flight applies only after the step's
+// cleanup and close are confirmed; the step's certified stage, accepted
+// before the hold applied, is kept: after the resume the generation
+// proceeds from it to validation instead of rerunning codegen.
+func TestGenerationHoldKeepsTheAcceptedStage(t *testing.T) {
+	env, r := generationEnv(t, lifecycleBounds, genScript{
+		scope: activities.ScopeDecision{Allowed: true}, createNotCreated: 2,
+		codegen:   map[uint64]activities.AcceptedStage{0: certified("c0", sourceA, stageA)},
+		validator: map[uint64]activities.AcceptedStage{0: certified("v0", evidence)},
+		candidate: activities.CandidateRef{EffectID: "eff_1", State: "succeeded", CandidateID: "cand_1"},
+	})
+	var hold, resume workflows.UpdateResult
+	closesAtHold := -1
+	env.RegisterDelayedCallback(func() {
+		env.UpdateWorkflow(workflows.CommandUpdateName, "hold_1", &testsuite.TestUpdateCallback{
+			OnAccept: func() {}, OnReject: func(err error) { t.Errorf("hold rejected: %v", err) },
+			OnComplete: func(result interface{}, _ error) {
+				hold = result.(workflows.UpdateResult)
+				r.mu.Lock()
+				closesAtHold = len(r.closes)
+				r.mu.Unlock()
+			},
+		}, workflows.CommandUpdate{CommandID: "hold_1", Kind: "hold", ExpectedRevision: "3"})
+	}, 500*time.Millisecond)
+	env.RegisterDelayedCallback(func() {
+		env.UpdateWorkflow(workflows.CommandUpdateName, "resume_1", &testsuite.TestUpdateCallback{
+			OnAccept: func() {}, OnReject: func(err error) { t.Errorf("resume rejected: %v", err) },
+			OnComplete: func(result interface{}, _ error) { resume = result.(workflows.UpdateResult) },
+		}, workflows.CommandUpdate{CommandID: "resume_1", Kind: "resume", ExpectedRevision: "4"})
+	}, 10*time.Minute)
+	env.ExecuteWorkflow(workflows.GenerationWorkflowName, genInput)
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+	require.Equal(t, "applied", hold.Outcome)
+	require.Equal(t, "applied", resume.Outcome)
+	require.GreaterOrEqual(t, closesAtHold, 1, "the hold applies only after the in-flight step's close is confirmed")
+	require.Equal(t, "succeeded", r.last().Outcome)
+	require.Equal(t, "candidate_ready", r.last().Phase)
+	steps := []string{}
+	for _, o := range r.opens {
+		steps = append(steps, o.StepID)
+	}
+	require.Equal(t, []string{"codegen", "validate", "register_candidate"}, steps, "codegen ran once: its accepted stage outlived the hold")
+	require.Equal(t, "h_src1", r.creates[len(r.creates)-1].Inputs[0].Handle, "the validator receives the kept stage")
+}
+
+// TestGenerationSettlementContinuesAsNew: a generation whose settlement
+// Control keeps reconciling past the poll bound ends its run by continuing
+// as new with only the settlement carried (P1.6 AC1 at the entry point);
+// the settle-only run it continues into re-polls the same command.
+func TestGenerationSettlementContinuesAsNew(t *testing.T) {
+	b := bounds
+	b.SettleMaxInterval, b.SettlePollBound = time.Minute, 20
+	env, r := generationEnvWith(t, b, lifecycleBounds, genScript{
+		scope:     activities.ScopeDecision{Allowed: true},
+		codegen:   map[uint64]activities.AcceptedStage{0: certified("c0", sourceA, stageA)},
+		validator: map[uint64]activities.AcceptedStage{0: certified("v0", evidence)},
+		candidate: activities.CandidateRef{EffectID: "eff_1", State: "succeeded", CandidateID: "cand_1"},
+	})
+	r.reconciling = 1000
+	env.ExecuteWorkflow(workflows.GenerationWorkflowName, genInput)
+	require.True(t, env.IsWorkflowCompleted())
+	var can *workflow.ContinueAsNewError
+	require.ErrorAs(t, env.GetWorkflowError(), &can)
+	require.Equal(t, workflows.GenerationWorkflowName, can.WorkflowType.Name)
+	var next workflows.Input
+	require.NoError(t, converter.GetDefaultDataConverter().FromPayloads(can.Input, &next))
+	require.Equal(t, genInput.OperationID, next.OperationID)
+	require.NotNil(t, next.Settle)
+	require.Equal(t, workflows.SettleCarry{CommandID: "op_GEN:settle", Outcome: "succeeded", Phase: "candidate_ready", Interval: time.Minute}, *next.Settle)
+	require.Len(t, r.settles, 21, "the poll bound, then the continuation")
+
+	// The continued run settles under the same command once Control resolves.
+	env2, r2 := generationEnvWith(t, b, lifecycleBounds, genScript{})
+	r2.reconciling = 2
+	env2.ExecuteWorkflow(workflows.GenerationWorkflowName, next)
+	require.True(t, env2.IsWorkflowCompleted())
+	require.NoError(t, env2.GetWorkflowError())
+	require.Len(t, r2.settles, 3)
+	for _, s := range r2.settles {
+		require.Equal(t, "op_GEN:settle", s.CommandID)
+		require.Equal(t, "succeeded", s.Outcome)
+	}
+	require.Empty(t, r2.opens, "the settle-only run starts nothing")
+	require.Empty(t, r2.permits)
+}
+
+// TestGenerationFundingThroughAControlOutage is P1.6 AC7: a 45 s Control
+// outage during RecordFunding is a retried success within the outage
+// window, not BUDGET_EXHAUSTED; a genuine BUDGET_EXHAUSTED refusal is
+// reported once, without retries.
+func TestGenerationFundingThroughAControlOutage(t *testing.T) {
+	ok := genScript{
+		scope:         activities.ScopeDecision{Allowed: true},
+		codegen:       map[uint64]activities.AcceptedStage{0: certified("c0", sourceA, stageA)},
+		validator:     map[uint64]activities.AcceptedStage{0: certified("v0", evidence)},
+		candidate:     activities.CandidateRef{EffectID: "eff_1", State: "succeeded", CandidateID: "cand_1"},
+		fundingOutage: 45 * time.Second,
+	}
+	t.Run("an outage within the window is a retried success", func(t *testing.T) {
+		b := bounds
+		b.ControlOutageWindow, b.ControlReadWindow = 5*time.Minute, 15*time.Minute
+		env, r := generationEnvWith(t, b, lifecycleBounds, ok)
+		env.ExecuteWorkflow(workflows.GenerationWorkflowName, genInput)
+		require.True(t, env.IsWorkflowCompleted())
+		require.NoError(t, env.GetWorkflowError())
+		require.Equal(t, "succeeded", r.last().Outcome)
+		require.Greater(t, len(r.fundings), 6, "retried past the former attempt cap")
+		for _, f := range r.fundings {
+			require.Equal(t, "op_GEN:funding", f, "under one command identity")
+		}
+	})
+	t.Run("a history without the window keeps the attempt cap and no longer reports a budget verdict", func(t *testing.T) {
+		env, r := generationEnvWith(t, bounds, lifecycleBounds, ok)
+		env.ExecuteWorkflow(workflows.GenerationWorkflowName, genInput)
+		require.True(t, env.IsWorkflowCompleted())
+		require.Len(t, r.fundings, 6)
+		require.Equal(t, "failed", r.last().Outcome)
+		require.Equal(t, "CONTROL_UNAVAILABLE", r.last().FailureCode, "an outage is not BUDGET_EXHAUSTED")
+	})
+	t.Run("a genuine BUDGET_EXHAUSTED is reported once without retries", func(t *testing.T) {
+		b := bounds
+		b.ControlOutageWindow, b.ControlReadWindow = 5*time.Minute, 15*time.Minute
+		refused := ok
+		refused.fundingOutage, refused.fundingErr = 0, activities.Refused("BUDGET_EXHAUSTED", errors.New("funding of op_GEN exceeds the tenant cap"))
+		env, r := generationEnvWith(t, b, lifecycleBounds, refused)
+		env.ExecuteWorkflow(workflows.GenerationWorkflowName, genInput)
+		require.True(t, env.IsWorkflowCompleted())
+		require.NoError(t, env.GetWorkflowError())
+		require.Len(t, r.fundings, 1, "a refusal is not retried")
+		require.Equal(t, "failed", r.last().Outcome)
+		require.Equal(t, "BUDGET_EXHAUSTED", r.last().FailureCode)
+		require.Len(t, r.settles, 1, "reported once")
+	})
 }

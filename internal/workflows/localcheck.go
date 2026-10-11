@@ -50,6 +50,17 @@ type Bounds struct {
 	ReconcileInitialInterval time.Duration
 	ReconcileMaxInterval     time.Duration
 	ReconcileMaxDuration     time.Duration
+	// ControlOutageWindow and ControlReadWindow bound the retries of an
+	// ordinary and a read-only Control command while Control is
+	// unreachable (P1.6). A history recorded before them holds zero, which
+	// keeps the attempt-capped retry of that run.
+	ControlOutageWindow time.Duration
+	ControlReadWindow   time.Duration
+	// SettleMaxInterval and SettlePollBound pace the settle, close and
+	// lease-release waits on Control (P1.6); zero (a history recorded
+	// before them) takes the defaults.
+	SettleMaxInterval time.Duration
+	SettlePollBound   int32
 }
 
 const (
@@ -82,6 +93,12 @@ type Input struct {
 	// as (P21: the long approval wait rolls over at a qualified boundary);
 	// Control's relay never sets it.
 	Release *ReleaseCarry `json:"release,omitempty"`
+	// Settle carries a settlement into the run it continues as (P1.6): that
+	// run only re-polls the settle command. Control's relay never sets it.
+	Settle *SettleCarry `json:"settle,omitempty"`
+	// Close carries a LocalCheck attempt close into the run it continues as
+	// (P1.6): that run only re-polls the close command.
+	Close *CloseCarry `json:"close,omitempty"`
 }
 
 // LocalCheck runs the fixed qualification fixture for one operation: open
@@ -120,6 +137,9 @@ type Input struct {
 // is kept until the recovery restores the attempt (closeLaunchAttempt).
 func LocalCheck(q Queues, b Bounds) func(ctx workflow.Context, in Input) error {
 	return func(ctx workflow.Context, in Input) (err error) {
+		if in.Close != nil {
+			return closeOnly(ctx, q, b, in)
+		}
 		operationID := in.OperationID
 		logger := workflow.GetLogger(ctx)
 		var bounds Bounds
@@ -154,7 +174,11 @@ func LocalCheck(q Queues, b Bounds) func(ctx workflow.Context, in Input) error {
 					cleanup = "complete"
 				}
 			}
-			if cerr := closeLaunchAttempt(disconnected, q, bounds, attempt, launched, attempt.AttemptID+":close", outcome, cleanup, failureCode); cerr != nil {
+			if cerr := closeOrContinue(disconnected, q, bounds, operationID, in.TenantID, CloseCarry{Attempt: attempt, Launched: launched, CommandID: attempt.AttemptID + ":close", Outcome: outcome, Cleanup: cleanup, FailureCode: failureCode}); cerr != nil {
+				if IsContinueAsNew(cerr) {
+					err = cerr
+					return
+				}
 				logger.Error("attempt close refused", "attemptId", attempt.AttemptID, "error", cerr)
 				if err == nil {
 					err = cerr
@@ -174,7 +198,11 @@ func LocalCheck(q Queues, b Bounds) func(ctx workflow.Context, in Input) error {
 				}
 				return
 			}
-			if cerr := closeLaunchAttempt(disconnected, q, bounds, attempt, launched, attempt.AttemptID+":close:settled", outcome, "complete", failureCode); cerr != nil {
+			if cerr := closeOrContinue(disconnected, q, bounds, operationID, in.TenantID, CloseCarry{Attempt: attempt, Launched: launched, CommandID: attempt.AttemptID + ":close:settled", Outcome: outcome, Cleanup: "complete", FailureCode: failureCode}); cerr != nil {
+				if IsContinueAsNew(cerr) {
+					err = cerr
+					return
+				}
 				logger.Error("cleanup settlement refused", "attemptId", attempt.AttemptID, "error", cerr)
 				if err == nil {
 					err = cerr
@@ -559,12 +587,52 @@ func reconcileCleanup(ctx workflow.Context, q Queues, b Bounds, attempt activiti
 
 // closeAttempt reenters the same durable close command until Control
 // answers (no attempt cap); only a refusal ends the retries, and it is
-// returned as a visible non-retryable failure of the run.
+// returned as a visible non-retryable failure of the run. While Control
+// keeps the operation reconciling after a definite cleanup, the close is
+// re-polled with capped backoff; at the poll bound the wait ends with a
+// *closeRollover (P1.6): a LocalCheck run continues as new into a run that
+// only closes, a multi-step run proceeds to its settlement (Control fences
+// new dispatch while the operation reconciles and re-applies the stored
+// settlement intent itself).
 func closeAttempt(ctx workflow.Context, q Queues, b Bounds, attempt activities.AttemptRef, commandID, outcome, cleanup, failureCode string) error {
+	return closeAttemptFrom(ctx, q, b, attempt, commandID, outcome, cleanup, failureCode, 0)
+}
+
+// closeRollover ends a close wait at the poll bound; interval is the
+// backoff the continuation resumes with.
+type closeRollover struct{ interval time.Duration }
+
+func (e *closeRollover) Error() string {
+	return "the attempt close wait reached its poll bound; it continues as new"
+}
+
+// closeSettled maps a close wait that rolled over to success for a
+// multi-step run: its settlement follows and waits on Control instead.
+func closeSettled(err error) error {
+	var r *closeRollover
+	if errors.As(err, &r) {
+		return nil
+	}
+	return err
+}
+
+// CloseCarry is the attempt close a LocalCheck run continues as new with.
+type CloseCarry struct {
+	Attempt     activities.AttemptRef `json:"attempt"`
+	Launched    bool                  `json:"launched"`
+	CommandID   string                `json:"commandId"`
+	Outcome     string                `json:"outcome"`
+	Cleanup     string                `json:"cleanup"`
+	FailureCode string                `json:"failureCode,omitempty"`
+	Interval    time.Duration         `json:"interval,omitempty"`
+}
+
+func closeAttemptFrom(ctx workflow.Context, q Queues, b Bounds, attempt activities.AttemptRef, commandID, outcome, cleanup, failureCode string, start time.Duration) error {
 	closeCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 		TaskQueue: q.Control, StartToCloseTimeout: b.ControlActivityTimeout,
 		RetryPolicy: &temporal.RetryPolicy{InitialInterval: b.ControlRetryInitial, BackoffCoefficient: 2, MaximumInterval: b.ControlRetryMaxInterval, MaximumAttempts: 0},
 	})
+	p := newPoller(ctx, b, start)
 	for {
 		var closed activities.CloseResult
 		if err := workflow.ExecuteActivity(closeCtx, activities.NameCloseAttempt, activities.CloseAttemptInput{
@@ -578,10 +646,37 @@ func closeAttempt(ctx workflow.Context, q Queues, b Bounds, attempt activities.A
 		if closed.Lifecycle != "reconciling" || cleanup == "unknown" || outcome == "unknown" {
 			return nil
 		}
-		if err := workflow.Sleep(closeCtx, b.ReconcileInitialInterval); err != nil {
+		if p.exhausted(ctx) {
+			return &closeRollover{interval: p.interval}
+		}
+		if err := p.wait(closeCtx); err != nil {
 			return err
 		}
 	}
+}
+
+// closeOnly is the run a LocalCheck close continued as new into (P1.6).
+func closeOnly(ctx workflow.Context, q Queues, b Bounds, in Input) error {
+	var bounds Bounds
+	if err := workflow.SideEffect(ctx, func(workflow.Context) any { return b }).Get(&bounds); err != nil {
+		return err
+	}
+	disconnected, _ := workflow.NewDisconnectedContext(ctx)
+	c := *in.Close
+	return closeOrContinue(disconnected, q, bounds, in.OperationID, in.TenantID, c)
+}
+
+// closeOrContinue delivers a LocalCheck close and continues the run as new
+// when the wait rolls over.
+func closeOrContinue(ctx workflow.Context, q Queues, b Bounds, operationID, tenantID string, c CloseCarry) error {
+	err := closeLaunchAttemptFrom(ctx, q, b, c.Attempt, c.Launched, c.CommandID, c.Outcome, c.Cleanup, c.FailureCode, c.Interval)
+	var r *closeRollover
+	if errors.As(err, &r) {
+		c.Interval = r.interval
+		workflow.GetLogger(ctx).Info("attempt close continues as new", "attemptId", c.Attempt.AttemptID, "commandId", c.CommandID)
+		return workflow.NewContinueAsNewError(ctx, LocalCheckWorkflowName, Input{OperationID: operationID, TenantID: tenantID, Close: &c})
+	}
+	return err
 }
 
 // closeLaunchAttempt delivers the close of an attempt, keeping it for the
@@ -599,7 +694,11 @@ func closeAttempt(ctx workflow.Context, q Queues, b Bounds, attempt activities.A
 // refusal returned. Without a launch no obligation restores the attempt and
 // nothing needs the evidence: the refusal ends the run as before.
 func closeLaunchAttempt(ctx workflow.Context, q Queues, b Bounds, attempt activities.AttemptRef, launched bool, commandID, outcome, cleanup, failureCode string) error {
-	err := closeAttempt(ctx, q, b, attempt, commandID, outcome, cleanup, failureCode)
+	return closeLaunchAttemptFrom(ctx, q, b, attempt, launched, commandID, outcome, cleanup, failureCode, 0)
+}
+
+func closeLaunchAttemptFrom(ctx workflow.Context, q Queues, b Bounds, attempt activities.AttemptRef, launched bool, commandID, outcome, cleanup, failureCode string, resume time.Duration) error {
+	err := closeAttemptFrom(ctx, q, b, attempt, commandID, outcome, cleanup, failureCode, resume)
 	if !launched || activities.RefusalCode(err) != "NOT_FOUND" {
 		return err
 	}
@@ -619,7 +718,7 @@ func closeLaunchAttempt(ctx workflow.Context, q Queues, b Bounds, attempt activi
 		if serr := workflow.Sleep(ctx, interval); serr != nil {
 			return err
 		}
-		err = closeAttempt(ctx, q, b, attempt, commandID, outcome, cleanup, failureCode)
+		err = closeAttemptFrom(ctx, q, b, attempt, commandID, outcome, cleanup, failureCode, resume)
 		interval *= 2
 		if interval > b.ReconcileMaxInterval {
 			interval = b.ReconcileMaxInterval

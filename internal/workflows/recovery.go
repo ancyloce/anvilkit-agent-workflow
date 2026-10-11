@@ -3,6 +3,7 @@ package workflows
 import (
 	"fmt"
 	"slices"
+	"time"
 
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
@@ -23,6 +24,47 @@ const findingsPage = 200
 // Control.
 type RecoveryInput struct {
 	RunID string `json:"runId"`
+	// Carry continues a run as new after a round (P1.6): the next round,
+	// the run's start and backoff, and the launch evidence ledgers. Control's
+	// relay never sets it.
+	Carry *RecoveryCarry `json:"carry,omitempty"`
+}
+
+// RecoveryCarry is what one round hands the next run.
+type RecoveryCarry struct {
+	Round    int                    `json:"round"`
+	Started  time.Time              `json:"started"`
+	Interval time.Duration          `json:"interval"`
+	Ledgers  map[string]LedgerCarry `json:"ledgers,omitempty"`
+}
+
+// LedgerCarry is a launchLedger across a continuation.
+type LedgerCarry struct {
+	Recorded    []int  `json:"recorded,omitempty"`
+	StopPending bool   `json:"stopPending,omitempty"`
+	StoppedJob  string `json:"stoppedJob,omitempty"`
+}
+
+// recoveryRounds guards the P1.6 shape of the run: findings advanced by
+// one Activity per page, and one round per run (continue-as-new between
+// rounds, so enumeration runs once per run and no history grows with the
+// number of rounds).
+const recoveryRounds = "recovery-batched-rounds"
+
+func carryLedgers(ledgers map[string]*launchLedger) map[string]LedgerCarry {
+	out := make(map[string]LedgerCarry, len(ledgers))
+	for id, l := range ledgers {
+		out[id] = LedgerCarry{Recorded: slices.Clone(l.recorded), StopPending: l.stopPending, StoppedJob: l.stoppedJob}
+	}
+	return out
+}
+
+func restoreLedgers(carried map[string]LedgerCarry) map[string]*launchLedger {
+	out := make(map[string]*launchLedger, len(carried))
+	for id, c := range carried {
+		out[id] = &launchLedger{recorded: slices.Clone(c.Recorded), stopPending: c.StopPending, stoppedJob: c.StoppedJob}
+	}
+	return out
 }
 
 // Recovery drives the reconciliation of one recovery run in the order the
@@ -64,13 +106,19 @@ func Recovery(q Queues, b Bounds) func(ctx workflow.Context, in RecoveryInput) e
 		// The evidence ledgers of the launches this run settles, by finding:
 		// Workflow state, replayed from history, so a create request marker
 		// recorded before a delete stays recorded across Worker restarts.
+		batched := workflow.GetVersion(ctx, recoveryRounds, workflow.DefaultVersion, 1) == 1
 		ledgers := map[string]*launchLedger{}
 		start := workflow.Now(ctx)
 		interval := bounds.ReconcileInitialInterval
-		for round := 1; ; round++ {
+		first := 1
+		if batched && in.Carry != nil {
+			ledgers = restoreLedgers(in.Carry.Ledgers)
+			start, interval, first = in.Carry.Started, in.Carry.Interval, in.Carry.Round
+		}
+		for round := first; ; round++ {
 			if err := enumerate(control, in.RunID); err != nil {
 				logger.Warn("inventory enumeration incomplete; the scope stays restricted", "runId", in.RunID, "round", round, "error", err)
-			} else if err := reconcile(ctx, control, q, bounds, in.RunID, ledgers); err != nil {
+			} else if err := reconcile(ctx, control, q, bounds, in.RunID, ledgers, batched); err != nil {
 				logger.Warn("reconciliation round incomplete", "runId", in.RunID, "round", round, "error", err)
 			}
 			var status activities.RecoveryStatus
@@ -94,6 +142,13 @@ func Recovery(q Queues, b Bounds) func(ctx workflow.Context, in RecoveryInput) e
 			interval *= 2
 			if interval > bounds.ReconcileMaxInterval {
 				interval = bounds.ReconcileMaxInterval
+			}
+			if batched {
+				// The next round is the next run: its history starts empty
+				// and carries only the ledgers and the pacing.
+				return workflow.NewContinueAsNewError(ctx, RecoveryWorkflowName, RecoveryInput{RunID: in.RunID, Carry: &RecoveryCarry{
+					Round: round + 1, Started: start, Interval: interval, Ledgers: carryLedgers(ledgers),
+				}})
 			}
 		}
 	}
@@ -123,26 +178,55 @@ func enumerate(ctx workflow.Context, runID string) error {
 // decides each finding from its records and the original-identity query
 // (ReconcileFinding); a launch it cannot settle from its records gets the
 // launcher's evidence (settleLaunch).
-func reconcile(ctx workflow.Context, control workflow.Context, q Queues, b Bounds, runID string, ledgers map[string]*launchLedger) error {
+func reconcile(ctx workflow.Context, control workflow.Context, q Queues, b Bounds, runID string, ledgers map[string]*launchLedger, batched bool) error {
 	logger := workflow.GetLogger(ctx)
 	var incomplete error
 	cursor := ""
+	batch := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+		TaskQueue: q.Control, StartToCloseTimeout: max(4*b.ControlActivityTimeout, 2*time.Minute), HeartbeatTimeout: b.ControlActivityTimeout,
+		RetryPolicy: &temporal.RetryPolicy{InitialInterval: b.ControlRetryInitial, BackoffCoefficient: 2, MaximumInterval: b.ControlRetryMaxInterval, MaximumAttempts: b.ControlRetryMaxAttempts},
+	})
 	for {
 		var page activities.FindingPage
 		if err := workflow.ExecuteActivity(control, activities.NameListFindings, activities.ListFindingsInput{RunID: runID, Limit: findingsPage, Cursor: cursor}).Get(ctx, &page); err != nil {
 			return err
 		}
-		for _, f := range page.Findings {
-			if f.Settled() {
-				continue
+		var advancedAll []activities.Finding
+		if batched {
+			var ids []string
+			for _, f := range page.Findings {
+				if !f.Settled() {
+					ids = append(ids, f.FindingID)
+				}
 			}
-			var advanced activities.Finding
-			if err := workflow.ExecuteActivity(control, activities.NameReconcileFinding, activities.ReconcileFindingInput{RunID: runID, FindingID: f.FindingID}).Get(ctx, &advanced); err != nil {
-				logger.Warn("finding not reconciled", "findingId", f.FindingID, "class", f.Class, "error", err)
-				incomplete = err
-				continue
+			if len(ids) > 0 {
+				var res activities.ReconcileFindingsResult
+				if err := workflow.ExecuteActivity(batch, activities.NameReconcileFindings, activities.ReconcileFindingsInput{RunID: runID, FindingIDs: ids}).Get(ctx, &res); err != nil {
+					logger.Warn("findings page not reconciled", "findings", len(ids), "error", err)
+					incomplete = err
+				} else {
+					for id, reason := range res.Failures {
+						logger.Warn("finding not reconciled", "findingId", id, "reason", reason)
+						incomplete = fmt.Errorf("finding %s not reconciled: %s", id, reason)
+					}
+					advancedAll = res.Findings
+				}
 			}
-			f = advanced
+		} else {
+			for _, f := range page.Findings {
+				if f.Settled() {
+					continue
+				}
+				var advanced activities.Finding
+				if err := workflow.ExecuteActivity(control, activities.NameReconcileFinding, activities.ReconcileFindingInput{RunID: runID, FindingID: f.FindingID}).Get(ctx, &advanced); err != nil {
+					logger.Warn("finding not reconciled", "findingId", f.FindingID, "class", f.Class, "error", err)
+					incomplete = err
+					continue
+				}
+				advancedAll = append(advancedAll, advanced)
+			}
+		}
+		for _, f := range advancedAll {
 			if f.Settled() || f.Class != "job-launch" || f.LaunchKey == "" {
 				continue
 			}

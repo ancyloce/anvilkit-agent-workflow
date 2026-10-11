@@ -83,6 +83,9 @@ func (r *releaseRun) record(state, failureCode string) activities.ReleaseRecordI
 // overwritten. Cancellation stops further effects and keeps what was sent.
 func Release(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Context, in Input) error {
 	return func(ctx workflow.Context, in Input) (err error) {
+		if in.Settle != nil {
+			return settleOnly(ctx, q, b, in)
+		}
 		logger := workflow.GetLogger(ctx)
 		var bounds Bounds
 		if err := workflow.SideEffect(ctx, func(workflow.Context) any { return b }).Get(&bounds); err != nil {
@@ -108,6 +111,10 @@ func Release(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Context, 
 			}
 			disconnected, _ := workflow.NewDisconnectedContext(ctx)
 			if serr := settleOperation(disconnected, q, bounds, operationID, tenantID, operationID+":settle", outcome, failureCode, phase); serr != nil {
+				if IsContinueAsNew(serr) {
+					err = serr
+					return
+				}
 				logger.Error("release settlement refused", "operationId", operationID, "error", serr)
 				if err == nil {
 					err = serr
@@ -145,7 +152,7 @@ func Release(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Context, 
 			}
 			// 1. The exact source: Control's bound artifact, proven by the
 			// source authority to be the named revision.
-			if err := workflow.ExecuteActivity(business, activities.NameGetReleaseBinding, tenantID, operationID).Get(ctx, &rel.Binding); err != nil {
+			if err := workflow.ExecuteActivity(readOptions(ctx, q, bounds), activities.NameGetReleaseBinding, tenantID, operationID).Get(ctx, &rel.Binding); err != nil {
 				return fail(refusal(err, "SOURCE_UNAVAILABLE"), "source_rejected")
 			}
 			// 2. Independent certification of exactly those bytes at the bound
@@ -442,7 +449,7 @@ func releaseEffect(ctx workflow.Context, q Queues, b Bounds, operationID, tenant
 		}).Get(disconnected, &closed); cerr != nil {
 			logger.Error("release attempt close refused", "attemptId", attempt.AttemptID, "error", cerr)
 		}
-	} else if cerr := closeAttempt(disconnected, q, b, attempt, closeCmd, closeOutcome, "not_required", ""); cerr != nil {
+	} else if cerr := closeSettled(closeAttempt(disconnected, q, b, attempt, closeCmd, closeOutcome, "not_required", "")); cerr != nil {
 		logger.Error("release attempt close refused", "attemptId", attempt.AttemptID, "error", cerr)
 	}
 	if callErr != nil {

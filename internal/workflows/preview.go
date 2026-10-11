@@ -31,6 +31,9 @@ const (
 // model call, no publication.
 func PreviewBuild(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Context, in Input) error {
 	return func(ctx workflow.Context, in Input) (err error) {
+		if in.Settle != nil {
+			return settleOnly(ctx, q, b, in)
+		}
 		logger := workflow.GetLogger(ctx)
 		var bounds Bounds
 		if err := workflow.SideEffect(ctx, func(workflow.Context) any { return b }).Get(&bounds); err != nil {
@@ -48,6 +51,10 @@ func PreviewBuild(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Cont
 		defer func() {
 			disconnected, _ := workflow.NewDisconnectedContext(ctx)
 			if serr := settleOperation(disconnected, q, bounds, operationID, tenantID, operationID+":settle", outcome, failureCode, phase); serr != nil {
+				if IsContinueAsNew(serr) {
+					err = serr
+					return
+				}
 				logger.Error("preview settlement refused", "operationId", operationID, "error", serr)
 				if err == nil {
 					err = serr
@@ -56,7 +63,7 @@ func PreviewBuild(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Cont
 		}()
 
 		var src activities.PreviewSource
-		if err := workflow.ExecuteActivity(business, activities.NameGetPreviewSource, tenantID, operationID).Get(ctx, &src); err != nil {
+		if err := workflow.ExecuteActivity(readOptions(ctx, q, bounds), activities.NameGetPreviewSource, tenantID, operationID).Get(ctx, &src); err != nil {
 			outcome, failureCode = settleOutcome(ctx, err, "SOURCE_UNAVAILABLE")
 			return nil
 		}
@@ -107,7 +114,7 @@ func PreviewBuild(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Cont
 			closeOutcome = "failed"
 		}
 		disconnected, _ := workflow.NewDisconnectedContext(ctx)
-		if cerr := closeAttempt(disconnected, q, bounds, saveAttempt, saveAttempt.AttemptID+":close", closeOutcome, "not_required", ""); cerr != nil {
+		if cerr := closeSettled(closeAttempt(disconnected, q, bounds, saveAttempt, saveAttempt.AttemptID+":close", closeOutcome, "not_required", "")); cerr != nil {
 			logger.Error("save attempt close refused", "attemptId", saveAttempt.AttemptID, "error", cerr)
 		}
 		switch {

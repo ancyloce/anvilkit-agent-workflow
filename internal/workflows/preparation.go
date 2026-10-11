@@ -45,6 +45,9 @@ type preparationState struct {
 // under its own identity, and a lost receipt re-issues that Update.
 func Preparation(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Context, in Input) error {
 	return func(ctx workflow.Context, in Input) (err error) {
+		if in.Settle != nil {
+			return settleOnly(ctx, q, b, in)
+		}
 		logger := workflow.GetLogger(ctx)
 		var bounds Bounds
 		if err := workflow.SideEffect(ctx, func(workflow.Context) any { return b }).Get(&bounds); err != nil {
@@ -92,9 +95,26 @@ func Preparation(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Conte
 		}
 		defer awaitHandlers(ctx)
 
+		// The settlement is registered before the first read (P1.6).
 		var prep activities.PreparationView
-		if err := workflow.ExecuteActivity(business, activities.NameGetPreparation, activities.GetPreparationInput{OperationID: operationID, TenantID: tenantID}).Get(ctx, &prep); err != nil {
-			return err
+		outcome, failureCode, phase := "failed", "", ""
+		defer func() {
+			disconnected, _ := workflow.NewDisconnectedContext(ctx)
+			if serr := settleOperation(disconnected, q, bounds, operationID, tenantID, operationID+":settle", outcome, failureCode, phase); serr != nil {
+				if IsContinueAsNew(serr) {
+					err = serr
+					return
+				}
+				logger.Error("preparation settlement refused", "operationId", operationID, "error", serr)
+				if err == nil {
+					err = serr
+				}
+			}
+		}()
+
+		if err := workflow.ExecuteActivity(readOptions(ctx, q, bounds), activities.NameGetPreparation, activities.GetPreparationInput{OperationID: operationID, TenantID: tenantID}).Get(ctx, &prep); err != nil {
+			outcome, failureCode = settleOutcome(ctx, err, "CONTROL_UNAVAILABLE")
+			return nil
 		}
 		// Answers accepted before a restart are Control's record: a run
 		// replayed from history rebuilds them from its own events, a fresh
@@ -107,20 +127,9 @@ func Preparation(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Conte
 			prep.MaxQuestions = 3
 		}
 
-		outcome, failureCode, phase := "failed", "", ""
-		defer func() {
-			disconnected, _ := workflow.NewDisconnectedContext(ctx)
-			if serr := settleOperation(disconnected, q, bounds, operationID, tenantID, operationID+":settle", outcome, failureCode, phase); serr != nil {
-				logger.Error("preparation settlement refused", "operationId", operationID, "error", serr)
-				if err == nil {
-					err = serr
-				}
-			}
-		}()
-
 		// Funding once under the operation identity (the analysis allowance).
 		if err := workflow.ExecuteActivity(business, activities.NameRecordFunding, activities.RecordFundingInput{OperationID: operationID, TenantID: tenantID, CommandID: operationID + ":funding"}).Get(ctx, nil); err != nil {
-			outcome, failureCode = settleOutcome(ctx, err, "BUDGET_EXHAUSTED")
+			outcome, failureCode = fundingOutcome(ctx, err)
 			return nil
 		}
 
@@ -170,7 +179,7 @@ func Preparation(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Conte
 				// instant still counts (its Update receipt may be on its
 				// way); otherwise the wait ended without an answer.
 				var late activities.AnswerRef
-				if err := workflow.ExecuteActivity(business, activities.NameGetAnswer, activities.GetAnswerInput{OperationID: operationID, TenantID: tenantID, QuestionSetID: qs.QuestionSetID}).Get(ctx, &late); err != nil {
+				if err := workflow.ExecuteActivity(readOptions(ctx, q, bounds), activities.NameGetAnswer, activities.GetAnswerInput{OperationID: operationID, TenantID: tenantID, QuestionSetID: qs.QuestionSetID}).Get(ctx, &late); err != nil {
 					outcome, failureCode = settleOutcome(ctx, err, "OBSERVER_FAILED")
 					return nil
 				}
@@ -240,7 +249,7 @@ func analyzeRound(ctx workflow.Context, q Queues, b Bounds, lb LifecycleBounds, 
 	closeOutcome, closeCode := "completed", ""
 	defer func() {
 		disconnected, _ := workflow.NewDisconnectedContext(ctx)
-		if cerr := closeAttempt(disconnected, q, b, attempt, attempt.AttemptID+":close", closeOutcome, "not_required", closeCode); cerr != nil {
+		if cerr := closeSettled(closeAttempt(disconnected, q, b, attempt, attempt.AttemptID+":close", closeOutcome, "not_required", closeCode)); cerr != nil {
 			workflow.GetLogger(ctx).Error("analysis attempt close refused", "attemptId", attempt.AttemptID, "error", cerr)
 		}
 	}()
@@ -307,6 +316,14 @@ func settleOutcome(ctx workflow.Context, err error, code string) (string, string
 		code = refused
 	}
 	return "failed", code
+}
+
+// fundingOutcome classifies a funding failure (P1.6): Control's refusal
+// (BUDGET_EXHAUSTED among them) is reported as refused, once; a Control
+// that stayed unreachable for the whole outage window is not a budget
+// verdict and is reported as CONTROL_UNAVAILABLE.
+func fundingOutcome(ctx workflow.Context, err error) (string, string) {
+	return settleOutcome(ctx, err, "CONTROL_UNAVAILABLE")
 }
 
 func firstNonEmpty(values ...string) string {
