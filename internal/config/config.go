@@ -114,6 +114,15 @@ type Kubernetes struct {
 	Kubeconfig    string `koanf:"kubeconfig"`
 	Namespace     string `koanf:"namespace"`
 	LaunchBackend string `koanf:"launch_backend"`
+	// ClientQPS and ClientBurst are the launcher's client-go rate limit
+	// (P1.6): an observed Job costs two reads per ObserveInterval, so 200
+	// Jobs per replica at 1s need 400 reads/s; client-go's own default
+	// (5/10) would stretch their cadence to over a minute. The default 500
+	// leaves headroom; the API server's priority and fairness is the
+	// placement's bound. ObserveInterval is that cadence.
+	ClientQPS       float32       `koanf:"client_qps"`
+	ClientBurst     int           `koanf:"client_burst"`
+	ObserveInterval time.Duration `koanf:"observe_interval"`
 	// ImageRegistry completes the repository of a profile image that names
 	// no registry (the digest is what the profile pins); a placement.
 	ImageRegistry string `koanf:"image_registry"`
@@ -186,6 +195,33 @@ type Execution struct {
 	ObserveHeartbeatTimeout time.Duration `koanf:"observe_heartbeat_timeout"`
 	ObserveMaxAttempts      int32         `koanf:"observe_max_attempts"`
 	Cleanup                 Cleanup       `koanf:"cleanup"`
+	// ControlOutageWindow bounds how long an ordinary Control command is
+	// retried while Control is unreachable (P1.6): a refusal ends at once,
+	// a transient failure is retried within the window rather than for a
+	// fixed attempt count, so a short outage is a retried success.
+	ControlOutageWindow time.Duration `koanf:"control_outage_window"`
+	// ControlReadWindow is the wider window of read-only commands.
+	ControlReadWindow time.Duration `koanf:"control_read_window"`
+	// ModelKeepalive is the Model Proxy's SSE keepalive period
+	// (http.sse_heartbeat there); a model call heartbeats on every event
+	// and its heartbeat timeout (observe_heartbeat_timeout) must be at
+	// least twice it.
+	ModelKeepalive time.Duration `koanf:"model_keepalive"`
+	// MaxConcurrentActivities bounds the Activities one queue's worker runs
+	// at once (worker.Options.MaxConcurrentActivityExecutionSize).
+	MaxConcurrentActivities int `koanf:"max_concurrent_activities"`
+	// Settle paces the settle, close and lease-release waits on Control.
+	Settle Settle `koanf:"settle"`
+}
+
+// Settle paces the waits on Control's reconciliation (P1.6): capped
+// exponential backoff from cleanup.reconcile_initial_interval to
+// MaxInterval, and after PollBound polls in one run the settlement
+// continues as new so a run's history stays bounded however long Control
+// keeps the operation reconciling.
+type Settle struct {
+	MaxInterval time.Duration `koanf:"max_interval"`
+	PollBound   int32         `koanf:"poll_bound"`
 }
 
 // Development is DEVELOPMENT_ONLY fault injection for the integration
@@ -370,6 +406,15 @@ var defaults = map[string]any{
 	"execution.cleanup.reconcile_initial_interval":   "5s",
 	"execution.cleanup.reconcile_max_interval":       "1m",
 	"execution.cleanup.reconcile_max_duration":       "24h",
+	"execution.control_outage_window":                "5m",
+	"execution.control_read_window":                  "15m",
+	"execution.model_keepalive":                      "15s",
+	"execution.max_concurrent_activities":            200,
+	"execution.settle.max_interval":                  "5m",
+	"execution.settle.poll_bound":                    500,
+	"kubernetes.client_qps":                          500,
+	"kubernetes.client_burst":                        1000,
+	"kubernetes.observe_interval":                    "1s",
 	"development.enabled":                            false,
 	"health.listen":                                  "127.0.0.1:9102",
 	"telemetry.sample_ratio":                         1.0,
@@ -550,6 +595,33 @@ func (c Config) validate() error {
 	within("execution.cleanup.reconcile_initial_interval", cl.ReconcileInitialInterval, time.Second, time.Hour)
 	within("execution.cleanup.reconcile_max_interval", cl.ReconcileMaxInterval, time.Second, time.Hour)
 	within("execution.cleanup.reconcile_max_duration", cl.ReconcileMaxDuration, time.Minute, 7*24*time.Hour)
+	within("execution.control_outage_window", e.ControlOutageWindow, 30*time.Second, 24*time.Hour)
+	within("execution.control_read_window", e.ControlReadWindow, 30*time.Second, 24*time.Hour)
+	if e.ControlReadWindow < e.ControlOutageWindow {
+		errs = append(errs, fmt.Errorf("execution.control_read_window %s must be at least execution.control_outage_window %s", e.ControlReadWindow, e.ControlOutageWindow))
+	}
+	within("execution.model_keepalive", e.ModelKeepalive, time.Second, 10*time.Minute)
+	if e.ObserveHeartbeatTimeout < 2*e.ModelKeepalive {
+		errs = append(errs, fmt.Errorf("execution.observe_heartbeat_timeout %s must be at least twice execution.model_keepalive %s (a model call heartbeats on keepalives)", e.ObserveHeartbeatTimeout, e.ModelKeepalive))
+	}
+	if e.MaxConcurrentActivities < 1 || e.MaxConcurrentActivities > 10000 {
+		errs = append(errs, fmt.Errorf("execution.max_concurrent_activities %d outside [1, 10000]", e.MaxConcurrentActivities))
+	}
+	within("execution.settle.max_interval", e.Settle.MaxInterval, time.Second, time.Hour)
+	if e.Settle.MaxInterval < cl.ReconcileInitialInterval {
+		errs = append(errs, fmt.Errorf("execution.settle.max_interval %s must be at least execution.cleanup.reconcile_initial_interval %s", e.Settle.MaxInterval, cl.ReconcileInitialInterval))
+	}
+	if e.Settle.PollBound < 10 || e.Settle.PollBound > 1500 {
+		errs = append(errs, fmt.Errorf("execution.settle.poll_bound %d outside [10, 1500] (a run's history stays under the event limit)", e.Settle.PollBound))
+	}
+	k := c.Kubernetes
+	if k.ClientQPS <= 0 || k.ClientQPS > 5000 {
+		errs = append(errs, fmt.Errorf("kubernetes.client_qps %v outside (0, 5000]", k.ClientQPS))
+	}
+	if k.ClientBurst < 1 || k.ClientBurst > 10000 || float32(k.ClientBurst) < k.ClientQPS {
+		errs = append(errs, fmt.Errorf("kubernetes.client_burst %d outside [client_qps, 10000]", k.ClientBurst))
+	}
+	within("kubernetes.observe_interval", k.ObserveInterval, 100*time.Millisecond, time.Minute)
 	req("health.listen", c.Health.Listen)
 	if c.Telemetry.SampleRatio < 0 || c.Telemetry.SampleRatio > 1 {
 		errs = append(errs, fmt.Errorf("telemetry.sample_ratio %v outside [0, 1]", c.Telemetry.SampleRatio))
