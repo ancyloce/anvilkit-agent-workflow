@@ -55,22 +55,32 @@ func (c *Client) command(tenantID, commandID string, input any) *controlv1.Comma
 	return &controlv1.CommandIdentity{TenantId: tenantID, CommandId: commandID, ActorId: c.worker, RequestDigest: fmt.Sprintf("sha256:%x", sha256.Sum256(raw))}
 }
 
-// nonRetryable marks Control's precondition failures so Temporal does not
-// retry a fenced or conflicting command (DD-01 §5). The public code that
-// Control put in front of the status message becomes the refusal type;
-// transient statuses (Unavailable, DeadlineExceeded, ...) stay retryable.
+// nonRetryable marks Control's refusals so Temporal does not retry a
+// fenced, conflicting or denied command (DD-01 §5). The public code that
+// Control put in front of the status message becomes the refusal type.
+// ResourceExhausted is a verdict (BUDGET_EXHAUSTED) except Control's own
+// capacity refusal (CAPACITY_EXHAUSTED), which is load and retried;
+// PermissionDenied and DataLoss are verdicts too (P1.6). Transient statuses
+// (Unavailable, DeadlineExceeded, ...) stay retryable within the run's
+// outage window.
 func nonRetryable(err error) error {
 	st, ok := status.FromError(err)
 	if !ok {
 		return err
 	}
+	code, _, _ := strings.Cut(st.Message(), ":")
+	code = strings.TrimSpace(code)
 	switch st.Code() {
-	case codes.FailedPrecondition, codes.Aborted, codes.InvalidArgument, codes.NotFound:
-		code, _, _ := strings.Cut(st.Message(), ":")
+	case codes.ResourceExhausted:
+		if code == "CAPACITY_EXHAUSTED" {
+			return err
+		}
+		fallthrough
+	case codes.FailedPrecondition, codes.Aborted, codes.InvalidArgument, codes.NotFound, codes.PermissionDenied, codes.DataLoss:
 		if code == "" {
 			code = st.Code().String()
 		}
-		return activities.Refused(strings.TrimSpace(code), err)
+		return activities.Refused(code, err)
 	}
 	return err
 }

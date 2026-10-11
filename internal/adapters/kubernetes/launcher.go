@@ -78,6 +78,12 @@ func New(kubeconfig, namespace string, o Options) (*Launcher, error) {
 // POST (see createRedirects).
 func NewForConfig(cfg *rest.Config, namespace string, o Options) (*Launcher, error) {
 	cfg = rest.CopyConfig(cfg)
+	if o.ClientQPS > 0 {
+		cfg.QPS = o.ClientQPS
+	}
+	if o.ClientBurst > 0 {
+		cfg.Burst = o.ClientBurst
+	}
 	cfg.Wrap(func(rt http.RoundTripper) http.RoundTripper { return oneRequestPerCreate{next: rt} })
 	transport, err := rest.TransportFor(cfg)
 	if err != nil {
@@ -95,6 +101,9 @@ func NewForConfig(cfg *rest.Config, namespace string, o Options) (*Launcher, err
 func withDefaults(o Options) Options {
 	if o.EnabledProfiles == nil {
 		o.EnabledProfiles = []string{"local-check-v1"}
+	}
+	if o.ObserveInterval <= 0 {
+		o.ObserveInterval = pollInterval
 	}
 	return o
 }
@@ -360,15 +369,25 @@ func (l *Launcher) CreateJob(ctx context.Context, in activities.CreateJobInput) 
 func (l *Launcher) ObserveJob(ctx context.Context, in activities.ObserveJobInput, heartbeat func()) (activities.JobObservation, error) {
 	jobs := l.client.BatchV1().Jobs(l.namespace)
 	pods := l.client.CoreV1().Pods(l.namespace)
+	tick := newCadence(l.options.ObserveInterval)
 	for {
 		heartbeat()
 		job, err := jobs.Get(ctx, in.Launch.LaunchKey, metav1.GetOptions{})
-		if err != nil {
-			return activities.JobObservation{}, err
+		var list *corev1.PodList
+		if err == nil {
+			list, err = pods.List(ctx, metav1.ListOptions{LabelSelector: labelLaunchKey + "=" + in.Launch.LaunchKey})
 		}
-		list, err := pods.List(ctx, metav1.ListOptions{LabelSelector: labelLaunchKey + "=" + in.Launch.LaunchKey})
 		if err != nil {
-			return activities.JobObservation{}, err
+			// A read-only observation retries a transient failure (a
+			// throttled or briefly unavailable API server) on its next tick
+			// until the deadline (P1.6): only a definite answer ends it.
+			if !transientRead(ctx, err) || time.Now().After(in.Deadline.Add(30*time.Second)) {
+				return activities.JobObservation{}, err
+			}
+			if werr := tick.wait(ctx); werr != nil {
+				return activities.JobObservation{}, werr
+			}
+			continue
 		}
 		obs := activities.JobObservation{JobUID: string(job.UID)}
 		for _, cond := range job.Status.Conditions {
@@ -394,10 +413,8 @@ func (l *Launcher) ObserveJob(ctx context.Context, in activities.ObserveJobInput
 			}
 			return obs, nil
 		}
-		select {
-		case <-ctx.Done():
-			return activities.JobObservation{}, ctx.Err()
-		case <-time.After(pollInterval):
+		if err := tick.wait(ctx); err != nil {
+			return activities.JobObservation{}, err
 		}
 	}
 }
@@ -412,15 +429,22 @@ func (l *Launcher) ObserveJob(ctx context.Context, in activities.ObserveJobInput
 func (l *Launcher) AwaitOwner(ctx context.Context, in activities.ObserveJobInput, heartbeat func()) (activities.JobObservation, error) {
 	jobs := l.client.BatchV1().Jobs(l.namespace)
 	pods := l.client.CoreV1().Pods(l.namespace)
+	tick := newCadence(l.options.ObserveInterval)
 	for {
 		heartbeat()
 		job, err := jobs.Get(ctx, in.Launch.LaunchKey, metav1.GetOptions{})
-		if err != nil {
-			return activities.JobObservation{}, err
+		var list *corev1.PodList
+		if err == nil {
+			list, err = pods.List(ctx, metav1.ListOptions{LabelSelector: labelLaunchKey + "=" + in.Launch.LaunchKey})
 		}
-		list, err := pods.List(ctx, metav1.ListOptions{LabelSelector: labelLaunchKey + "=" + in.Launch.LaunchKey})
 		if err != nil {
-			return activities.JobObservation{}, err
+			if !transientRead(ctx, err) || time.Now().After(in.Deadline) {
+				return activities.JobObservation{}, err
+			}
+			if werr := tick.wait(ctx); werr != nil {
+				return activities.JobObservation{}, werr
+			}
+			continue
 		}
 		obs := activities.JobObservation{JobUID: string(job.UID)}
 		for _, cond := range job.Status.Conditions {
@@ -441,12 +465,56 @@ func (l *Launcher) AwaitOwner(ctx context.Context, in activities.ObserveJobInput
 			}
 			return obs, nil
 		}
-		select {
-		case <-ctx.Done():
-			return activities.JobObservation{}, ctx.Err()
-		case <-time.After(pollInterval):
+		if err := tick.wait(ctx); err != nil {
+			return activities.JobObservation{}, err
 		}
 	}
+}
+
+// cadence paces an observation loop on a fixed schedule from its start
+// (P1.6): the time a throttled read took is part of the interval, not
+// added to it, so the observation keeps its cadence under load.
+type cadence struct {
+	every time.Duration
+	next  time.Time
+}
+
+func newCadence(every time.Duration) *cadence {
+	return &cadence{every: every, next: time.Now().Add(every)}
+}
+
+func (c *cadence) wait(ctx context.Context) error {
+	d := time.Until(c.next)
+	c.next = c.next.Add(c.every)
+	if now := time.Now(); c.next.Before(now) {
+		c.next = now.Add(c.every) // fell behind: resume the cadence from now
+	}
+	if d <= 0 {
+		return ctx.Err()
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
+}
+
+// transientRead reports whether a failed read is worth repeating on the
+// next tick: a throttled, timed-out or unavailable API server, or the
+// client's own rate limiter; never a definite answer (the Job is gone, the
+// identity may not read it, the request is invalid) or the caller's end.
+func transientRead(ctx context.Context, err error) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	switch {
+	case apierrors.IsNotFound(err), apierrors.IsForbidden(err), apierrors.IsUnauthorized(err), apierrors.IsBadRequest(err), apierrors.IsInvalid(err), apierrors.IsGone(err):
+		return false
+	}
+	return true
 }
 
 // ownedBy reports whether the Job with the given UID is the Pod's
@@ -590,7 +658,7 @@ func (l *Launcher) ObserveLaunch(ctx context.Context, in activities.ObserveLaunc
 		select {
 		case <-ctx.Done():
 			return activities.LaunchObservation{}, fmt.Errorf("job %s create unresolved: observation ended before the Job or a Pod was seen: %w", in.Launch.LaunchKey, ctx.Err())
-		case <-time.After(pollInterval):
+		case <-time.After(l.options.ObserveInterval):
 		}
 	}
 }
@@ -664,7 +732,7 @@ func (l *Launcher) DeleteJob(ctx context.Context, in activities.DeleteJobInput, 
 		select {
 		case <-ctx.Done():
 			return activities.LaunchObservation{}, fmt.Errorf("job %s not confirmed stopped (job present: %t, pods: %d): %w", in.Launch.LaunchKey, !jobGone, len(list.Items), ctx.Err())
-		case <-time.After(pollInterval):
+		case <-time.After(l.options.ObserveInterval):
 		}
 	}
 }

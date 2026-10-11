@@ -36,6 +36,12 @@ type Options struct {
 	// Development is the worker's DEVELOPMENT_ONLY guard (development.enabled):
 	// only with it may a profile in the development state be launched (P0.8).
 	Development bool
+	// ClientQPS and ClientBurst set client-go's rate limit (P1.6); zero
+	// keeps the REST configuration's. ObserveInterval is the cadence of the
+	// Job observations; zero is one second.
+	ClientQPS       float32
+	ClientBurst     int
+	ObserveInterval time.Duration
 }
 
 // Fixed identities of the harness layout (DD-03 §5).

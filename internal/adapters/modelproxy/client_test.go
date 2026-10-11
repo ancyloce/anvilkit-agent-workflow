@@ -50,6 +50,12 @@ type fakeProxy struct {
 	// cutBody, when set, declares a longer Content-Length than the envelope or
 	// record written, so the connection closes before the body is complete.
 	cutBody bool
+	// retryableUntil, when positive, answers the first n POSTs with a 503
+	// retryable envelope (Control at capacity) and streams from the n+1st.
+	retryableUntil atomic.Int32
+	// silence, when positive, holds the stream after its first frame for
+	// that long, writing only keepalive comments every keepalive (P1.6).
+	silence, keepalive time.Duration
 }
 
 // answer writes a non-stream body (an envelope or a record), cut short when cutBody is set.
@@ -68,9 +74,13 @@ func newFakeProxy(t *testing.T) *fakeProxy {
 		f.auth.Store(r.Header.Get("Authorization"))
 		switch {
 		case r.Method == "POST" && r.URL.Path == "/api/v1/model-calls":
-			f.posts.Add(1)
+			n := f.posts.Add(1)
 			raw, _ := readAll(r)
 			f.body.Store(raw)
+			if until := f.retryableUntil.Load(); until > 0 && n <= until {
+				f.answer(w, 503, `{"error":{"code":"DEPENDENCY_UNAVAILABLE","message":"Control is at capacity; retry the call later","requestId":"req_cap","retryable":true}}`)
+				return
+			}
 			if f.status != 200 {
 				f.answer(w, f.status, f.envelope)
 				return
@@ -86,6 +96,26 @@ func newFakeProxy(t *testing.T) *fakeProxy {
 					m.AppendData(fr)
 					_, _ = m.WriteTo(&out)
 				}
+			}
+			if f.silence > 0 {
+				first := &sse.Message{ID: sse.ID("0")}
+				first.AppendData(f.frames[0])
+				var head, rest bytes.Buffer
+				_, _ = first.WriteTo(&head)
+				for i, fr := range f.frames[1:] {
+					m := &sse.Message{ID: sse.ID(strconv.Itoa(i + 1))}
+					m.AppendData(fr)
+					_, _ = m.WriteTo(&rest)
+				}
+				_, _ = w.Write(head.Bytes())
+				w.(http.Flusher).Flush()
+				for end := time.Now().Add(f.silence); time.Now().Before(end); {
+					time.Sleep(f.keepalive)
+					_, _ = w.Write([]byte(": keepalive\n\n"))
+					w.(http.Flusher).Flush()
+				}
+				_, _ = w.Write(rest.Bytes())
+				return
 			}
 			if f.fragment > 0 {
 				b := out.Bytes()
@@ -154,7 +184,7 @@ func TestCallModelReadsTheContractFrames(t *testing.T) {
 	require.Equal(t, "succeeded", res.State)
 	require.Equal(t, "Hello world", res.Text)
 	require.Equal(t, 5, res.Frames)
-	require.Equal(t, beats, res.Frames, "one heartbeat per frame")
+	require.GreaterOrEqual(t, beats, res.Frames, "at least one heartbeat per frame; every read heartbeats too (P1.6)")
 	require.Len(t, res.ToolCalls, 1)
 	require.Equal(t, activities.ModelToolCall{ToolCallID: "tc_1", Name: "read_brief", Arguments: "{}", ArgumentsDigest: "sha256:0dc7fa9db7237a2b5c96f70f59bb00f73bb86a0ca5554e91c312f9ada26e18b3"}, res.ToolCalls[0])
 	require.Equal(t, &activities.ModelUsage{InputUnits: "1200", OutputUnits: "340", ReasoningUnits: "0", CachedInputUnits: "0"}, res.Usage)
@@ -432,4 +462,37 @@ func TestClientOptionsAndUnavailablePort(t *testing.T) {
 	require.NoError(t, err)
 	_, err = c.CallModel(t.Context(), input("c"), func() {})
 	require.ErrorContains(t, err, "307")
+}
+
+// TestSilentCallHeartbeatsOnKeepalives is P1.6 AC5 scaled down: a model
+// that stays silent (a long tool-call generation) while the proxy writes
+// keepalive comments keeps the Activity heartbeating at the keepalive
+// period, so a heartbeat timeout of twice that period is never reached.
+// At full scale the silence is 90 s with the proxy's 15 s keepalive and a
+// 30 s heartbeat timeout; here 3 s, 150 ms and 300 ms.
+func TestSilentCallHeartbeatsOnKeepalives(t *testing.T) {
+	const keepalive = 150 * time.Millisecond
+	f := newFakeProxy(t)
+	f.silence, f.keepalive = 3*time.Second, keepalive
+	f.frames = []string{
+		fixtureFrames["admitted frame"],
+		strings.Replace(fixtureFrames["tool call frame with arguments digest"], `"sequence":"7"`, `"sequence":"1"`, 1),
+		strings.Replace(fixtureFrames["done frame with native usage counters as decimal strings"], `"sequence":"12"`, `"sequence":"2"`, 1),
+	}
+	c, err := modelproxy.New(modelproxy.Options{BaseURL: f.srv.URL, Token: "t", Timeout: 10 * time.Second})
+	require.NoError(t, err)
+	var beats []time.Time
+	start := time.Now()
+	res, err := c.CallModel(t.Context(), input("call_01J9ABCDEF"), func() { beats = append(beats, time.Now()) })
+	require.NoError(t, err)
+	require.Equal(t, "succeeded", res.State)
+	require.GreaterOrEqual(t, time.Since(start), 3*time.Second)
+	var gap time.Duration
+	last := start
+	for _, b := range append(beats, time.Now()) {
+		gap = max(gap, b.Sub(last))
+		last = b
+	}
+	t.Logf("P1.6 AC5: %d heartbeats over %s of model silence, longest gap %s (heartbeat timeout at 2x keepalive: %s)", len(beats), f.silence, gap, 2*keepalive)
+	require.Less(t, gap, 2*keepalive, "no gap between heartbeats reaches the heartbeat timeout")
 }

@@ -15,8 +15,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strconv"
+	"syscall"
 	"time"
 
 	"google.golang.org/grpc"
@@ -108,7 +111,7 @@ func (c *Client) Upload(ctx context.Context, tenantID, operationID, commandID, c
 func (c *Client) put(ctx context.Context, cap *controlv1.TransferCapability, body []byte) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, cap.GetMethod(), cap.GetUrl(), bytes.NewReader(body))
 	if err != nil {
-		return "", err
+		return "", transportFailure("upload", err)
 	}
 	req.ContentLength = int64(len(body))
 	for k, v := range cap.GetHeaders() {
@@ -116,7 +119,7 @@ func (c *Client) put(ctx context.Context, cap *controlv1.TransferCapability, bod
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("upload: %w", err)
+		return "", transportFailure("upload", err)
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
@@ -162,14 +165,14 @@ func (c *Client) get(ctx context.Context, cap *controlv1.TransferCapability, siz
 	}
 	req, err := http.NewRequestWithContext(ctx, cap.GetMethod(), cap.GetUrl(), nil)
 	if err != nil {
-		return nil, err
+		return nil, transportFailure("download", err)
 	}
 	for k, v := range cap.GetHeaders() {
 		req.Header.Set(k, v)
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("download: %w", err)
+		return nil, transportFailure("download", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -177,7 +180,37 @@ func (c *Client) get(ctx context.Context, cap *controlv1.TransferCapability, siz
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, size+1))
 	if err != nil {
-		return nil, fmt.Errorf("download: %w", err)
+		return nil, transportFailure("download", err)
 	}
 	return body, nil
+}
+
+// transportFailure states a transfer's transport failure by its kind alone
+// (P1.6): a *url.Error carries the capability URL, whose host names the
+// bucket, whose path is the object key and whose query is the signature,
+// so it is never wrapped or printed. A cancellation or deadline stays
+// recognizable to the caller.
+func transportFailure(op string, err error) error {
+	switch {
+	case errors.Is(err, context.Canceled):
+		return fmt.Errorf("%s: %w", op, context.Canceled)
+	case errors.Is(err, context.DeadlineExceeded):
+		return fmt.Errorf("%s: %w", op, context.DeadlineExceeded)
+	}
+	kind := "transport failure"
+	var ue *url.Error
+	var ne net.Error
+	switch {
+	case errors.As(err, &ue) && ue.Op == "parse":
+		kind = "malformed capability"
+	case errors.As(err, &ne) && ne.Timeout():
+		kind = "timeout"
+	case errors.Is(err, syscall.ECONNREFUSED):
+		kind = "connection refused"
+	case errors.Is(err, syscall.ECONNRESET):
+		kind = "connection reset"
+	case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF):
+		kind = "connection closed before the answer"
+	}
+	return fmt.Errorf("%s: %s (the capability is withheld from the error)", op, kind)
 }

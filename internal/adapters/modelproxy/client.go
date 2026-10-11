@@ -401,8 +401,14 @@ func (c *Client) CallModel(ctx context.Context, in activities.ModelCallInput, he
 	// go-sse reads the stream as the protocol states it (fields, multi-line
 	// data joined by newlines, comments dropped); an event larger than the
 	// frame bound plus the field overhead ends the read with an error.
+	// Every read that returns bytes heartbeats (P1.6): go-sse drops the
+	// proxy's keepalive comments without yielding an event, so a call whose
+	// model stays silent (a long tool-call generation) would otherwise miss
+	// its heartbeat timeout although the stream is alive. The SDK throttles
+	// the heartbeats it sends.
 	var readErr error
-	for ev, err := range sse.Read(resp.Body, &sse.ReadConfig{MaxEventSize: c.maxFrameBytes + sseFieldOverhead}) {
+	body := &beatingReader{r: resp.Body, beat: heartbeat}
+	for ev, err := range sse.Read(body, &sse.ReadConfig{MaxEventSize: c.maxFrameBytes + sseFieldOverhead}) {
 		if err != nil {
 			readErr = err
 			break
@@ -500,4 +506,18 @@ func (c *Client) record(body io.Reader) (activities.ModelCallResult, error) {
 		return activities.ModelCallResult{}, activities.Refused("INVALID_ARGUMENT", fmt.Errorf("call record outside the contract: %w", err))
 	}
 	return resultOf(&m), nil
+}
+
+// beatingReader calls beat after every read that returned bytes.
+type beatingReader struct {
+	r    io.Reader
+	beat func()
+}
+
+func (b *beatingReader) Read(p []byte) (int, error) {
+	n, err := b.r.Read(p)
+	if n > 0 {
+		b.beat()
+	}
+	return n, err
 }
