@@ -163,6 +163,15 @@ type Sidecar struct {
 	// the Job namespace (the Workflow chart's Certificate), mounted into the
 	// access sidecar container alone under identity_mode mtls.
 	IdentitySecret string `koanf:"identity_secret"`
+	// P2.4: the placements the sidecar relays to (B-32): the Model Proxy
+	// URL of the controlled model relay, the MCP CallService address of the
+	// tool relay and the Knowledge RetrievalService address of the
+	// retrieval specialist. Each is rendered into the sidecar's environment
+	// only when set, under identity_mode mtls (the sidecar presents its own
+	// workload certificate to each); empty answers DEPENDENCY_UNAVAILABLE.
+	ModelProxyURL    string `koanf:"model_proxy_url"`
+	MCPAddress       string `koanf:"mcp_address"`
+	KnowledgeAddress string `koanf:"knowledge_address"`
 }
 
 // Cleanup bounds the protected cleanup and its reconciliation of an
@@ -338,6 +347,32 @@ type Lifecycle struct {
 	// empty leaves the Generation ports unavailable (every generation
 	// fails at bootstrap with DEPENDENCY_UNAVAILABLE) until ENV-07.
 	PagixDoubleDir string `koanf:"pagix_double_dir"`
+	// HostAbiProfile is the Studio host ABI profile of the environment
+	// (P2.2, ENV-08): host-abi-dev-v1 serves development only; a real
+	// environment names the profile generated from its host declaration.
+	HostAbiProfile string `koanf:"host_abi_profile"`
+	// Pagix (P2.2) places the declaration-driven adapter of the lease,
+	// source, review, publication and activation ports: the ENV-07 adapter
+	// declaration file, the upstream base URL (https outside development,
+	// ANVILKIT_WORKFLOW_PAGIX_URL) and the client credential (the workload
+	// certificate under identity mtls, or the CSI token file under token).
+	// Exclusive with pagix_double_dir.
+	Pagix struct {
+		DeclarationFile string        `koanf:"declaration_file"`
+		BaseURL         string        `koanf:"base_url"`
+		Timeout         time.Duration `koanf:"timeout"`
+		Identity        string        `koanf:"identity"`
+		TokenFile       string        `koanf:"token_file"`
+		ServerName      string        `koanf:"server_name"`
+	} `koanf:"pagix"`
+	// Knowledge (P2.2) places the content-digest read of brief references
+	// through Knowledge's SourceService (gRPC with the workload certificate,
+	// ANVILKIT_WORKFLOW_KNOWLEDGE_ADDRESS).
+	Knowledge struct {
+		Address    string        `koanf:"address"`
+		ServerName string        `koanf:"server_name"`
+		Timeout    time.Duration `koanf:"timeout"`
+	} `koanf:"knowledge"`
 	// Release (P21): the reviewed validator profile that certifies the
 	// exact source, the release profile's destinations (DEVELOPMENT_ONLY
 	// until ENV-07/08 name the real registry and origin), the maintainer's
@@ -385,6 +420,12 @@ var defaults = map[string]any{
 	"lifecycle.artifacts.transfer_window":            "15m",
 	"lifecycle.preview.build_profile":                "validator-source-v1",
 	"lifecycle.release.validator_profile":            "validator-source-v1",
+	"lifecycle.pagix.timeout":                        "30s",
+	"lifecycle.host_abi_profile":                     "host-abi-dev-v1",
+	"lifecycle.pagix.identity":                       "mtls",
+	"lifecycle.pagix.server_name":                    "",
+	"lifecycle.knowledge.server_name":                "anvilkit-agent-knowledge",
+	"lifecycle.knowledge.timeout":                    "10s",
 	"lifecycle.release.npm_registry":                 "https://registry.anvilkit.invalid/",
 	"lifecycle.release.browser_origin":               "https://components.anvilkit.invalid",
 	"lifecycle.release.approval_wait":                "336h",
@@ -444,22 +485,29 @@ var defaults = map[string]any{
 // deployment placement only. Fault injection is never enabled from the
 // environment.
 var envOverrides = map[string]string{
-	"ANVILKIT_WORKFLOW_TEMPORAL_ADDRESS":        "temporal.address",
-	"ANVILKIT_WORKFLOW_CONTROL_ADDRESS":         "control.address",
-	"ANVILKIT_WORKFLOW_MODEL_PROXY_ADDRESS":     "model_proxy.address",
-	"ANVILKIT_WORKFLOW_MODEL_PROXY_TOKEN":       "model_proxy.token",
-	"ANVILKIT_WORKFLOW_KUBECONFIG":              "kubernetes.kubeconfig",
-	"ANVILKIT_WORKFLOW_LAUNCH_BACKEND":          "kubernetes.launch_backend",
-	"ANVILKIT_WORKFLOW_BUILD_ID":                "temporal.build_id",
-	"ANVILKIT_WORKFLOW_IMAGE_REGISTRY":          "kubernetes.image_registry",
-	"ANVILKIT_WORKFLOW_SIDECAR_CONTROL_ADDRESS": "kubernetes.sidecar.control_address",
-	"ANVILKIT_WORKFLOW_HEALTH_LISTEN":           "health.listen",
-	"ANVILKIT_WORKFLOW_TELEMETRY_OTLP_ENDPOINT": "telemetry.otlp_endpoint",
-	"ANVILKIT_WORKFLOW_PAGIX_DOUBLE_DIR":        "lifecycle.pagix_double_dir",
-	"ANVILKIT_WORKFLOW_RELEASE_ORIGIN_DIR":      "lifecycle.release.origin_dir",
-	"ANVILKIT_WORKFLOW_IDENTITY_CERT_FILE":      "identity.cert_file",
-	"ANVILKIT_WORKFLOW_IDENTITY_KEY_FILE":       "identity.key_file",
-	"ANVILKIT_WORKFLOW_IDENTITY_CA_FILE":        "identity.ca_file",
+	"ANVILKIT_WORKFLOW_TEMPORAL_ADDRESS":          "temporal.address",
+	"ANVILKIT_WORKFLOW_CONTROL_ADDRESS":           "control.address",
+	"ANVILKIT_WORKFLOW_MODEL_PROXY_ADDRESS":       "model_proxy.address",
+	"ANVILKIT_WORKFLOW_MODEL_PROXY_TOKEN":         "model_proxy.token",
+	"ANVILKIT_WORKFLOW_KUBECONFIG":                "kubernetes.kubeconfig",
+	"ANVILKIT_WORKFLOW_LAUNCH_BACKEND":            "kubernetes.launch_backend",
+	"ANVILKIT_WORKFLOW_BUILD_ID":                  "temporal.build_id",
+	"ANVILKIT_WORKFLOW_IMAGE_REGISTRY":            "kubernetes.image_registry",
+	"ANVILKIT_WORKFLOW_SIDECAR_CONTROL_ADDRESS":   "kubernetes.sidecar.control_address",
+	"ANVILKIT_WORKFLOW_SIDECAR_MODEL_PROXY_URL":   "kubernetes.sidecar.model_proxy_url",
+	"ANVILKIT_WORKFLOW_SIDECAR_MCP_ADDRESS":       "kubernetes.sidecar.mcp_address",
+	"ANVILKIT_WORKFLOW_SIDECAR_KNOWLEDGE_ADDRESS": "kubernetes.sidecar.knowledge_address",
+	"ANVILKIT_WORKFLOW_HEALTH_LISTEN":             "health.listen",
+	"ANVILKIT_WORKFLOW_TELEMETRY_OTLP_ENDPOINT":   "telemetry.otlp_endpoint",
+	"ANVILKIT_WORKFLOW_PAGIX_DOUBLE_DIR":          "lifecycle.pagix_double_dir",
+	"ANVILKIT_WORKFLOW_RELEASE_ORIGIN_DIR":        "lifecycle.release.origin_dir",
+	"ANVILKIT_WORKFLOW_PAGIX_URL":                 "lifecycle.pagix.base_url",
+	"ANVILKIT_WORKFLOW_PAGIX_DECLARATION_FILE":    "lifecycle.pagix.declaration_file",
+	"ANVILKIT_WORKFLOW_PAGIX_TOKEN_FILE":          "lifecycle.pagix.token_file",
+	"ANVILKIT_WORKFLOW_KNOWLEDGE_ADDRESS":         "lifecycle.knowledge.address",
+	"ANVILKIT_WORKFLOW_IDENTITY_CERT_FILE":        "identity.cert_file",
+	"ANVILKIT_WORKFLOW_IDENTITY_KEY_FILE":         "identity.key_file",
+	"ANVILKIT_WORKFLOW_IDENTITY_CA_FILE":          "identity.ca_file",
 }
 
 func Load() (Config, error) {
@@ -558,6 +606,11 @@ func (c Config) validate() error {
 	case "mtls":
 		if c.Kubernetes.Sidecar.IdentitySecret == "" {
 			errs = append(errs, errors.New("kubernetes.sidecar.identity_secret is required under identity_mode mtls"))
+		}
+		if u := c.Kubernetes.Sidecar.ModelProxyURL; u != "" {
+			if parsed, err := url.Parse(u); err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {
+				errs = append(errs, errors.New("kubernetes.sidecar.model_proxy_url must be an https URL (the sidecar presents its workload certificate)"))
+			}
 		}
 	default:
 		errs = append(errs, fmt.Errorf("kubernetes.sidecar.identity_mode %q is not one of disabled, development, mtls", c.Kubernetes.Sidecar.IdentityMode))
@@ -688,10 +741,16 @@ func (c Config) validate() error {
 	lr := c.Lifecycle.Release
 	req("lifecycle.release.validator_profile", lr.ValidatorProfile)
 	for key, v := range map[string]string{"lifecycle.release.npm_registry": lr.NpmRegistry, "lifecycle.release.browser_origin": lr.BrowserOrigin} {
-		if u, err := url.Parse(v); err != nil || u.Scheme != "https" || u.Host == "" {
+		u, err := url.Parse(v)
+		if err != nil || u.Scheme != "https" || u.Host == "" {
 			errs = append(errs, fmt.Errorf("%s %q must be an https URL", key, v))
+		} else if strings.HasSuffix(u.Hostname(), ".invalid") && !c.Development.Enabled {
+			// P2.2 AC6: the reserved .invalid names are the double's; a real
+			// environment names its ENV-07/ENV-08 destinations.
+			errs = append(errs, fmt.Errorf("%s %q is a DEVELOPMENT_ONLY placeholder; outside development the environment names its real destination (ENV-07/ENV-08)", key, v))
 		}
 	}
+	errs = append(errs, c.validateLifecyclePorts()...)
 	within("lifecycle.release.approval_wait", lr.ApprovalWait, time.Minute, 2160*time.Hour)
 	within("lifecycle.release.approval_poll", lr.ApprovalPoll, time.Second, time.Hour)
 	within("lifecycle.release.reconcile_pause", lr.ReconcilePause, time.Second, time.Hour)
@@ -729,6 +788,60 @@ func (c Config) validate() error {
 		errs = append(errs, errors.New("development.hold_until_canceled_once requires development.enabled: true (DEVELOPMENT_ONLY fault injection)"))
 	}
 	return errors.Join(errs...)
+}
+
+var hostAbiPattern = regexp.MustCompile(`^host-abi-[a-z0-9][a-z0-9.-]{0,62}$`)
+
+// validateLifecyclePorts checks the Pagix and Knowledge placements (P2.2):
+// the filesystem double only under development.enabled and never beside a
+// declared adapter; a declared adapter with an https base URL outside
+// development and a credential.
+func (c Config) validateLifecyclePorts() []error {
+	var errs []error
+	l := c.Lifecycle
+	if l.PagixDoubleDir != "" && !c.Development.Enabled {
+		errs = append(errs, errors.New("lifecycle.pagix_double_dir is the DEVELOPMENT_ONLY Pagix/Knowledge double: it requires development.enabled: true (no double serves a real environment)"))
+	}
+	switch {
+	case !hostAbiPattern.MatchString(l.HostAbiProfile):
+		errs = append(errs, fmt.Errorf("lifecycle.host_abi_profile %q is not a host-abi-<revision> profile id", l.HostAbiProfile))
+	case l.HostAbiProfile == "host-abi-dev-v1" && !c.Development.Enabled:
+		errs = append(errs, errors.New("lifecycle.host_abi_profile host-abi-dev-v1 is DEVELOPMENT_ONLY: a real environment names the profile of its Studio host declaration (ENV-08)"))
+	}
+	if l.PagixDoubleDir != "" && l.Pagix.DeclarationFile != "" {
+		errs = append(errs, errors.New("lifecycle.pagix_double_dir and lifecycle.pagix.declaration_file are exclusive"))
+	}
+	p := l.Pagix
+	if p.DeclarationFile != "" {
+		u, err := url.Parse(p.BaseURL)
+		switch {
+		case p.BaseURL == "":
+			errs = append(errs, errors.New("lifecycle.pagix.base_url (ANVILKIT_WORKFLOW_PAGIX_URL) is required with a declaration"))
+		case err != nil || u.Host == "" || u.User != nil || (u.Scheme != "https" && u.Scheme != "http"):
+			errs = append(errs, errors.New("lifecycle.pagix.base_url must be an absolute http(s) URL without credentials"))
+		case u.Scheme == "http" && !c.Development.Enabled:
+			errs = append(errs, errors.New("lifecycle.pagix.base_url must be https outside development"))
+		}
+		switch p.Identity {
+		case "mtls":
+			if c.Identity.CertFile == "" {
+				errs = append(errs, errors.New("lifecycle.pagix.identity mtls presents the workload certificate: identity.cert_file is required"))
+			}
+		case "token":
+			if p.TokenFile == "" {
+				errs = append(errs, errors.New("lifecycle.pagix.token_file (ANVILKIT_WORKFLOW_PAGIX_TOKEN_FILE) is required under identity token"))
+			}
+		default:
+			errs = append(errs, fmt.Errorf("lifecycle.pagix.identity %q is not one of mtls, token", p.Identity))
+		}
+		if p.Timeout < time.Second || p.Timeout > 5*time.Minute {
+			errs = append(errs, fmt.Errorf("lifecycle.pagix.timeout %s outside [1s, 5m]", p.Timeout))
+		}
+	}
+	if l.Knowledge.Address != "" && (l.Knowledge.Timeout < time.Second || l.Knowledge.Timeout > time.Minute) {
+		errs = append(errs, fmt.Errorf("lifecycle.knowledge.timeout %s outside [1s, 1m]", l.Knowledge.Timeout))
+	}
+	return errs
 }
 
 // validateIdentity checks the Control client identity, the Temporal and

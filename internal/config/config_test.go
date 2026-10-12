@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,7 +19,11 @@ func write(t *testing.T, body string) string {
 	return path
 }
 
-const minimal = "temporal:\n  address: 127.0.0.1:27233\n  tls:\n    ca_file: /etc/anvilkit/temporal-ca/ca.crt\ncontrol:\n  address: 127.0.0.1:9101\n"
+// destinations are the release destinations a non-development environment
+// names (P2.2 AC6: the .invalid placeholders serve development only).
+const destinations = "lifecycle:\n  host_abi_profile: host-abi-studio-2026-10\n  release:\n    npm_registry: https://registry.npm.example/\n    browser_origin: https://components.example\n"
+
+const minimal = "temporal:\n  address: 127.0.0.1:27233\n  tls:\n    ca_file: /etc/anvilkit/temporal-ca/ca.crt\ncontrol:\n  address: 127.0.0.1:9101\n" + destinations
 
 // The process identity files (P0.1) follow the launcher placements; the
 // loader does not read them.
@@ -26,7 +31,7 @@ var env = []string{"ANVILKIT_WORKFLOW_KUBECONFIG=/run/launcher.kubeconfig", "ANV
 	"ANVILKIT_WORKFLOW_IDENTITY_CERT_FILE=/etc/anvilkit/identity/tls.crt", "ANVILKIT_WORKFLOW_IDENTITY_KEY_FILE=/etc/anvilkit/identity/tls.key", "ANVILKIT_WORKFLOW_IDENTITY_CA_FILE=/etc/anvilkit/identity/ca.crt"}
 
 func TestPrecedenceDefaultsFileEnvironment(t *testing.T) {
-	c, err := config.LoadFrom(write(t, "temporal:\n  address: 127.0.0.1:27233\n  build_id: file-build\n  tls:\n    ca_file: /c\ncontrol:\n  address: 127.0.0.1:9101\nexecution:\n  launch_window: 3m\n"), append(env, "ANVILKIT_WORKFLOW_BUILD_ID=env-build"))
+	c, err := config.LoadFrom(write(t, "temporal:\n  address: 127.0.0.1:27233\n  build_id: file-build\n  tls:\n    ca_file: /c\ncontrol:\n  address: 127.0.0.1:9101\nexecution:\n  launch_window: 3m\n"+destinations), append(env, "ANVILKIT_WORKFLOW_BUILD_ID=env-build"))
 	require.NoError(t, err)
 	require.Equal(t, "env-build", c.Temporal.BuildID, "environment overrides the file")
 	require.Equal(t, 3*time.Minute, c.Execution.LaunchWindow, "file overrides the default")
@@ -143,7 +148,7 @@ func TestIdentityAndDevelopmentGuard(t *testing.T) {
 	require.Equal(t, "mtls", c.Control.Identity.Mode, "the guard does not downgrade other connections")
 	_, err = config.LoadFrom(write(t, "temporal:\n  address: 127.0.0.1:27233\n  tls:\n    mode: development\ncontrol:\n  address: 127.0.0.1:9101\n"), env)
 	require.ErrorContains(t, err, "temporal.tls.mode development (plaintext) requires development.enabled")
-	_, err = config.LoadFrom(write(t, "temporal:\n  address: 127.0.0.1:27233\n  tls:\n    mode: mtls\n    ca_file: /c\ncontrol:\n  address: 127.0.0.1:9101\n"), env)
+	_, err = config.LoadFrom(write(t, "temporal:\n  address: 127.0.0.1:27233\n  tls:\n    mode: mtls\n    ca_file: /c\ncontrol:\n  address: 127.0.0.1:9101\n"+destinations), env)
 	require.NoError(t, err, "temporal mtls takes the process certificate")
 	_, err = config.LoadFrom(write(t, minimal+"kubernetes:\n  sidecar:\n    identity_mode: development\n"), env)
 	require.ErrorContains(t, err, "kubernetes.sidecar.identity_mode development (a plaintext sidecar) requires development.enabled")
@@ -154,4 +159,25 @@ func TestIdentityAndDevelopmentGuard(t *testing.T) {
 	require.Equal(t, "anvilkit-job-access-sidecar-identity", c.Kubernetes.Sidecar.IdentitySecret)
 	_, err = config.LoadFrom(write(t, minimal+"development:\n  enabled: true\n"), append(env, "ANVILKIT_WORKFLOW_DEVELOPMENT_ENABLED=true"))
 	require.ErrorContains(t, err, "not allowed overrides", "the guard is file-only")
+}
+
+// TestLifecyclePortsOutsideDevelopment (P2.2 AC5/AC6): the Pagix double and
+// the .invalid release placeholders are refused outside development; a
+// declared Pagix adapter needs an https base URL and a credential.
+func TestLifecyclePortsOutsideDevelopment(t *testing.T) {
+	_, err := config.LoadFrom(write(t, strings.Replace(minimal, destinations, "", 1)), env)
+	require.ErrorContains(t, err, "is a DEVELOPMENT_ONLY placeholder")
+	require.ErrorContains(t, err, "lifecycle.host_abi_profile host-abi-dev-v1 is DEVELOPMENT_ONLY")
+	_, err = config.LoadFrom(write(t, minimal), append(env, "ANVILKIT_WORKFLOW_PAGIX_DOUBLE_DIR=/tmp/pagix"))
+	require.ErrorContains(t, err, "lifecycle.pagix_double_dir is the DEVELOPMENT_ONLY Pagix/Knowledge double: it requires development.enabled: true")
+	_, err = config.LoadFrom(write(t, minimal), append(env, "ANVILKIT_WORKFLOW_PAGIX_DECLARATION_FILE=/etc/anvilkit/pagix/declaration.yaml"))
+	require.ErrorContains(t, err, "lifecycle.pagix.base_url (ANVILKIT_WORKFLOW_PAGIX_URL) is required")
+	_, err = config.LoadFrom(write(t, minimal), append(env, "ANVILKIT_WORKFLOW_PAGIX_DECLARATION_FILE=/etc/anvilkit/pagix/declaration.yaml", "ANVILKIT_WORKFLOW_PAGIX_URL=http://pagix.example/api"))
+	require.ErrorContains(t, err, "lifecycle.pagix.base_url must be https outside development")
+	c, err := config.LoadFrom(write(t, minimal+"  pagix:\n    identity: token\n"), append(env, "ANVILKIT_WORKFLOW_PAGIX_DECLARATION_FILE=/etc/anvilkit/pagix/declaration.yaml", "ANVILKIT_WORKFLOW_PAGIX_URL=https://pagix.example/api", "ANVILKIT_WORKFLOW_PAGIX_TOKEN_FILE=/var/run/secrets/anvilkit/csi/pagix-token"))
+	require.NoError(t, err)
+	require.Equal(t, "https://pagix.example/api", c.Lifecycle.Pagix.BaseURL)
+	c, err = config.LoadFrom(write(t, minimal+"development:\n  enabled: true\n"), append(env, "ANVILKIT_WORKFLOW_PAGIX_DOUBLE_DIR=/tmp/pagix"))
+	require.NoError(t, err, "the double serves development")
+	require.Equal(t, "/tmp/pagix", c.Lifecycle.PagixDoubleDir)
 }
