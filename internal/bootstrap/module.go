@@ -94,6 +94,9 @@ type workers struct {
 	log        *slog.Logger
 	// closers close the Temporal and Control clients after the drain.
 	closers []func() error
+	// promote, when set (DEVELOPMENT_ONLY), makes this build the worker
+	// deployment's current version once its pollers registered (P1.7).
+	promote func(context.Context) error
 }
 
 // Bounds maps the validated execution section onto the Workflow's frozen
@@ -391,6 +394,22 @@ func newWorkers(cfg config.Config, c client.Client, acts *activities.Activities,
 	w.control = &queueWorker{name: cfg.Temporal.ControlTaskQueue}
 	identity := cfg.Temporal.WorkerIdentity + "@" + cfg.Temporal.BuildID
 	businessOpts, controlOpts := w.options(identity, w.business), w.options(identity, w.control)
+	if v := cfg.Temporal.Versioning; v.Enabled {
+		// P1.7: both pollers are one version of the worker deployment and
+		// every Workflow is pinned to the version it started on.
+		deployment := worker.DeploymentOptions{
+			UseVersioning: true, Version: worker.WorkerDeploymentVersion{DeploymentName: v.DeploymentName, BuildID: cfg.Temporal.BuildID},
+			DefaultVersioningBehavior: workflow.VersioningBehaviorPinned,
+		}
+		businessOpts.DeploymentOptions, controlOpts.DeploymentOptions = deployment, deployment
+		if v.Promote {
+			w.promote = func(ctx context.Context) error {
+				_, err := c.WorkerDeploymentClient().GetHandle(v.DeploymentName).SetCurrentVersion(ctx, client.WorkerDeploymentSetCurrentVersionOptions{BuildID: cfg.Temporal.BuildID})
+				return err
+			}
+		}
+		log.Info("worker deployment versioning", "deployment", v.DeploymentName, "buildId", cfg.Temporal.BuildID, "behavior", "pinned", "promote", v.Promote)
+	}
 	// Each queue's worker runs a bounded number of Activities at once
 	// (P1.6): a burst of observations cannot starve the control queue.
 	businessOpts.MaxConcurrentActivityExecutionSize = cfg.Execution.MaxConcurrentActivities
@@ -437,6 +456,27 @@ func (w *workers) start() (net.Addr, error) {
 	}
 	if err := h.becomeReady(); err != nil {
 		w.log.Error("workflow worker started but is not ready", "error", err)
+	}
+	if w.promote != nil {
+		// The version exists once a poller of it reached the server: retry
+		// briefly in the background, never block the start on it.
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+			defer cancel()
+			for {
+				err := w.promote(ctx)
+				if err == nil {
+					w.log.Info("this build is the worker deployment's current version")
+					return
+				}
+				select {
+				case <-ctx.Done():
+					w.log.Error("this build did not become the current version", "error", err)
+					return
+				case <-time.After(time.Second):
+				}
+			}
+		}()
 	}
 	return addr, nil
 }
