@@ -74,6 +74,32 @@ spec:
             - name: ANVILKIT_WORKFLOW_TELEMETRY_OTLP_ENDPOINT
               value: {{ .Values.telemetry.otlpEndpoint | quote }}
             {{- end }}
+            {{- with .Values.modelProxy.address }}
+            - name: ANVILKIT_WORKFLOW_MODEL_PROXY_ADDRESS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if and .Values.modelProxy.address (eq .Values.identity.mode "development") }}
+            # DEVELOPMENT_ONLY: the bearer token of the Model Proxy client.
+            - name: ANVILKIT_WORKFLOW_MODEL_PROXY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "modelProxy.tokenSecret.name is required under identity.mode development with a modelProxy.address" .Values.modelProxy.tokenSecret.name }}
+                  key: {{ .Values.modelProxy.tokenSecret.key }}
+            {{- end }}
+            {{- if .Values.pagix.declarationConfigMap }}
+            - name: ANVILKIT_WORKFLOW_PAGIX_URL
+              value: {{ .Values.pagix.baseUrl | quote }}
+            {{- end }}
+            {{- with .Values.knowledge.address }}
+            - name: ANVILKIT_WORKFLOW_KNOWLEDGE_ADDRESS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- range .Values.extraEnv }}
+            {{- if not (hasPrefix "ANVILKIT_WORKFLOW_" .name) }}
+            {{- fail (printf "extraEnv %s is not an ANVILKIT_WORKFLOW_ placement" .name) }}
+            {{- end }}
+            - {{- toYaml . | nindent 14 }}
+            {{- end }}
           ports:
             - name: health
               containerPort: {{ .Values.health.port }}
@@ -117,6 +143,14 @@ spec:
               mountPath: /etc/anvilkit/otlp-ca
               readOnly: true
             {{- end }}
+            {{- if .Values.pagix.declarationConfigMap }}
+            - name: pagix-declaration
+              mountPath: /etc/anvilkit/pagix
+              readOnly: true
+            {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
       volumes:
         - name: config
           configMap:
@@ -142,6 +176,15 @@ spec:
             items:
               - key: {{ .Values.telemetry.otlpTls.caSecret.key }}
                 path: ca.crt
+        {{- end }}
+        {{- if .Values.pagix.declarationConfigMap }}
+        - name: pagix-declaration
+          configMap:
+            name: {{ .Values.pagix.declarationConfigMap }}
+            items: [{key: declaration.yaml, path: declaration.yaml}]
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
         {{- end }}
       {{- with .Values.topologySpreadConstraints }}
       topologySpreadConstraints:

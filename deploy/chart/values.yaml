@@ -96,6 +96,42 @@ identity:
 # ANVILKIT_WORKFLOW_MODEL_PROXY_ADDRESS of the environment.
 modelProxy:
   serverName: anvilkit-agent-model-proxy
+  # P2.3: the placement (ANVILKIT_WORKFLOW_MODEL_PROXY_ADDRESS, an https URL
+  # outside development) and, under identity.mode development only, the
+  # Secret of the DEVELOPMENT_ONLY bearer token
+  # (ANVILKIT_WORKFLOW_MODEL_PROXY_TOKEN). Empty address: the model call
+  # Activities answer DEPENDENCY_UNAVAILABLE.
+  address: ""
+  tokenSecret:
+    name: ""
+    key: workflow
+
+# P2.3: placements this chart does not model one by one (the lifecycle
+# ports of an environment, P2.2): extra allowlisted ANVILKIT_WORKFLOW_*
+# variables (the loader refuses any other name) and extra volumes with
+# their mounts in the worker container. Secrets reach them as CSI or
+# Secret volumes, never as literal values here.
+extraEnv: []
+extraVolumes: []
+extraVolumeMounts: []
+
+# P2.2: the declaration-driven Pagix adapter (ENV-07): the ConfigMap holding
+# the adapter declaration (key declaration.yaml), the upstream base URL
+# (ANVILKIT_WORKFLOW_PAGIX_URL, https) and the credential: identity mtls
+# presents the workload certificate; token reads tokenFile (a CSI-mounted
+# OAuth client-credentials token, mounted through extraVolumes). Empty
+# declarationConfigMap leaves the Pagix ports unavailable.
+pagix:
+  declarationConfigMap: ""
+  baseUrl: ""
+  identity: mtls
+  serverName: ""
+  tokenFile: ""
+
+# P2.2: the brief content digests from Knowledge's SourceService
+# (ANVILKIT_WORKFLOW_KNOWLEDGE_ADDRESS), with the workload certificate.
+knowledge:
+  address: ""
 
 # The access sidecar of every harness Job Pod (kubernetes.sidecar): under
 # identity mode mtls the launcher mounts the Secret of the sidecar's own

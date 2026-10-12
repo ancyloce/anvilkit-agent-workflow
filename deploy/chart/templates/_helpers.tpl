@@ -61,6 +61,16 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 
 {{/* Required environment values of the worker Deployment. */}}
 {{- define "anvilkit-agent-workflow.require" -}}
+{{- /* P2.2: the filesystem Pagix/Knowledge double is DEVELOPMENT_ONLY. */ -}}
+{{- if and (dig "lifecycle" "pagix_double_dir" "" .Values.config) (not .Values.development.enabled) }}
+{{- fail "config.lifecycle.pagix_double_dir is the DEVELOPMENT_ONLY Pagix/Knowledge double: it renders only with development.enabled: true" }}
+{{- end }}
+{{- if and .Values.pagix.declarationConfigMap (not .Values.pagix.baseUrl) }}
+{{- fail "pagix.baseUrl is required with pagix.declarationConfigMap (ANVILKIT_WORKFLOW_PAGIX_URL)" }}
+{{- end }}
+{{- if and .Values.pagix.declarationConfigMap (not (has .Values.pagix.identity (list "mtls" "token"))) }}
+{{- fail "pagix.identity must be mtls or token" }}
+{{- end }}
 {{- if not .Values.temporal.address }}
 {{- fail "temporal.address is required: the Temporal frontend (ANVILKIT_WORKFLOW_TEMPORAL_ADDRESS)" }}
 {{- end }}
@@ -157,6 +167,14 @@ wired to the loader's keys. */}}
 {{- $mp := default (dict) $cfg.model_proxy -}}
 {{- $_ = set $mp "identity" (dict "mode" .Values.identity.mode "mtls" (dict "server_name" .Values.modelProxy.serverName)) -}}
 {{- $_ = set $cfg "model_proxy" $mp -}}
+{{- if .Values.pagix.declarationConfigMap }}
+{{- $lc := default (dict) $cfg.lifecycle -}}
+{{- $p := dict "declaration_file" "/etc/anvilkit/pagix/declaration.yaml" "identity" .Values.pagix.identity -}}
+{{- if .Values.pagix.serverName }}{{- $_ = set $p "server_name" .Values.pagix.serverName }}{{- end -}}
+{{- if eq .Values.pagix.identity "token" }}{{- $_ = set $p "token_file" .Values.pagix.tokenFile }}{{- end -}}
+{{- $_ = set $lc "pagix" $p -}}
+{{- $_ = set $cfg "lifecycle" $lc -}}
+{{- end -}}
 {{- $tt := dict "mode" .Values.temporal.tls.mode -}}
 {{- if ne .Values.temporal.tls.mode "development" }}
 {{- $_ = set $tt "ca_file" "/etc/anvilkit/temporal-ca/ca.crt" }}
