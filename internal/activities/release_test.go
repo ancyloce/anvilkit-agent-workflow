@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"sync"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/activities"
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/adapters/pagix"
+	pagixconformance "github.com/ancyloce/anvilkit-agent-workflow/tests/conformance/pagix"
 )
 
 // fakeControl is Control's effect permits and observations as the release
@@ -261,4 +263,45 @@ func TestReleaseBindingAndSubject(t *testing.T) {
 	d, err := activities.ComputeSubjectDigest(built.Subject)
 	require.NoError(t, err)
 	require.Equal(t, d, built.Subject.SubjectDigest)
+}
+
+// TestPartialPublicationThroughTheDeclaredAdapter (P2.2 AC3): through the
+// declaration-driven Pagix adapter, npm publishes and the browser target's
+// answer is lost: the target stays unknown, a later round asks only the
+// original identity (no second publish request reaches the upstream), and
+// the receipt it answers is the one the effect recorded.
+func TestPartialPublicationThroughTheDeclaredAdapter(t *testing.T) {
+	ctx := context.Background()
+	f := newReleaseFixture(t)
+	decl, err := pagix.LoadDeclaration(filepath.Join("..", "..", "tests", "conformance", "pagix", "reference-declaration.yaml"))
+	require.NoError(t, err)
+	ref := pagixconformance.NewReference(f.double, decl)
+	srv := httptest.NewServer(ref)
+	defer srv.Close()
+	client, err := pagix.NewClient(decl, pagix.ClientOptions{BaseURL: srv.URL, HTTPClient: srv.Client()})
+	require.NoError(t, err)
+	f.acts.ReleasePort = client
+	npm, err := f.acts.PublishTarget(ctx, f.call("publication", "npm", 1))
+	require.NoError(t, err)
+	require.Equal(t, "succeeded", npm.State)
+	f.double.InstallFault("publish", 2, "unknown")
+	lost, err := f.acts.PublishTarget(ctx, f.call("publication", "browser", 2))
+	require.NoError(t, err)
+	require.Equal(t, "unknown", lost.State, "a lost answer is unknown, never a failure or a success")
+	again, err := f.acts.PublishTarget(ctx, f.call("publication", "browser", 2))
+	require.NoError(t, err)
+	require.Equal(t, "succeeded", again.State)
+	require.Equal(t, lost.EffectID, again.EffectID)
+	var publishes, queries []string
+	for _, e := range ref.Seen {
+		switch e.Operation {
+		case pagix.OpPublish:
+			publishes = append(publishes, e.IdempotencyKey)
+		case pagix.OpPublicationQuery:
+			queries = append(queries, e.Operation)
+		}
+	}
+	require.Equal(t, []string{npm.EffectID, lost.EffectID}, publishes, "each target was sent once, under its own effect identity")
+	require.NotEmpty(t, queries, "the lost browser target was resolved by its original identity")
+	require.Equal(t, []string{"workflow:unknown", "workflow-query:succeeded"}, f.ctl.observations[lost.EffectID])
 }

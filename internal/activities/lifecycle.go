@@ -34,6 +34,10 @@ type LifecycleActivities struct {
 	ReleasePort ReleasePort
 	// MaxInputBytes bounds one prompt or answer the analysis reads.
 	MaxInputBytes int64
+	// HostAbiProfile is the Studio host ABI profile this environment serves
+	// (P2.2, ENV-08): previews record it, and a certification made under
+	// another host ABI is never released here. Empty binds nothing.
+	HostAbiProfile string
 }
 
 // Analysis tools: the reviewed structured outputs of the requirements
@@ -266,15 +270,16 @@ func (a *LifecycleActivities) GetAnswer(ctx context.Context, in GetAnswerInput) 
 
 func (a *LifecycleActivities) FreezeReferences(ctx context.Context, in FreezeReferencesInput) (FrozenReferences, error) {
 	var out FrozenReferences
+	scope := ReferenceScope{TenantID: in.TenantID, ProjectID: in.ProjectID, ActorID: in.ActorID}
 	for _, r := range in.BrandReferences {
-		d, err := a.Knowledge.ContentDigest(ctx, in.TenantID, r)
+		d, err := a.Knowledge.ContentDigest(ctx, scope, r)
 		if err != nil {
 			return FrozenReferences{}, err
 		}
 		out.BrandDigests = append(out.BrandDigests, d)
 	}
 	for _, r := range in.AssetReferences {
-		d, err := a.Knowledge.ContentDigest(ctx, in.TenantID, r)
+		d, err := a.Knowledge.ContentDigest(ctx, scope, r)
 		if err != nil {
 			return FrozenReferences{}, err
 		}

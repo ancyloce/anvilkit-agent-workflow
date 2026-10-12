@@ -84,6 +84,9 @@ func (a *LifecycleActivities) GetPreviewSource(ctx context.Context, tenantID, op
 }
 
 func (a *LifecycleActivities) RecordPreview(ctx context.Context, in PreviewRecordInput) (uint64, error) {
+	if a.HostAbiProfile != "" {
+		in.HostProfileID = a.HostAbiProfile
+	}
 	return a.Preview.RecordPreview(ctx, in)
 }
 

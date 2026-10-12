@@ -75,6 +75,10 @@ type GetPreparationInput struct {
 
 // PreparationView is what Control records about a Preparation.
 type PreparationView struct {
+	// ActorID and ProjectID are the verified scope the operation was
+	// accepted for (P2.2): the content-digest read runs under them.
+	ActorID         string
+	ProjectID       string
 	Prompt          ArtifactBinding
 	BrandReferences []SourceReference
 	AssetReferences []SourceReference
@@ -162,6 +166,8 @@ type AnswerRef struct {
 
 type FreezeReferencesInput struct {
 	TenantID        string
+	ProjectID       string
+	ActorID         string
 	BrandReferences []SourceReference
 	AssetReferences []SourceReference
 }
@@ -230,5 +236,13 @@ type Artifacts interface {
 // source revisions (DD-07); until P15/P16 deliver Knowledge it is an
 // explicitly labeled DEVELOPMENT_ONLY double.
 type Knowledge interface {
-	ContentDigest(ctx context.Context, tenantID string, ref SourceReference) (ContentDigest, error)
+	ContentDigest(ctx context.Context, scope ReferenceScope, ref SourceReference) (ContentDigest, error)
+}
+
+// ReferenceScope is the user scope a reference is read under (P2.2): only
+// a source revision that actor can read now is frozen into a brief.
+type ReferenceScope struct {
+	TenantID  string
+	ProjectID string
+	ActorID   string
 }

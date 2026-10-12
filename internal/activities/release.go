@@ -263,6 +263,8 @@ func (a *LifecycleActivities) BuildReleaseSubject(ctx context.Context, in BuildS
 		return BuiltSubject{}, refusedf("CERTIFICATION_MISMATCH", "the certification binds source revision %q, the release binds %s", b.SourceRevision, in.Binding.SourceRevision)
 	case b.Version != in.Binding.PackageVersion:
 		return BuiltSubject{}, refusedf("VERSION_MISMATCH", "the certified source declares version %s, the release names %s", b.Version, in.Binding.PackageVersion)
+	case a.HostAbiProfile != "" && b.HostAbi != a.HostAbiProfile:
+		return BuiltSubject{}, refusedf("CERTIFICATION_MISMATCH", "the certification was made under host ABI %q, this environment serves %q", b.HostAbi, a.HostAbiProfile)
 	}
 	out := BuiltSubject{Artifacts: ReleaseArtifacts{Npm: *npm, Browser: *browser}}
 	subject := ReleaseSubject{
