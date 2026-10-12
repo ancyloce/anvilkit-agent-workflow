@@ -137,6 +137,16 @@ config:
     control_task_queue: anvilkit-workflow-control
     worker_identity: anvilkit-agent-workflow
     build_id: dev
+    # Worker Deployment Versioning (P1.7): the worker is version <buildId>
+    # (the image digest, see buildId above) of deployment_name and every
+    # Workflow is pinned to the version it started on. Enable it only with a
+    # rollout that keeps the previous version's workers until their pinned
+    # runs drain (for example the Temporal Worker Controller); promotion of
+    # the new version is that rollout's step. A plain rolling update with it
+    # enabled would leave pinned runs without a worker.
+    versioning:
+      enabled: false
+      deployment_name: anvilkit-agent-workflow
   control:
     address: 127.0.0.1:9101
   kubernetes:
