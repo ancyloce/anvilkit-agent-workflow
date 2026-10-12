@@ -44,6 +44,22 @@ type Temporal struct {
 	// presents the workload certificate (cert_file/key_file, defaulting to
 	// the process identity).
 	TLS ClientTLS `koanf:"tls"`
+	// Versioning opts both pollers into Worker Deployment Versioning
+	// (P1.7): the worker is version build_id of deployment
+	// deployment_name, and every Workflow is pinned to the version it
+	// started on, so a run never replays on a build with other code. Only
+	// a placement that keeps the previous version's workers until their
+	// pinned runs drain may enable it (a plain rolling update would leave
+	// those runs without a worker). promote (DEVELOPMENT_ONLY) makes this
+	// version the deployment's current one once its pollers registered;
+	// elsewhere promotion is a rollout step.
+	Versioning Versioning `koanf:"versioning"`
+}
+
+type Versioning struct {
+	Enabled        bool   `koanf:"enabled"`
+	DeploymentName string `koanf:"deployment_name"`
+	Promote        bool   `koanf:"promote"`
 }
 
 type Control struct {
@@ -381,6 +397,9 @@ var defaults = map[string]any{
 	"temporal.control_task_queue":                    "anvilkit-workflow-control",
 	"temporal.worker_identity":                       "anvilkit-agent-workflow",
 	"temporal.build_id":                              "dev",
+	"temporal.versioning.enabled":                    false,
+	"temporal.versioning.deployment_name":            "anvilkit-agent-workflow",
+	"temporal.versioning.promote":                    false,
 	"model_proxy.timeout":                            "5m",
 	"model_proxy.identity.mode":                      "mtls",
 	"control.identity.mode":                          "mtls",
@@ -519,6 +538,14 @@ func (c Config) validate() error {
 	req("temporal.control_task_queue", c.Temporal.ControlTaskQueue)
 	req("temporal.worker_identity", c.Temporal.WorkerIdentity)
 	req("temporal.build_id", c.Temporal.BuildID)
+	if v := c.Temporal.Versioning; v.Enabled {
+		req("temporal.versioning.deployment_name", v.DeploymentName)
+		if v.Promote && !c.Development.Enabled {
+			errs = append(errs, errors.New("temporal.versioning.promote is DEVELOPMENT_ONLY: it needs development.enabled"))
+		}
+	} else if v.Promote {
+		errs = append(errs, errors.New("temporal.versioning.promote needs temporal.versioning.enabled"))
+	}
 	req("control.address", c.Control.Address)
 	req("kubernetes.namespace", c.Kubernetes.Namespace)
 	req("kubernetes.launch_backend", c.Kubernetes.LaunchBackend)
