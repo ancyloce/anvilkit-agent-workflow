@@ -21,6 +21,13 @@ temporal:
   control_task_queue: anvilkit-workflow-control
   worker_identity: anvilkit-agent-workflow
   build_id: dev
+  # versioning (P1.7): Worker Deployment Versioning, every Workflow pinned
+  # to the build it started on. Enable it only where the previous build's
+  # workers stay until their pinned runs drain (a plain rolling update would
+  # strand them); promote (DEVELOPMENT_ONLY) makes this build current.
+  versioning:
+    enabled: false
+    deployment_name: anvilkit-agent-workflow
   # tls: the frontend transport; development is the foundation's plaintext
   # Temporal (DEVELOPMENT_ONLY, needs development.enabled), tls verifies the
   # frontend against ca_file/server_name, mtls also presents the workload
