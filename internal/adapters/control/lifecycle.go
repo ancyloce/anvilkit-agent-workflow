@@ -81,6 +81,7 @@ func (c *Client) GetPreparation(ctx context.Context, in activities.GetPreparatio
 	questions, _ := strconv.ParseUint(p.GetMaxQuestions(), 10, 64)
 	wait, _ := strconv.ParseUint(p.GetWaitSeconds(), 10, 64)
 	view := activities.PreparationView{
+		ActorID: p.GetActorId(), ProjectID: p.GetProjectId(),
 		Prompt: fromBinding(p.GetPrompt(), p.GetPromptHandle()), BrandReferences: fromSourceRefs(p.GetBrandReferences()), AssetReferences: fromSourceRefs(p.GetAssetReferences()),
 		MaxRounds: rounds, MaxQuestions: questions, Wait: time.Duration(wait) * time.Second,
 	}

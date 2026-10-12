@@ -382,3 +382,62 @@ func sortedKeys(m map[string]string) []string {
 	}
 	return out
 }
+
+// TestSidecarRelayPlacements (P2.4 AC2, B-32): under identity mode mtls the
+// sidecar receives the Model Proxy, MCP and Knowledge placements after its
+// six launch variables, in a fixed order, and reaches them with its mounted
+// workload certificate; the supervisor (and so the candidate) never sees
+// them. Unset placements render nothing.
+func TestSidecarRelayPlacements(t *testing.T) {
+	opts := harnessOptions(harnessProfile)
+	opts.SidecarModelProxyURL = "https://anvilkit-agent-model-proxy.anvilkit-apps.svc.cluster.local:9103"
+	opts.SidecarMCPAddress = "anvilkit-agent-mcp.anvilkit-apps.svc.cluster.local:9106"
+	opts.SidecarKnowledgeAddress = "anvilkit-agent-knowledge.anvilkit-apps.svc.cluster.local:9105"
+	job, err := k8s.NewWithClient(fake.NewClientset(), namespace, opts).Render(harnessInput(t), time.Now())
+	require.NoError(t, err)
+	side, sup := job.Spec.Template.Spec.InitContainers[0], job.Spec.Template.Spec.Containers[0]
+	var names []string
+	for _, e := range side.Env {
+		names = append(names, e.Name)
+	}
+	require.Equal(t, []string{
+		"ANVILKIT_SIDECAR_CONTROL_ADDRESS", "ANVILKIT_SIDECAR_IDENTITY_MODE", "ANVILKIT_SIDECAR_BACKEND", "ANVILKIT_SIDECAR_LAUNCH_KEY", "ANVILKIT_SIDECAR_POD_UID", "ANVILKIT_SIDECAR_LAUNCH_ENVELOPE",
+		"ANVILKIT_SIDECAR_MODEL_PROXY_URL", "ANVILKIT_SIDECAR_MCP_ADDRESS", "ANVILKIT_SIDECAR_KNOWLEDGE_ADDRESS",
+	}, names)
+	require.Contains(t, side.VolumeMounts, corev1.VolumeMount{Name: "identity", MountPath: "/etc/anvilkit/identity", ReadOnly: true})
+	for _, e := range sup.Env {
+		require.NotContains(t, e.Name, "SIDECAR", "the candidate side never learns a placement")
+	}
+
+	partial := harnessOptions(harnessProfile)
+	partial.SidecarMCPAddress = "anvilkit-agent-mcp.anvilkit-apps.svc.cluster.local:9106"
+	job, err = k8s.NewWithClient(fake.NewClientset(), namespace, partial).Render(harnessInput(t), time.Now())
+	require.NoError(t, err)
+	last := job.Spec.Template.Spec.InitContainers[0].Env
+	require.Equal(t, "ANVILKIT_SIDECAR_MCP_ADDRESS", last[len(last)-1].Name, "only the set placements are rendered")
+	require.Len(t, last, 7)
+}
+
+// TestTeamAndPreviewProfileStates (P2.4 AC1): the production team and
+// preview profiles are disabled until G-04 (PROFILE_DISABLED); the
+// development team twin runs only behind the development guard
+// (PROFILE_UNQUALIFIED outside it).
+func TestTeamAndPreviewProfileStates(t *testing.T) {
+	for _, id := range []string{"codegen-team-v1", "preview-build-v1"} {
+		p, err := jobschema.ProfileByID(id)
+		require.NoError(t, err)
+		require.Equal(t, jobschema.StateDisabled, p.State)
+		require.Equal(t, "gvisor", p.RuntimeClass)
+		require.True(t, p.CandidateCode)
+		_, err = k8s.NewWithClient(fake.NewClientset(), namespace, harnessOptions(id)).CreateJob(context.Background(), sourceInput(t, id))
+		require.Equal(t, "PROFILE_DISABLED", activities.RefusalCode(err), id)
+	}
+	dev, err := jobschema.ProfileByID("codegen-team-dev-v1")
+	require.NoError(t, err)
+	require.Equal(t, jobschema.StateDevelopment, dev.State)
+	require.Empty(t, dev.RuntimeClass, "the development twin runs on the foundation's containerd runtime")
+	production := harnessOptions("codegen-team-dev-v1")
+	production.Development = false
+	_, err = k8s.NewWithClient(fake.NewClientset(), namespace, production).CreateJob(context.Background(), sourceInput(t, "codegen-team-dev-v1"))
+	require.Equal(t, "PROFILE_UNQUALIFIED", activities.RefusalCode(err))
+}

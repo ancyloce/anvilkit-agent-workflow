@@ -25,14 +25,23 @@ import (
 // policies are checked offline (deploy/policies/check.sh) against exactly
 // what the launcher submits, and the negative variants are derived from
 // these files. Without the variable it only checks that the render works.
+// policyProfiles are the profiles whose Jobs and Pods the policies are
+// checked against (P2.4 adds the team and the preview build).
+var policyProfiles = []string{"local-check-v1", "harness-wiring-dev-v1", "codegen-fixed-v1", "validator-fixture-v1", "validator-source-v1", "validator-source-dev-v1",
+	"preview-build-v1", "codegen-team-v1", "codegen-team-dev-v1"}
+
 func TestRenderPolicyFixtures(t *testing.T) {
 	l := k8s.NewWithClient(fake.NewClientset(), namespace, k8s.Options{
-		Backend: "kind-anvilkit-dev", ImageRegistry: "localhost:5001", EnabledProfiles: []string{"local-check-v1", "harness-wiring-dev-v1", "codegen-fixed-v1", "validator-fixture-v1", "validator-source-v1", "validator-source-dev-v1"},
+		Backend: "kind-anvilkit-dev", ImageRegistry: "localhost:5001", EnabledProfiles: policyProfiles,
 		SidecarControlAddress: "172.22.0.1:9101", SidecarIdentityMode: "mtls", SidecarIdentitySecret: "anvilkit-job-access-sidecar-identity", CandidateSeccompProfile: "anvilkit/candidate.json",
+		// P2.4: the relay placements of the development foundation
+		// (deploy/dev/values/anvilkit-job-admission.yaml pins the same values).
+		SidecarModelProxyURL: "https://anvilkit-agent-model-proxy.anvilkit-apps.svc.cluster.local:9103", SidecarMCPAddress: "anvilkit-agent-mcp.anvilkit-apps.svc.cluster.local:9106",
+		SidecarKnowledgeAddress: "anvilkit-agent-knowledge.anvilkit-apps.svc.cluster.local:9105",
 	})
 	now := time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC)
 	out := os.Getenv("ANVILKIT_RENDER_POLICY_FIXTURES")
-	for _, id := range []string{"local-check-v1", "harness-wiring-dev-v1", "codegen-fixed-v1", "validator-fixture-v1", "validator-source-v1", "validator-source-dev-v1"} {
+	for _, id := range policyProfiles {
 		profile, err := jobschema.ProfileByID(id)
 		require.NoError(t, err)
 		in := activities.CreateJobInput{

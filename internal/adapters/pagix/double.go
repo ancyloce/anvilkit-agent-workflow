@@ -453,9 +453,9 @@ func (d *Double) SetRevision(subject string, revision uint64) error {
 // revision: a deterministic digest of the reference itself, so a brief
 // freezes an exact and reproducible binding; it establishes nothing about
 // real source content (P15/P16).
-func (d *Double) ContentDigest(ctx context.Context, tenantID string, ref activities.SourceReference) (activities.ContentDigest, error) {
+func (d *Double) ContentDigest(ctx context.Context, scope activities.ReferenceScope, ref activities.SourceReference) (activities.ContentDigest, error) {
 	if ref.SourceID == "" {
 		return activities.ContentDigest{}, errors.New("a source reference needs a source id")
 	}
-	return activities.ContentDigest{SourceID: ref.SourceID, Revision: ref.Revision, Digest: fmt.Sprintf("sha256:%x", sha256.Sum256([]byte("DEVELOPMENT_ONLY:"+tenantID+"/"+ref.SourceID+"@"+ref.Revision)))}, nil
+	return activities.ContentDigest{SourceID: ref.SourceID, Revision: ref.Revision, Digest: fmt.Sprintf("sha256:%x", sha256.Sum256([]byte("DEVELOPMENT_ONLY:"+scope.TenantID+"/"+ref.SourceID+"@"+ref.Revision)))}, nil
 }

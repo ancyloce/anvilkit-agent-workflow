@@ -31,7 +31,13 @@ type Options struct {
 	// certificate (tls.crt, tls.key, ca.crt) in the Job namespace, mounted
 	// read-only into the sidecar container alone under identity mode mtls;
 	// the candidate side of the Pod never sees it.
-	SidecarIdentitySecret   string
+	SidecarIdentitySecret string
+	// P2.4: the sidecar's relay placements (Model Proxy URL, MCP and
+	// Knowledge addresses), rendered only under identity mode mtls and only
+	// when set; the admission policy admits exactly these names.
+	SidecarModelProxyURL    string
+	SidecarMCPAddress       string
+	SidecarKnowledgeAddress string
 	CandidateSeccompProfile string
 	// Development is the worker's DEVELOPMENT_ONLY guard (development.enabled):
 	// only with it may a profile in the development state be launched (P0.8).
@@ -69,6 +75,9 @@ const (
 	envSidecarLaunchKey  = "ANVILKIT_SIDECAR_LAUNCH_KEY"
 	envSidecarPodUID     = "ANVILKIT_SIDECAR_POD_UID"
 	envSidecarEnvelope   = "ANVILKIT_SIDECAR_LAUNCH_ENVELOPE"
+	envSidecarModelProxy = "ANVILKIT_SIDECAR_MODEL_PROXY_URL"
+	envSidecarMCP        = "ANVILKIT_SIDECAR_MCP_ADDRESS"
+	envSidecarKnowledge  = "ANVILKIT_SIDECAR_KNOWLEDGE_ADDRESS"
 	sidecarCPU           = "100m"
 	sidecarMemory        = "64Mi"
 	workspaceSizeLimit   = "1Gi"
@@ -280,6 +289,14 @@ func (l *Launcher) harnessPodSpec(in activities.CreateJobInput, profile jobschem
 		},
 	}
 	if l.options.SidecarIdentityMode == "mtls" {
+		// The relay placements (P2.4), in a fixed order after the six
+		// launch variables; the sidecar reaches each with the certificate
+		// below.
+		for _, p := range []corev1.EnvVar{{Name: envSidecarModelProxy, Value: l.options.SidecarModelProxyURL}, {Name: envSidecarMCP, Value: l.options.SidecarMCPAddress}, {Name: envSidecarKnowledge, Value: l.options.SidecarKnowledgeAddress}} {
+			if p.Value != "" {
+				spec.InitContainers[0].Env = append(spec.InitContainers[0].Env, p)
+			}
+		}
 		// The sidecar's workload certificate (P0.1): a Secret volume of the
 		// Job namespace mounted read-only into the sidecar container only; the
 		// supervisor and the candidate it spawns have no mount of it. The
