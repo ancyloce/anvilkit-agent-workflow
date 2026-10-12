@@ -28,6 +28,7 @@ import (
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/activities"
 	artifactadapter "github.com/ancyloce/anvilkit-agent-workflow/internal/adapters/artifacts"
 	controladapter "github.com/ancyloce/anvilkit-agent-workflow/internal/adapters/control"
+	knowledgeadapter "github.com/ancyloce/anvilkit-agent-workflow/internal/adapters/knowledge"
 	k8sadapter "github.com/ancyloce/anvilkit-agent-workflow/internal/adapters/kubernetes"
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/adapters/modelproxy"
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/adapters/pagix"
@@ -172,8 +173,69 @@ func (u unavailablePorts) QuerySave(context.Context, string) (activities.SaveSou
 func (u unavailablePorts) CurrentRevision(context.Context, string) (string, error) {
 	return "", u.refuse()
 }
-func (u unavailablePorts) ContentDigest(context.Context, string, activities.SourceReference) (activities.ContentDigest, error) {
+func (u unavailablePorts) ContentDigest(context.Context, activities.ReferenceScope, activities.SourceReference) (activities.ContentDigest, error) {
 	return activities.ContentDigest{}, u.refuse()
+}
+
+// lifecycleDouble is the DEVELOPMENT_ONLY double when one is placed.
+type lifecycleDouble struct{ *pagix.Double }
+
+// newLifecyclePorts selects each lifecycle port (P2.2): the declared Pagix
+// adapter or the double for the lease, source and release ports; the
+// Knowledge client or the double for the content digests; otherwise the
+// ports answer DEPENDENCY_UNAVAILABLE.
+func newLifecyclePorts(lc fx.Lifecycle, cfg config.Config, ids *identities, double lifecycleDouble, log *slog.Logger) (lifecyclePorts, error) {
+	out := lifecyclePorts{lease: unavailablePorts{}, source: unavailablePorts{}, knowledge: unavailablePorts{}, release: activities.ReleaseUnavailable{}}
+	if double.Double != nil {
+		out = lifecyclePorts{lease: double, source: double, knowledge: double, release: double}
+	}
+	if p := cfg.Lifecycle.Pagix; p.DeclarationFile != "" {
+		decl, err := pagix.LoadDeclaration(p.DeclarationFile)
+		if err != nil {
+			return lifecyclePorts{}, err
+		}
+		o := pagix.ClientOptions{BaseURL: p.BaseURL, Timeout: p.Timeout, ServerName: p.ServerName}
+		if p.Identity == "token" {
+			o.TokenFile = p.TokenFile
+		} else {
+			o.CertFile, o.KeyFile = cfg.Identity.CertFile, cfg.Identity.KeyFile
+		}
+		client, err := pagix.NewClient(decl, o)
+		if err != nil {
+			return lifecyclePorts{}, err
+		}
+		out.lease, out.source, out.release = client, client, client
+		if missing := decl.Missing(); len(missing) > 0 {
+			log.Warn("the Pagix declaration omits operations; their port calls are refused", "apiVersion", decl.APIVersion, "missing", missing)
+		}
+		log.Info("Pagix ports through the declared adapter", "apiVersion", decl.APIVersion, "baseUrl", p.BaseURL)
+	}
+	if k := cfg.Lifecycle.Knowledge; k.Address != "" {
+		transport, err := ids.client("lifecycle.knowledge", config.ClientIdentity{Mode: knowledgeMode(cfg), MTLS: config.MTLSFiles{ServerName: k.ServerName}}, "anvilkit-agent-knowledge")
+		if err != nil {
+			return lifecyclePorts{}, err
+		}
+		d, err := knowledgeadapter.Dial(k.Address, k.Timeout, transport)
+		if err != nil {
+			return lifecyclePorts{}, err
+		}
+		lc.Append(fx.Hook{OnStop: func(context.Context) error { return d.Close() }})
+		out.knowledge = d
+		log.Info("brief content digests from Knowledge", "address", k.Address)
+	}
+	if double.Double == nil && cfg.Lifecycle.Pagix.DeclarationFile == "" {
+		log.Warn("no Pagix port configured: the lease, source and release calls answer DEPENDENCY_UNAVAILABLE (ENV-07)")
+	}
+	return out, nil
+}
+
+// knowledgeMode follows the process identity: mtls with the workload
+// certificate, plaintext only on the development foundation.
+func knowledgeMode(cfg config.Config) string {
+	if cfg.Identity.CertFile == "" && cfg.Development.Enabled {
+		return "development"
+	}
+	return "mtls"
 }
 
 // lifecyclePorts is the set the lifecycle Activities bind.
@@ -229,6 +291,7 @@ func Module() fx.Option {
 				return k8sadapter.New(cfg.Kubernetes.Kubeconfig, cfg.Kubernetes.Namespace, k8sadapter.Options{
 					Backend: cfg.Kubernetes.LaunchBackend, ImageRegistry: cfg.Kubernetes.ImageRegistry, EnabledProfiles: cfg.Kubernetes.EnabledProfiles,
 					SidecarControlAddress: cfg.Kubernetes.Sidecar.ControlAddress, SidecarIdentityMode: cfg.Kubernetes.Sidecar.IdentityMode, SidecarIdentitySecret: cfg.Kubernetes.Sidecar.IdentitySecret,
+					SidecarModelProxyURL: cfg.Kubernetes.Sidecar.ModelProxyURL, SidecarMCPAddress: cfg.Kubernetes.Sidecar.MCPAddress, SidecarKnowledgeAddress: cfg.Kubernetes.Sidecar.KnowledgeAddress,
 					CandidateSeccompProfile: cfg.Kubernetes.CandidateSeccompProfile, Development: cfg.Development.Enabled,
 					ClientQPS: cfg.Kubernetes.ClientQPS, ClientBurst: cfg.Kubernetes.ClientBurst, ObserveInterval: cfg.Kubernetes.ObserveInterval,
 				})
@@ -255,28 +318,34 @@ func Module() fx.Option {
 			func(cfg config.Config, ctl *controladapter.Client, l *k8sadapter.Launcher, m activities.ModelCaller) *activities.Activities {
 				return &activities.Activities{Control: ctl, Recovery: ctl, Launcher: l, Model: m, Observer: cfg.Temporal.WorkerIdentity}
 			},
-			func(cfg config.Config, log *slog.Logger) (lifecyclePorts, error) {
+			newLifecyclePorts,
+			func(cfg config.Config, log *slog.Logger) (lifecycleDouble, error) {
 				dir := cfg.Lifecycle.PagixDoubleDir
 				if dir == "" {
-					log.Warn("no Pagix/Knowledge port configured: the Generation lease, source and content-digest calls answer DEPENDENCY_UNAVAILABLE (ENV-07)")
-					return lifecyclePorts{lease: unavailablePorts{}, source: unavailablePorts{}, knowledge: unavailablePorts{}, release: activities.ReleaseUnavailable{}}, nil
+					return lifecycleDouble{}, nil
+				}
+				// The loader admits the double only with development.enabled
+				// (P2.2 AC5); this is the second, named refusal.
+				if !cfg.Development.Enabled {
+					return lifecycleDouble{}, fmt.Errorf("lifecycle.pagix_double_dir: the DEVELOPMENT_ONLY Pagix/Knowledge double requires development.enabled")
 				}
 				log.Warn("DEVELOPMENT_ONLY Pagix/Knowledge doubles enabled; they qualify no upstream", "dir", dir)
 				d, err := pagix.New(dir)
 				if err != nil {
-					return lifecyclePorts{}, err
+					return lifecycleDouble{}, err
 				}
 				if origin := cfg.Lifecycle.Release.OriginDir; origin != "" {
 					if err := d.SetOrigin(origin); err != nil {
-						return lifecyclePorts{}, err
+						return lifecycleDouble{}, err
 					}
 				}
-				return lifecyclePorts{lease: d, source: d, knowledge: d, release: d}, nil
+				return lifecycleDouble{d}, nil
 			},
 			func(cfg config.Config, ctl *controladapter.Client, m activities.ModelCaller, ports lifecyclePorts) *activities.LifecycleActivities {
 				return &activities.LifecycleActivities{
 					Preparation: ctl, Generation: ctl, Artifacts: artifactadapter.New(ctl.Conn(), cfg.Temporal.WorkerIdentity, cfg.Lifecycle.Artifacts.TransferWindow),
 					Knowledge: ports.knowledge, Model: m, Lease: ports.lease, Source: ports.source, Preview: ctl, Release: ctl, ReleasePort: ports.release, MaxInputBytes: cfg.Lifecycle.Preparation.MaxInputBytes,
+					HostAbiProfile: cfg.Lifecycle.HostAbiProfile,
 				}
 			},
 			newWorkers,
