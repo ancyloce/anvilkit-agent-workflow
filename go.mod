@@ -3,7 +3,7 @@ module github.com/ancyloce/anvilkit-agent-workflow
 go 1.27.0
 
 require (
-	github.com/ancyloce/anvilkit-agent-contracts/go v0.1.9
+	github.com/ancyloce/anvilkit-agent-contracts/go v0.1.10
 	github.com/getkin/kin-openapi v0.149.0
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/knadh/koanf/parsers/yaml v1.1.0
@@ -20,6 +20,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.46.0
 	go.opentelemetry.io/otel/sdk/metric v1.46.0
 	go.opentelemetry.io/proto/otlp v1.11.0
+	go.temporal.io/api v1.63.4
 	go.temporal.io/sdk v1.48.0
 	go.temporal.io/sdk/contrib/opentelemetry v0.8.1
 	go.uber.org/fx v1.24.0
@@ -90,7 +91,6 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.46.0 // indirect
 	go.opentelemetry.io/otel/metric v1.46.0 // indirect
 	go.opentelemetry.io/otel/trace v1.46.0 // indirect
-	go.temporal.io/api v1.63.4 // indirect
 	go.uber.org/dig v1.19.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.26.0 // indirect
