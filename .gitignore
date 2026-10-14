@@ -33,3 +33,4 @@ go.work.sum
 
 # Machine-local state (kubeconfigs, scratch)
 /.local/
+internal/workflows/testdata/
