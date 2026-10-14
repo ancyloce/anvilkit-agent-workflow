@@ -199,7 +199,7 @@ func Preparation(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Conte
 		// Freeze: the content digests of the selected references, then the
 		// brief artifact and its record.
 		var frozen activities.FrozenReferences
-		if err := workflow.ExecuteActivity(business, activities.NameFreezeReferences, activities.FreezeReferencesInput{TenantID: tenantID, BrandReferences: prep.BrandReferences, AssetReferences: prep.AssetReferences}).Get(ctx, &frozen); err != nil {
+		if err := workflow.ExecuteActivity(business, activities.NameFreezeReferences, activities.FreezeReferencesInput{TenantID: tenantID, ProjectID: prep.ProjectID, ActorID: prep.ActorID, BrandReferences: prep.BrandReferences, AssetReferences: prep.AssetReferences}).Get(ctx, &frozen); err != nil {
 			outcome, failureCode = settleOutcome(ctx, err, "SOURCE_UNAVAILABLE")
 			return nil
 		}
