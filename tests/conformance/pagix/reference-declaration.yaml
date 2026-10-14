@@ -1,0 +1,34 @@
+# The reference declaration of the Pagix port contract (P2.2): the paths the
+# reference endpoint serves the DEVELOPMENT_ONLY double under, so the
+# declaration-driven adapter can be proven end to end without an upstream.
+# These paths are this repository's test surface, never a claim about the
+# real Pagix API; an ENV-07 declaration records the upstream's own.
+schemaVersion: 1
+apiVersion: anvilkit-pagix-port-reference-v1
+auth:
+  issuer: reference
+  audience: anvilkit-agent-workflow
+idempotencyHeader: Idempotency-Key
+conditionHeader: If-Match
+maxBodyBytes: 33554432
+operations:
+  lease.acquire: {method: POST, path: "/leases/{subject}/acquisitions/{occurrence}"}
+  lease.renew: {method: POST, path: "/leases/{subject}/renewals/{occurrence}"}
+  lease.query: {method: POST, path: "/leases/{subject}/queries/{occurrence}"}
+  lease.release: {method: POST, path: "/leases/{subject}/releases/{occurrence}"}
+  source.check-scope: {method: POST, path: "/sources/{subject}/scope-checks"}
+  source.register-candidate: {method: PUT, path: "/candidates/{effectId}"}
+  source.query-registration: {method: GET, path: "/candidates/{effectId}"}
+  source.save-revision: {method: PUT, path: "/lineages/{lineage}/saves/{effectId}"}
+  source.query-save: {method: GET, path: "/saves/{effectId}"}
+  source.current-revision: {method: GET, path: "/lineages/{lineage}/current"}
+  source.revision-digest: {method: GET, path: "/lineages/{lineage}/revisions/{revision}/digest"}
+  review.register: {method: PUT, path: "/reviews/{effectId}"}
+  review.query: {method: GET, path: "/reviews/{effectId}"}
+  review.decision: {method: GET, path: "/releases/{releaseId}/decision"}
+  publication.publish: {method: PUT, path: "/releases/{releaseId}/publications/{target}/{effectId}"}
+  publication.query: {method: GET, path: "/publications/{effectId}"}
+  publication.fetch: {method: GET, path: "/releases/{releaseId}/published/{target}/{destination}/{path}"}
+  activation.activate: {method: PUT, path: "/activations/{effectId}"}
+  activation.query: {method: GET, path: "/activations/{effectId}"}
+  catalog.revision: {method: GET, path: "/catalog/revision"}
