@@ -1,0 +1,4581 @@
+{
+  "events":  [
+    {
+      "eventId":  "1",
+      "eventTime":  "2026-09-30T18:00:32.833388294Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_EXECUTION_STARTED",
+      "taskId":  "8388690",
+      "workflowExecutionStartedEventAttributes":  {
+        "workflowType":  {
+          "name":  "PreviewBuildWorkflow"
+        },
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "input":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJvcGVyYXRpb25JZCI6Im9wX04zVElLWkNOSTZPNExRSUxKR1lFTFFHRyIsInRlbmFudElkIjoidGVuYW50X2EifQ=="
+            }
+          ]
+        },
+        "workflowExecutionTimeout":  "0s",
+        "workflowRunTimeout":  "0s",
+        "workflowTaskTimeout":  "10s",
+        "originalExecutionRunId":  "01a0f379-ad41-75ea-b0ae-a2becf7c11a7",
+        "identity":  "17296@Nico@",
+        "firstExecutionRunId":  "01a0f379-ad41-75ea-b0ae-a2becf7c11a7",
+        "attempt":  1,
+        "firstWorkflowTaskBackoff":  "0s",
+        "header":  {},
+        "workflowId":  "op_N3TIKZCNI6O4LQILJGYELQGG"
+      }
+    },
+    {
+      "eventId":  "2",
+      "eventTime":  "2026-09-30T18:00:32.833439364Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8388691",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "3",
+      "eventTime":  "2026-09-30T18:00:32.846547234Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8388696",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "2",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "e88da2ed-f517-4800-b636-b99d58134aa4",
+        "historySizeBytes":  "424",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "4",
+      "eventTime":  "2026-09-30T18:00:32.857224702Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8388700",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "2",
+        "startedEventId":  "3",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {
+          "langUsedFlags":  [
+            3
+          ],
+          "sdkName":  "temporal-go",
+          "sdkVersion":  "1.48.0"
+        },
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "5",
+      "eventTime":  "2026-09-30T18:00:32.857259044Z",
+      "eventType":  "EVENT_TYPE_MARKER_RECORDED",
+      "taskId":  "8388701",
+      "markerRecordedEventAttributes":  {
+        "markerName":  "SideEffect",
+        "details":  {
+          "data":  {
+            "payloads":  [
+              {
+                "metadata":  {
+                  "encoding":  "anNvbi9wbGFpbg=="
+                },
+                "data":  "eyJDb250cm9sQWN0aXZpdHlUaW1lb3V0IjozMDAwMDAwMDAwMCwiQ29udHJvbFJldHJ5SW5pdGlhbCI6MTAwMDAwMDAwMCwiQ29udHJvbFJldHJ5TWF4SW50ZXJ2YWwiOjMwMDAwMDAwMDAwLCJDb250cm9sUmV0cnlNYXhBdHRlbXB0cyI6NiwiTGF1bmNoV2luZG93IjoxMjAwMDAwMDAwMDAsIk9ic2VydmVIZWFydGJlYXRUaW1lb3V0IjozMDAwMDAwMDAwMCwiT2JzZXJ2ZU1heEF0dGVtcHRzIjozLCJDbGVhbnVwVGltZW91dCI6MTgwMDAwMDAwMDAwLCJDbGVhbnVwTWF4QXR0ZW1wdHMiOjIsIlVucmVzb2x2ZWRTZXR0bGVXaW5kb3ciOjYwMDAwMDAwMDAwLCJSZWNvbmNpbGVJbml0aWFsSW50ZXJ2YWwiOjUwMDAwMDAwMDAsIlJlY29uY2lsZU1heEludGVydmFsIjo2MDAwMDAwMDAwMCwiUmVjb25jaWxlTWF4RHVyYXRpb24iOjg2NDAwMDAwMDAwMDAwfQ=="
+              }
+            ]
+          },
+          "side-effect-id":  {
+            "payloads":  [
+              {
+                "metadata":  {
+                  "encoding":  "anNvbi9wbGFpbg=="
+                },
+                "data":  "MQ=="
+              }
+            ]
+          }
+        },
+        "workflowTaskCompletedEventId":  "4"
+      }
+    },
+    {
+      "eventId":  "6",
+      "eventTime":  "2026-09-30T18:00:32.857261996Z",
+      "eventType":  "EVENT_TYPE_MARKER_RECORDED",
+      "taskId":  "8388702",
+      "markerRecordedEventAttributes":  {
+        "markerName":  "SideEffect",
+        "details":  {
+          "data":  {
+            "payloads":  [
+              {
+                "metadata":  {
+                  "encoding":  "anNvbi9wbGFpbg=="
+                },
+                "data":  "InZhbGlkYXRvci1maXhlZC1kZXYtdjEi"
+              }
+            ]
+          },
+          "side-effect-id":  {
+            "payloads":  [
+              {
+                "metadata":  {
+                  "encoding":  "anNvbi9wbGFpbg=="
+                },
+                "data":  "Mg=="
+              }
+            ]
+          }
+        },
+        "workflowTaskCompletedEventId":  "4"
+      }
+    },
+    {
+      "eventId":  "7",
+      "eventTime":  "2026-09-30T18:00:32.857280004Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId":  "8388703",
+      "activityTaskScheduledEventAttributes":  {
+        "activityId":  "7",
+        "activityType":  {
+          "name":  "GetPreviewSource"
+        },
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header":  {},
+        "input":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "InRlbmFudF9hIg=="
+            },
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "Im9wX04zVElLWkNOSTZPNExRSUxKR1lFTFFHRyI="
+            }
+          ]
+        },
+        "scheduleToCloseTimeout":  "0s",
+        "scheduleToStartTimeout":  "0s",
+        "startToCloseTimeout":  "30s",
+        "heartbeatTimeout":  "0s",
+        "workflowTaskCompletedEventId":  "4",
+        "retryPolicy":  {
+          "initialInterval":  "1s",
+          "backoffCoefficient":  2,
+          "maximumInterval":  "30s",
+          "maximumAttempts":  6
+        },
+        "useWorkflowBuildId":  true
+      }
+    },
+    {
+      "eventId":  "8",
+      "eventTime":  "2026-09-30T18:00:32.865731548Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId":  "8388709",
+      "activityTaskStartedEventAttributes":  {
+        "scheduledEventId":  "7",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "1da43fa4-1c86-451c-a25a-cbb21092ecd3",
+        "attempt":  1,
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "9",
+      "eventTime":  "2026-09-30T18:00:32.880671247Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_COMPLETED",
+      "taskId":  "8388710",
+      "activityTaskCompletedEventAttributes":  {
+        "result":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJQcm9maWxlSUQiOiJwcmV2aWV3LWJ1aWxkLXYxIiwiTGluZWFnZSI6InNoYTI1NjpkNzQyYTRmOGRkMDhkNjc1YjgzOWYwZGM3MDMzZDQ1MGY4MmQxMjU2MzM1ZTY2NmIzNjFlYjUxY2MzMTAyNzc5IiwiQmFzZVJldmlzaW9uIjoiMSIsIlNvdXJjZSI6eyJIYW5kbGUiOiJoZGxfRU1BTlk0M05BVENLWE01VU1FNUJNV0NHIiwiQ2xhc3MiOiJzb3VyY2UiLCJEaWdlc3QiOiJzaGEyNTY6NTRiNmE5OTNjYzY3ZmVjMmViYWViZmFmZDEzOWU5OTY5MDQ1OTQzNjJlZmY4YjljZGY0MTg3NjEyMGY3MjUyZSIsIlNpemVCeXRlcyI6IjYxNDQwIiwiVHJhbnNmZXJJRCI6InhmZXJfNTZMWlFVRk9KVjJYQVU1R1BSQ0tCU1VNIiwiT2JqZWN0VmVyc2lvbiI6IjU3MWNiMmE0LWMyOWItNDdmMS05ZDM2LWNlYzAwOWUzMTc1NCJ9fQ=="
+            }
+          ]
+        },
+        "scheduledEventId":  "7",
+        "startedEventId":  "8",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232"
+      }
+    },
+    {
+      "eventId":  "10",
+      "eventTime":  "2026-09-30T18:00:32.880681382Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8388711",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "11",
+      "eventTime":  "2026-09-30T18:00:32.889683282Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8388715",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "10",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "e3f0efb0-cf43-47e0-b98b-0178132ba620",
+        "historySizeBytes":  "2481",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "12",
+      "eventTime":  "2026-09-30T18:00:32.899134972Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8388719",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "10",
+        "startedEventId":  "11",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "13",
+      "eventTime":  "2026-09-30T18:00:32.899169413Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId":  "8388720",
+      "activityTaskScheduledEventAttributes":  {
+        "activityId":  "13",
+        "activityType":  {
+          "name":  "RecordPreview"
+        },
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707-control",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header":  {},
+        "input":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJPcGVyYXRpb25JRCI6Im9wX04zVElLWkNOSTZPNExRSUxKR1lFTFFHRyIsIlRlbmFudElEIjoidGVuYW50X2EiLCJFeHBlY3RlZFJldmlzaW9uIjowLCJTdGF0ZSI6InNhdmluZyIsIlNvdXJjZVJldmlzaW9uIjoiIiwiQ3VycmVudFJldmlzaW9uIjoiIiwiU291cmNlRGlnZXN0Ijoic2hhMjU2OjU0YjZhOTkzY2M2N2ZlYzJlYmFlYmZhZmQxMzllOTk2OTA0NTk0MzYyZWZmOGI5Y2RmNDE4NzYxMjBmNzI1MmUiLCJNb2R1bGUiOm51bGwsIlN0eWxlcyI6bnVsbCwiQnVpbGRQcm9maWxlSUQiOiJidWlsZC1zdXBwb3J0LWRldi12MSIsIkhvc3RQcm9maWxlSUQiOiJob3N0LWFiaS1kZXYtdjEiLCJGYWlsdXJlQ29kZSI6IiJ9"
+            }
+          ]
+        },
+        "scheduleToCloseTimeout":  "0s",
+        "scheduleToStartTimeout":  "0s",
+        "startToCloseTimeout":  "30s",
+        "heartbeatTimeout":  "0s",
+        "workflowTaskCompletedEventId":  "12",
+        "retryPolicy":  {
+          "initialInterval":  "1s",
+          "backoffCoefficient":  2,
+          "maximumInterval":  "30s"
+        }
+      }
+    },
+    {
+      "eventId":  "14",
+      "eventTime":  "2026-09-30T18:00:32.906621304Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId":  "8388725",
+      "activityTaskStartedEventAttributes":  {
+        "scheduledEventId":  "13",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "4ebafc3c-baf6-4f40-aa31-b7c8bbc5e330",
+        "attempt":  1,
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "15",
+      "eventTime":  "2026-09-30T18:00:32.922940188Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_COMPLETED",
+      "taskId":  "8388726",
+      "activityTaskCompletedEventAttributes":  {
+        "result":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "MQ=="
+            }
+          ]
+        },
+        "scheduledEventId":  "13",
+        "startedEventId":  "14",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232"
+      }
+    },
+    {
+      "eventId":  "16",
+      "eventTime":  "2026-09-30T18:00:32.922948355Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8388727",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "17",
+      "eventTime":  "2026-09-30T18:00:32.930325560Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8388731",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "16",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "1d2b9eba-2e98-40c7-888b-19d574eaae35",
+        "historySizeBytes":  "3679",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "18",
+      "eventTime":  "2026-09-30T18:00:32.938464485Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8388735",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "16",
+        "startedEventId":  "17",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "19",
+      "eventTime":  "2026-09-30T18:00:32.938497745Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId":  "8388736",
+      "activityTaskScheduledEventAttributes":  {
+        "activityId":  "19",
+        "activityType":  {
+          "name":  "OpenAttempt"
+        },
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header":  {},
+        "input":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJPcGVyYXRpb25JRCI6Im9wX04zVElLWkNOSTZPNExRSUxKR1lFTFFHRyIsIlRlbmFudElEIjoidGVuYW50X2EiLCJDb21tYW5kSUQiOiJvcF9OM1RJS1pDTkk2TzRMUUlMSkdZRUxRR0c6c2F2ZToxOm9wZW4iLCJTdGVwSUQiOiJzYXZlX3NvdXJjZSIsIlZpc2l0IjowLCJQcm9maWxlSUQiOiJwcmV2aWV3LWJ1aWxkLXYxIn0="
+            }
+          ]
+        },
+        "scheduleToCloseTimeout":  "0s",
+        "scheduleToStartTimeout":  "0s",
+        "startToCloseTimeout":  "30s",
+        "heartbeatTimeout":  "0s",
+        "workflowTaskCompletedEventId":  "18",
+        "retryPolicy":  {
+          "initialInterval":  "1s",
+          "backoffCoefficient":  2,
+          "maximumInterval":  "30s",
+          "maximumAttempts":  6
+        },
+        "useWorkflowBuildId":  true
+      }
+    },
+    {
+      "eventId":  "20",
+      "eventTime":  "2026-09-30T18:00:32.945774482Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId":  "8388741",
+      "activityTaskStartedEventAttributes":  {
+        "scheduledEventId":  "19",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "03020083-4159-46b8-8788-387b1804f354",
+        "attempt":  1,
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "21",
+      "eventTime":  "2026-09-30T18:00:32.980007523Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_COMPLETED",
+      "taskId":  "8388742",
+      "activityTaskCompletedEventAttributes":  {
+        "result":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJBdHRlbXB0SUQiOiJhdHRfNDdHRTMzMlJJTTNSRU9DNkRSVFZMUTVUIiwiVGVuYW50SUQiOiJ0ZW5hbnRfYSIsIlByb2ZpbGVJRCI6InByZXZpZXctYnVpbGQtdjEiLCJEZWFkbGluZSI6IjIwMjYtMDktMzBUMTg6MzA6MzIuNjAwNTk3WiIsIkV4ZWN1dGlvbkVwb2NoIjoiMSJ9"
+            }
+          ]
+        },
+        "scheduledEventId":  "19",
+        "startedEventId":  "20",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232"
+      }
+    },
+    {
+      "eventId":  "22",
+      "eventTime":  "2026-09-30T18:00:32.980017462Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8388743",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "23",
+      "eventTime":  "2026-09-30T18:00:32.987756388Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8388747",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "22",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "c0d6b791-04bf-4692-8f48-14cf1411a294",
+        "historySizeBytes":  "4865",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "24",
+      "eventTime":  "2026-09-30T18:00:32.996424906Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8388751",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "22",
+        "startedEventId":  "23",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "25",
+      "eventTime":  "2026-09-30T18:00:32.996512188Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId":  "8388752",
+      "activityTaskScheduledEventAttributes":  {
+        "activityId":  "25",
+        "activityType":  {
+          "name":  "SaveSource"
+        },
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707-control",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header":  {},
+        "input":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJPcGVyYXRpb25JRCI6Im9wX04zVElLWkNOSTZPNExRSUxKR1lFTFFHRyIsIlRlbmFudElEIjoidGVuYW50X2EiLCJBdHRlbXB0SUQiOiJhdHRfNDdHRTMzMlJJTTNSRU9DNkRSVFZMUTVUIiwiRXhlY3V0aW9uRXBvY2giOjEsIkNvbW1hbmRJRCI6Im9wX04zVElLWkNOSTZPNExRSUxKR1lFTFFHRzpzYXZlOjEiLCJPY2N1cnJlbmNlIjoxLCJMaW5lYWdlIjoic2hhMjU2OmQ3NDJhNGY4ZGQwOGQ2NzViODM5ZjBkYzcwMzNkNDUwZjgyZDEyNTYzMzVlNjY2YjM2MWViNTFjYzMxMDI3NzkiLCJCYXNlUmV2aXNpb24iOiIxIiwiU291cmNlIjp7IkhhbmRsZSI6ImhkbF9FTUFOWTQzTkFUQ0tYTTVVTUU1Qk1XQ0ciLCJDbGFzcyI6InNvdXJjZSIsIkRpZ2VzdCI6InNoYTI1Njo1NGI2YTk5M2NjNjdmZWMyZWJhZWJmYWZkMTM5ZTk5NjkwNDU5NDM2MmVmZjhiOWNkZjQxODc2MTIwZjcyNTJlIiwiU2l6ZUJ5dGVzIjoiNjE0NDAiLCJUcmFuc2ZlcklEIjoieGZlcl81NkxaUVVGT0pWMlhBVTVHUFJDS0JTVU0iLCJPYmplY3RWZXJzaW9uIjoiNTcxY2IyYTQtYzI5Yi00N2YxLTlkMzYtY2VjMDA5ZTMxNzU0In0sIkRlYWRsaW5lIjoiMjAyNi0wOS0zMFQxODozMDozMi42MDA1OTdaIn0="
+            }
+          ]
+        },
+        "scheduleToCloseTimeout":  "0s",
+        "scheduleToStartTimeout":  "0s",
+        "startToCloseTimeout":  "30s",
+        "heartbeatTimeout":  "0s",
+        "workflowTaskCompletedEventId":  "24",
+        "retryPolicy":  {
+          "initialInterval":  "1s",
+          "backoffCoefficient":  2,
+          "maximumInterval":  "30s"
+        }
+      }
+    },
+    {
+      "eventId":  "26",
+      "eventTime":  "2026-09-30T18:00:33.004515714Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId":  "8388757",
+      "activityTaskStartedEventAttributes":  {
+        "scheduledEventId":  "25",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "47365b42-005e-4054-9b42-af95ed8f71bf",
+        "attempt":  1,
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "27",
+      "eventTime":  "2026-09-30T18:00:33.045382443Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_COMPLETED",
+      "taskId":  "8388758",
+      "activityTaskCompletedEventAttributes":  {
+        "result":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJFZmZlY3RJRCI6ImVmZl8zWk0yQk1ZUzU0S0dHUDJJRENWWDVFM1UiLCJTdGF0ZSI6InNhdmVkIiwiUmV2aXNpb24iOiIyIiwiQ3VycmVudFJldmlzaW9uIjoiIiwiRGVuaWFsQ29kZSI6IiJ9"
+            }
+          ]
+        },
+        "scheduledEventId":  "25",
+        "startedEventId":  "26",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232"
+      }
+    },
+    {
+      "eventId":  "28",
+      "eventTime":  "2026-09-30T18:00:33.045389725Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8388759",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "29",
+      "eventTime":  "2026-09-30T18:00:33.053187987Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8388763",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "28",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "7c59ca6e-efae-4a9d-9ce0-0adf434317c0",
+        "historySizeBytes":  "6425",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "30",
+      "eventTime":  "2026-09-30T18:00:33.062151904Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8388767",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "28",
+        "startedEventId":  "29",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "31",
+      "eventTime":  "2026-09-30T18:00:33.062191954Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId":  "8388768",
+      "activityTaskScheduledEventAttributes":  {
+        "activityId":  "31",
+        "activityType":  {
+          "name":  "CloseAttempt"
+        },
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707-control",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header":  {},
+        "input":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJBdHRlbXB0Ijp7IkF0dGVtcHRJRCI6ImF0dF80N0dFMzMyUklNM1JFT0M2RFJUVkxRNVQiLCJUZW5hbnRJRCI6InRlbmFudF9hIiwiUHJvZmlsZUlEIjoicHJldmlldy1idWlsZC12MSIsIkRlYWRsaW5lIjoiMjAyNi0wOS0zMFQxODozMDozMi42MDA1OTdaIiwiRXhlY3V0aW9uRXBvY2giOiIxIn0sIkNvbW1hbmRJRCI6ImF0dF80N0dFMzMyUklNM1JFT0M2RFJUVkxRNVQ6Y2xvc2UiLCJPdXRjb21lIjoiY29tcGxldGVkIiwiQ2xlYW51cCI6Im5vdF9yZXF1aXJlZCIsIkZhaWx1cmVDb2RlIjoiIn0="
+            }
+          ]
+        },
+        "scheduleToCloseTimeout":  "0s",
+        "scheduleToStartTimeout":  "0s",
+        "startToCloseTimeout":  "30s",
+        "heartbeatTimeout":  "0s",
+        "workflowTaskCompletedEventId":  "30",
+        "retryPolicy":  {
+          "initialInterval":  "1s",
+          "backoffCoefficient":  2,
+          "maximumInterval":  "30s"
+        }
+      }
+    },
+    {
+      "eventId":  "32",
+      "eventTime":  "2026-09-30T18:00:33.070223819Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId":  "8388773",
+      "activityTaskStartedEventAttributes":  {
+        "scheduledEventId":  "31",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "86a9eccd-818c-485d-977b-51b7a7203864",
+        "attempt":  1,
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "33",
+      "eventTime":  "2026-09-30T18:00:33.094277496Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_COMPLETED",
+      "taskId":  "8388774",
+      "activityTaskCompletedEventAttributes":  {
+        "result":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJMaWZlY3ljbGUiOiJydW5uaW5nIn0="
+            }
+          ]
+        },
+        "scheduledEventId":  "31",
+        "startedEventId":  "32",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232"
+      }
+    },
+    {
+      "eventId":  "34",
+      "eventTime":  "2026-09-30T18:00:33.094285171Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8388775",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "35",
+      "eventTime":  "2026-09-30T18:00:33.102541981Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8388779",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "34",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "7c680638-ec3f-4f93-9e41-c05cc5fa6d4f",
+        "historySizeBytes":  "7569",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "36",
+      "eventTime":  "2026-09-30T18:00:33.111540043Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8388783",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "34",
+        "startedEventId":  "35",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "37",
+      "eventTime":  "2026-09-30T18:00:33.111577534Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId":  "8388784",
+      "activityTaskScheduledEventAttributes":  {
+        "activityId":  "37",
+        "activityType":  {
+          "name":  "RecordPreview"
+        },
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707-control",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header":  {},
+        "input":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJPcGVyYXRpb25JRCI6Im9wX04zVElLWkNOSTZPNExRSUxKR1lFTFFHRyIsIlRlbmFudElEIjoidGVuYW50X2EiLCJFeHBlY3RlZFJldmlzaW9uIjoxLCJTdGF0ZSI6ImJ1aWxkaW5nIiwiU291cmNlUmV2aXNpb24iOiIyIiwiQ3VycmVudFJldmlzaW9uIjoiIiwiU291cmNlRGlnZXN0Ijoic2hhMjU2OjU0YjZhOTkzY2M2N2ZlYzJlYmFlYmZhZmQxMzllOTk2OTA0NTk0MzYyZWZmOGI5Y2RmNDE4NzYxMjBmNzI1MmUiLCJNb2R1bGUiOm51bGwsIlN0eWxlcyI6bnVsbCwiQnVpbGRQcm9maWxlSUQiOiJidWlsZC1zdXBwb3J0LWRldi12MSIsIkhvc3RQcm9maWxlSUQiOiJob3N0LWFiaS1kZXYtdjEiLCJGYWlsdXJlQ29kZSI6IiJ9"
+            }
+          ]
+        },
+        "scheduleToCloseTimeout":  "0s",
+        "scheduleToStartTimeout":  "0s",
+        "startToCloseTimeout":  "30s",
+        "heartbeatTimeout":  "0s",
+        "workflowTaskCompletedEventId":  "36",
+        "retryPolicy":  {
+          "initialInterval":  "1s",
+          "backoffCoefficient":  2,
+          "maximumInterval":  "30s"
+        }
+      }
+    },
+    {
+      "eventId":  "38",
+      "eventTime":  "2026-09-30T18:00:33.119253484Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId":  "8388789",
+      "activityTaskStartedEventAttributes":  {
+        "scheduledEventId":  "37",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "234fd8e3-8506-4a19-9956-c6a56c33030d",
+        "attempt":  1,
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "39",
+      "eventTime":  "2026-09-30T18:00:33.132479631Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_COMPLETED",
+      "taskId":  "8388790",
+      "activityTaskCompletedEventAttributes":  {
+        "result":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "Mg=="
+            }
+          ]
+        },
+        "scheduledEventId":  "37",
+        "startedEventId":  "38",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232"
+      }
+    },
+    {
+      "eventId":  "40",
+      "eventTime":  "2026-09-30T18:00:33.132486913Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8388791",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "41",
+      "eventTime":  "2026-09-30T18:00:33.140387019Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8388795",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "40",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "a86ed2a3-90ba-4008-b451-9dfbc6deb80b",
+        "historySizeBytes":  "8764",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "42",
+      "eventTime":  "2026-09-30T18:00:33.148976620Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8388799",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "40",
+        "startedEventId":  "41",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "43",
+      "eventTime":  "2026-09-30T18:00:33.149015981Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId":  "8388800",
+      "activityTaskScheduledEventAttributes":  {
+        "activityId":  "43",
+        "activityType":  {
+          "name":  "OpenAttempt"
+        },
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header":  {},
+        "input":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJPcGVyYXRpb25JRCI6Im9wX04zVElLWkNOSTZPNExRSUxKR1lFTFFHRyIsIlRlbmFudElEIjoidGVuYW50X2EiLCJDb21tYW5kSUQiOiJvcF9OM1RJS1pDTkk2TzRMUUlMSkdZRUxRR0c6cHJldmlldy1idWlsZDowOjE6b3BlbiIsIlN0ZXBJRCI6InByZXZpZXctYnVpbGQiLCJWaXNpdCI6MCwiUHJvZmlsZUlEIjoidmFsaWRhdG9yLWZpeGVkLWRldi12MSJ9"
+            }
+          ]
+        },
+        "scheduleToCloseTimeout":  "0s",
+        "scheduleToStartTimeout":  "0s",
+        "startToCloseTimeout":  "30s",
+        "heartbeatTimeout":  "0s",
+        "workflowTaskCompletedEventId":  "42",
+        "retryPolicy":  {
+          "initialInterval":  "1s",
+          "backoffCoefficient":  2,
+          "maximumInterval":  "30s",
+          "maximumAttempts":  6
+        },
+        "useWorkflowBuildId":  true
+      }
+    },
+    {
+      "eventId":  "44",
+      "eventTime":  "2026-09-30T18:00:33.157077071Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId":  "8388805",
+      "activityTaskStartedEventAttributes":  {
+        "scheduledEventId":  "43",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "e1491749-9002-422d-a5cc-87c0aeb2287d",
+        "attempt":  1,
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "45",
+      "eventTime":  "2026-09-30T18:00:33.173283679Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_COMPLETED",
+      "taskId":  "8388806",
+      "activityTaskCompletedEventAttributes":  {
+        "result":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJBdHRlbXB0SUQiOiJhdHRfREdCUDJUTzJSMjNGUzNGNlpRNEZSVFVOIiwiVGVuYW50SUQiOiJ0ZW5hbnRfYSIsIlByb2ZpbGVJRCI6InZhbGlkYXRvci1maXhlZC1kZXYtdjEiLCJEZWFkbGluZSI6IjIwMjYtMDktMzBUMTg6MzA6MzIuNjAwNTk3WiIsIkV4ZWN1dGlvbkVwb2NoIjoiMSJ9"
+            }
+          ]
+        },
+        "scheduledEventId":  "43",
+        "startedEventId":  "44",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232"
+      }
+    },
+    {
+      "eventId":  "46",
+      "eventTime":  "2026-09-30T18:00:33.173292240Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8388807",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "47",
+      "eventTime":  "2026-09-30T18:00:33.180955103Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8388811",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "46",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "3acd84a0-4dee-4281-ba58-a0a768e3840d",
+        "historySizeBytes":  "9969",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "48",
+      "eventTime":  "2026-09-30T18:00:33.190286252Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8388815",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "46",
+        "startedEventId":  "47",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "49",
+      "eventTime":  "2026-09-30T18:00:33.190321479Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId":  "8388816",
+      "activityTaskScheduledEventAttributes":  {
+        "activityId":  "49",
+        "activityType":  {
+          "name":  "PrepareLaunch"
+        },
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header":  {},
+        "input":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJBdHRlbXB0Ijp7IkF0dGVtcHRJRCI6ImF0dF9ER0JQMlRPMlIyM0ZTM0Y2WlE0RlJUVU4iLCJUZW5hbnRJRCI6InRlbmFudF9hIiwiUHJvZmlsZUlEIjoidmFsaWRhdG9yLWZpeGVkLWRldi12MSIsIkRlYWRsaW5lIjoiMjAyNi0wOS0zMFQxODozMDozMi42MDA1OTdaIiwiRXhlY3V0aW9uRXBvY2giOiIxIn0sIkNvbW1hbmRJRCI6ImF0dF9ER0JQMlRPMlIyM0ZTM0Y2WlE0RlJUVU46bGF1bmNoIiwiTGF1bmNoS2V5IjoicHJ2LWRnYnAydG8ycjIzZnMzZjZ6cTRmcnR1biIsIkRlYWRsaW5lIjoiMjAyNi0wOS0zMFQxODozMDozMi42MDA1OTdaIn0="
+            }
+          ]
+        },
+        "scheduleToCloseTimeout":  "0s",
+        "scheduleToStartTimeout":  "0s",
+        "startToCloseTimeout":  "30s",
+        "heartbeatTimeout":  "0s",
+        "workflowTaskCompletedEventId":  "48",
+        "retryPolicy":  {
+          "initialInterval":  "1s",
+          "backoffCoefficient":  2,
+          "maximumInterval":  "30s",
+          "maximumAttempts":  6
+        },
+        "useWorkflowBuildId":  true
+      }
+    },
+    {
+      "eventId":  "50",
+      "eventTime":  "2026-09-30T18:00:33.197746999Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId":  "8388821",
+      "activityTaskStartedEventAttributes":  {
+        "scheduledEventId":  "49",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "6fb3b1d9-3981-4ea4-a508-c014e1cf8cb3",
+        "attempt":  1,
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "51",
+      "eventTime":  "2026-09-30T18:00:33.244608501Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_COMPLETED",
+      "taskId":  "8388822",
+      "activityTaskCompletedEventAttributes":  {
+        "result":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJMYXVuY2hJRCI6ImxjaF9MM0NXV0tWVldIWEw3VkdBUDc2U1o2WFQiLCJBdHRlbXB0SUQiOiJhdHRfREdCUDJUTzJSMjNGUzNGNlpRNEZSVFVOIiwiTGF1bmNoS2V5IjoicHJ2LWRnYnAydG8ycjIzZnMzZjZ6cTRmcnR1biIsIkltYWdlRGlnZXN0Ijoic2hhMjU2OmNjNTI2NDNkMGVjNGJjODY5MjM5NGRiYjFiYzAxYWVhZjdiY2JlMmNiZTc2YTc0ODQ2MTljMjVlYWFmODU0NmQiLCJMYXVuY2hFcG9jaCI6IjEifQ=="
+            }
+          ]
+        },
+        "scheduledEventId":  "49",
+        "startedEventId":  "50",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232"
+      }
+    },
+    {
+      "eventId":  "52",
+      "eventTime":  "2026-09-30T18:00:33.244620112Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8388823",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "53",
+      "eventTime":  "2026-09-30T18:00:33.254265947Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8388827",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "52",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "082c50c8-123f-4842-87ea-3f243826762a",
+        "historySizeBytes":  "11353",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "54",
+      "eventTime":  "2026-09-30T18:00:33.266318961Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8388831",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "52",
+        "startedEventId":  "53",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "55",
+      "eventTime":  "2026-09-30T18:00:33.266372392Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId":  "8388832",
+      "activityTaskScheduledEventAttributes":  {
+        "activityId":  "55",
+        "activityType":  {
+          "name":  "CreateJob"
+        },
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header":  {},
+        "input":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJMYXVuY2giOnsiTGF1bmNoSUQiOiJsY2hfTDNDV1dLVlZXSFhMN1ZHQVA3NlNaNlhUIiwiQXR0ZW1wdElEIjoiYXR0X0RHQlAyVE8yUjIzRlMzRjZaUTRGUlRVTiIsIkxhdW5jaEtleSI6InBydi1kZ2JwMnRvMnIyM2ZzM2Y2enE0ZnJ0dW4iLCJJbWFnZURpZ2VzdCI6InNoYTI1NjpjYzUyNjQzZDBlYzRiYzg2OTIzOTRkYmIxYmMwMWFlYWY3YmNiZTJjYmU3NmE3NDg0NjE5YzI1ZWFhZjg1NDZkIiwiTGF1bmNoRXBvY2giOiIxIn0sIlByb2ZpbGVJRCI6InZhbGlkYXRvci1maXhlZC1kZXYtdjEiLCJEZWFkbGluZSI6IjIwMjYtMDktMzBUMTg6MzA6MzIuNjAwNTk3WiIsIlJlcXVlc3QiOjEsIk9wZXJhdGlvbklEIjoib3BfTjNUSUtaQ05JNk80TFFJTEpHWUVMUUdHIiwiRXhlY3V0aW9uRXBvY2giOiIxIiwiTGF1bmNoRXBvY2giOiIxIiwiSW5wdXRzIjpbeyJOYW1lIjoic291cmNlIiwiRGlnZXN0Ijoic2hhMjU2OjU0YjZhOTkzY2M2N2ZlYzJlYmFlYmZhZmQxMzllOTk2OTA0NTk0MzYyZWZmOGI5Y2RmNDE4NzYxMjBmNzI1MmUiLCJIYW5kbGUiOiJoZGxfRU1BTlk0M05BVENLWE01VU1FNUJNV0NHIn1dfQ=="
+            }
+          ]
+        },
+        "scheduleToCloseTimeout":  "0s",
+        "scheduleToStartTimeout":  "0s",
+        "startToCloseTimeout":  "30s",
+        "heartbeatTimeout":  "0s",
+        "workflowTaskCompletedEventId":  "54",
+        "retryPolicy":  {
+          "initialInterval":  "1s",
+          "backoffCoefficient":  2,
+          "maximumInterval":  "100s",
+          "maximumAttempts":  1
+        },
+        "useWorkflowBuildId":  true
+      }
+    },
+    {
+      "eventId":  "56",
+      "eventTime":  "2026-09-30T18:00:33.276645630Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId":  "8388837",
+      "activityTaskStartedEventAttributes":  {
+        "scheduledEventId":  "55",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "9a31487b-f7ec-4e5e-9963-ca63d692a96b",
+        "attempt":  1,
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "57",
+      "eventTime":  "2026-09-30T18:00:33.292577799Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_FAILED",
+      "taskId":  "8388838",
+      "activityTaskFailedEventAttributes":  {
+        "failure":  {
+          "message":  "not created: Unauthorized",
+          "source":  "GoSDK",
+          "applicationFailureInfo":  {
+            "type":  "NOT_CREATED",
+            "details":  {
+              "payloads":  [
+                {
+                  "metadata":  {
+                    "encoding":  "anNvbi9wbGFpbg=="
+                  },
+                  "data":  "eyJFcnJTdGF0dXMiOnsibWV0YWRhdGEiOnt9LCJzdGF0dXMiOiJGYWlsdXJlIiwibWVzc2FnZSI6IlVuYXV0aG9yaXplZCIsInJlYXNvbiI6IlVuYXV0aG9yaXplZCIsImNvZGUiOjQwMX19"
+                }
+              ]
+            }
+          }
+        },
+        "scheduledEventId":  "55",
+        "startedEventId":  "56",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "retryState":  "RETRY_STATE_MAXIMUM_ATTEMPTS_REACHED"
+      }
+    },
+    {
+      "eventId":  "58",
+      "eventTime":  "2026-09-30T18:00:33.292702178Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8388839",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "59",
+      "eventTime":  "2026-09-30T18:00:33.301759871Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8388843",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "58",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "369b8520-1ae3-47b3-980b-851a5f9a7f2a",
+        "historySizeBytes":  "12923",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "60",
+      "eventTime":  "2026-09-30T18:00:33.312710008Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8388847",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "58",
+        "startedEventId":  "59",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "61",
+      "eventTime":  "2026-09-30T18:00:33.312746909Z",
+      "eventType":  "EVENT_TYPE_TIMER_STARTED",
+      "taskId":  "8388848",
+      "userMetadata":  {
+        "summary":  {
+          "metadata":  {
+            "encoding":  "anNvbi9wbGFpbg=="
+          },
+          "data":  "IlNsZWVwIg=="
+        }
+      },
+      "timerStartedEventAttributes":  {
+        "timerId":  "61",
+        "startToFireTimeout":  "1s",
+        "workflowTaskCompletedEventId":  "60"
+      }
+    },
+    {
+      "eventId":  "62",
+      "eventTime":  "2026-09-30T18:00:34.316062324Z",
+      "eventType":  "EVENT_TYPE_TIMER_FIRED",
+      "taskId":  "8388851",
+      "timerFiredEventAttributes":  {
+        "timerId":  "61",
+        "startedEventId":  "61"
+      }
+    },
+    {
+      "eventId":  "63",
+      "eventTime":  "2026-09-30T18:00:34.316075313Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8388852",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "64",
+      "eventTime":  "2026-09-30T18:00:34.357828240Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8388856",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "63",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "4e9366ef-77cf-463c-9256-2bd15d072616",
+        "historySizeBytes":  "13435",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "65",
+      "eventTime":  "2026-09-30T18:00:34.377347117Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8388860",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "63",
+        "startedEventId":  "64",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "66",
+      "eventTime":  "2026-09-30T18:00:34.377389626Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId":  "8388861",
+      "activityTaskScheduledEventAttributes":  {
+        "activityId":  "66",
+        "activityType":  {
+          "name":  "CreateJob"
+        },
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header":  {},
+        "input":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJMYXVuY2giOnsiTGF1bmNoSUQiOiJsY2hfTDNDV1dLVlZXSFhMN1ZHQVA3NlNaNlhUIiwiQXR0ZW1wdElEIjoiYXR0X0RHQlAyVE8yUjIzRlMzRjZaUTRGUlRVTiIsIkxhdW5jaEtleSI6InBydi1kZ2JwMnRvMnIyM2ZzM2Y2enE0ZnJ0dW4iLCJJbWFnZURpZ2VzdCI6InNoYTI1NjpjYzUyNjQzZDBlYzRiYzg2OTIzOTRkYmIxYmMwMWFlYWY3YmNiZTJjYmU3NmE3NDg0NjE5YzI1ZWFhZjg1NDZkIiwiTGF1bmNoRXBvY2giOiIxIn0sIlByb2ZpbGVJRCI6InZhbGlkYXRvci1maXhlZC1kZXYtdjEiLCJEZWFkbGluZSI6IjIwMjYtMDktMzBUMTg6MzA6MzIuNjAwNTk3WiIsIlJlcXVlc3QiOjIsIk9wZXJhdGlvbklEIjoib3BfTjNUSUtaQ05JNk80TFFJTEpHWUVMUUdHIiwiRXhlY3V0aW9uRXBvY2giOiIxIiwiTGF1bmNoRXBvY2giOiIxIiwiSW5wdXRzIjpbeyJOYW1lIjoic291cmNlIiwiRGlnZXN0Ijoic2hhMjU2OjU0YjZhOTkzY2M2N2ZlYzJlYmFlYmZhZmQxMzllOTk2OTA0NTk0MzYyZWZmOGI5Y2RmNDE4NzYxMjBmNzI1MmUiLCJIYW5kbGUiOiJoZGxfRU1BTlk0M05BVENLWE01VU1FNUJNV0NHIn1dfQ=="
+            }
+          ]
+        },
+        "scheduleToCloseTimeout":  "0s",
+        "scheduleToStartTimeout":  "0s",
+        "startToCloseTimeout":  "30s",
+        "heartbeatTimeout":  "0s",
+        "workflowTaskCompletedEventId":  "65",
+        "retryPolicy":  {
+          "initialInterval":  "1s",
+          "backoffCoefficient":  2,
+          "maximumInterval":  "100s",
+          "maximumAttempts":  1
+        },
+        "useWorkflowBuildId":  true
+      }
+    },
+    {
+      "eventId":  "67",
+      "eventTime":  "2026-09-30T18:00:34.393104329Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId":  "8388866",
+      "activityTaskStartedEventAttributes":  {
+        "scheduledEventId":  "66",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "0cf36a69-9bcf-4f5b-9410-517b6d6bcb2f",
+        "attempt":  1,
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "68",
+      "eventTime":  "2026-09-30T18:00:34.409966287Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_FAILED",
+      "taskId":  "8388867",
+      "activityTaskFailedEventAttributes":  {
+        "failure":  {
+          "message":  "not created: Unauthorized",
+          "source":  "GoSDK",
+          "applicationFailureInfo":  {
+            "type":  "NOT_CREATED",
+            "details":  {
+              "payloads":  [
+                {
+                  "metadata":  {
+                    "encoding":  "anNvbi9wbGFpbg=="
+                  },
+                  "data":  "eyJFcnJTdGF0dXMiOnsibWV0YWRhdGEiOnt9LCJzdGF0dXMiOiJGYWlsdXJlIiwibWVzc2FnZSI6IlVuYXV0aG9yaXplZCIsInJlYXNvbiI6IlVuYXV0aG9yaXplZCIsImNvZGUiOjQwMX19"
+                }
+              ]
+            }
+          }
+        },
+        "scheduledEventId":  "66",
+        "startedEventId":  "67",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "retryState":  "RETRY_STATE_MAXIMUM_ATTEMPTS_REACHED"
+      }
+    },
+    {
+      "eventId":  "69",
+      "eventTime":  "2026-09-30T18:00:34.409976127Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8388868",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "70",
+      "eventTime":  "2026-09-30T18:00:34.429656480Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8388872",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "69",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "8a6d09db-4c86-49c6-8c00-cb8efd90c3c5",
+        "historySizeBytes":  "15008",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "71",
+      "eventTime":  "2026-09-30T18:00:34.446672041Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8388876",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "69",
+        "startedEventId":  "70",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "72",
+      "eventTime":  "2026-09-30T18:00:34.446694870Z",
+      "eventType":  "EVENT_TYPE_TIMER_STARTED",
+      "taskId":  "8388877",
+      "userMetadata":  {
+        "summary":  {
+          "metadata":  {
+            "encoding":  "anNvbi9wbGFpbg=="
+          },
+          "data":  "IlNsZWVwIg=="
+        }
+      },
+      "timerStartedEventAttributes":  {
+        "timerId":  "72",
+        "startToFireTimeout":  "2s",
+        "workflowTaskCompletedEventId":  "71"
+      }
+    },
+    {
+      "eventId":  "73",
+      "eventTime":  "2026-09-30T18:00:36.448661995Z",
+      "eventType":  "EVENT_TYPE_TIMER_FIRED",
+      "taskId":  "8388880",
+      "timerFiredEventAttributes":  {
+        "timerId":  "72",
+        "startedEventId":  "72"
+      }
+    },
+    {
+      "eventId":  "74",
+      "eventTime":  "2026-09-30T18:00:36.448669867Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8388881",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "75",
+      "eventTime":  "2026-09-30T18:00:36.465648626Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8388885",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "74",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "d601b4c8-4015-471a-8c92-168c63b08eb2",
+        "historySizeBytes":  "15520",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "76",
+      "eventTime":  "2026-09-30T18:00:36.475804276Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8388889",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "74",
+        "startedEventId":  "75",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "77",
+      "eventTime":  "2026-09-30T18:00:36.475842947Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId":  "8388890",
+      "activityTaskScheduledEventAttributes":  {
+        "activityId":  "77",
+        "activityType":  {
+          "name":  "CreateJob"
+        },
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header":  {},
+        "input":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJMYXVuY2giOnsiTGF1bmNoSUQiOiJsY2hfTDNDV1dLVlZXSFhMN1ZHQVA3NlNaNlhUIiwiQXR0ZW1wdElEIjoiYXR0X0RHQlAyVE8yUjIzRlMzRjZaUTRGUlRVTiIsIkxhdW5jaEtleSI6InBydi1kZ2JwMnRvMnIyM2ZzM2Y2enE0ZnJ0dW4iLCJJbWFnZURpZ2VzdCI6InNoYTI1NjpjYzUyNjQzZDBlYzRiYzg2OTIzOTRkYmIxYmMwMWFlYWY3YmNiZTJjYmU3NmE3NDg0NjE5YzI1ZWFhZjg1NDZkIiwiTGF1bmNoRXBvY2giOiIxIn0sIlByb2ZpbGVJRCI6InZhbGlkYXRvci1maXhlZC1kZXYtdjEiLCJEZWFkbGluZSI6IjIwMjYtMDktMzBUMTg6MzA6MzIuNjAwNTk3WiIsIlJlcXVlc3QiOjMsIk9wZXJhdGlvbklEIjoib3BfTjNUSUtaQ05JNk80TFFJTEpHWUVMUUdHIiwiRXhlY3V0aW9uRXBvY2giOiIxIiwiTGF1bmNoRXBvY2giOiIxIiwiSW5wdXRzIjpbeyJOYW1lIjoic291cmNlIiwiRGlnZXN0Ijoic2hhMjU2OjU0YjZhOTkzY2M2N2ZlYzJlYmFlYmZhZmQxMzllOTk2OTA0NTk0MzYyZWZmOGI5Y2RmNDE4NzYxMjBmNzI1MmUiLCJIYW5kbGUiOiJoZGxfRU1BTlk0M05BVENLWE01VU1FNUJNV0NHIn1dfQ=="
+            }
+          ]
+        },
+        "scheduleToCloseTimeout":  "0s",
+        "scheduleToStartTimeout":  "0s",
+        "startToCloseTimeout":  "30s",
+        "heartbeatTimeout":  "0s",
+        "workflowTaskCompletedEventId":  "76",
+        "retryPolicy":  {
+          "initialInterval":  "1s",
+          "backoffCoefficient":  2,
+          "maximumInterval":  "100s",
+          "maximumAttempts":  1
+        },
+        "useWorkflowBuildId":  true
+      }
+    },
+    {
+      "eventId":  "78",
+      "eventTime":  "2026-09-30T18:00:36.484110286Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId":  "8388895",
+      "activityTaskStartedEventAttributes":  {
+        "scheduledEventId":  "77",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "5e1e95e1-73fa-40c6-b492-9753b39a8bd0",
+        "attempt":  1,
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "79",
+      "eventTime":  "2026-09-30T18:00:36.496869029Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_FAILED",
+      "taskId":  "8388896",
+      "activityTaskFailedEventAttributes":  {
+        "failure":  {
+          "message":  "not created: Unauthorized",
+          "source":  "GoSDK",
+          "applicationFailureInfo":  {
+            "type":  "NOT_CREATED",
+            "details":  {
+              "payloads":  [
+                {
+                  "metadata":  {
+                    "encoding":  "anNvbi9wbGFpbg=="
+                  },
+                  "data":  "eyJFcnJTdGF0dXMiOnsibWV0YWRhdGEiOnt9LCJzdGF0dXMiOiJGYWlsdXJlIiwibWVzc2FnZSI6IlVuYXV0aG9yaXplZCIsInJlYXNvbiI6IlVuYXV0aG9yaXplZCIsImNvZGUiOjQwMX19"
+                }
+              ]
+            }
+          }
+        },
+        "scheduledEventId":  "77",
+        "startedEventId":  "78",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "retryState":  "RETRY_STATE_MAXIMUM_ATTEMPTS_REACHED"
+      }
+    },
+    {
+      "eventId":  "80",
+      "eventTime":  "2026-09-30T18:00:36.496881723Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8388897",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "81",
+      "eventTime":  "2026-09-30T18:00:36.506382220Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8388901",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "80",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "3fbec6cf-4861-4c2d-9b19-d12def2b9b55",
+        "historySizeBytes":  "17093",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "82",
+      "eventTime":  "2026-09-30T18:00:36.516815064Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8388905",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "80",
+        "startedEventId":  "81",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "83",
+      "eventTime":  "2026-09-30T18:00:36.516842617Z",
+      "eventType":  "EVENT_TYPE_TIMER_STARTED",
+      "taskId":  "8388906",
+      "userMetadata":  {
+        "summary":  {
+          "metadata":  {
+            "encoding":  "anNvbi9wbGFpbg=="
+          },
+          "data":  "IlNsZWVwIg=="
+        }
+      },
+      "timerStartedEventAttributes":  {
+        "timerId":  "83",
+        "startToFireTimeout":  "4s",
+        "workflowTaskCompletedEventId":  "82"
+      }
+    },
+    {
+      "eventId":  "84",
+      "eventTime":  "2026-09-30T18:00:40.518598213Z",
+      "eventType":  "EVENT_TYPE_TIMER_FIRED",
+      "taskId":  "8388909",
+      "timerFiredEventAttributes":  {
+        "timerId":  "83",
+        "startedEventId":  "83"
+      }
+    },
+    {
+      "eventId":  "85",
+      "eventTime":  "2026-09-30T18:00:40.518609113Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8388910",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "86",
+      "eventTime":  "2026-09-30T18:00:40.537021013Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8388914",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "85",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "419c0928-85d9-4bb6-b0b6-8fe64a11bf28",
+        "historySizeBytes":  "17607",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "87",
+      "eventTime":  "2026-09-30T18:00:40.547044017Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8388918",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "85",
+        "startedEventId":  "86",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "88",
+      "eventTime":  "2026-09-30T18:00:40.547098111Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId":  "8388919",
+      "activityTaskScheduledEventAttributes":  {
+        "activityId":  "88",
+        "activityType":  {
+          "name":  "CreateJob"
+        },
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header":  {},
+        "input":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJMYXVuY2giOnsiTGF1bmNoSUQiOiJsY2hfTDNDV1dLVlZXSFhMN1ZHQVA3NlNaNlhUIiwiQXR0ZW1wdElEIjoiYXR0X0RHQlAyVE8yUjIzRlMzRjZaUTRGUlRVTiIsIkxhdW5jaEtleSI6InBydi1kZ2JwMnRvMnIyM2ZzM2Y2enE0ZnJ0dW4iLCJJbWFnZURpZ2VzdCI6InNoYTI1NjpjYzUyNjQzZDBlYzRiYzg2OTIzOTRkYmIxYmMwMWFlYWY3YmNiZTJjYmU3NmE3NDg0NjE5YzI1ZWFhZjg1NDZkIiwiTGF1bmNoRXBvY2giOiIxIn0sIlByb2ZpbGVJRCI6InZhbGlkYXRvci1maXhlZC1kZXYtdjEiLCJEZWFkbGluZSI6IjIwMjYtMDktMzBUMTg6MzA6MzIuNjAwNTk3WiIsIlJlcXVlc3QiOjQsIk9wZXJhdGlvbklEIjoib3BfTjNUSUtaQ05JNk80TFFJTEpHWUVMUUdHIiwiRXhlY3V0aW9uRXBvY2giOiIxIiwiTGF1bmNoRXBvY2giOiIxIiwiSW5wdXRzIjpbeyJOYW1lIjoic291cmNlIiwiRGlnZXN0Ijoic2hhMjU2OjU0YjZhOTkzY2M2N2ZlYzJlYmFlYmZhZmQxMzllOTk2OTA0NTk0MzYyZWZmOGI5Y2RmNDE4NzYxMjBmNzI1MmUiLCJIYW5kbGUiOiJoZGxfRU1BTlk0M05BVENLWE01VU1FNUJNV0NHIn1dfQ=="
+            }
+          ]
+        },
+        "scheduleToCloseTimeout":  "0s",
+        "scheduleToStartTimeout":  "0s",
+        "startToCloseTimeout":  "30s",
+        "heartbeatTimeout":  "0s",
+        "workflowTaskCompletedEventId":  "87",
+        "retryPolicy":  {
+          "initialInterval":  "1s",
+          "backoffCoefficient":  2,
+          "maximumInterval":  "100s",
+          "maximumAttempts":  1
+        },
+        "useWorkflowBuildId":  true
+      }
+    },
+    {
+      "eventId":  "89",
+      "eventTime":  "2026-09-30T18:00:40.556040606Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId":  "8388924",
+      "activityTaskStartedEventAttributes":  {
+        "scheduledEventId":  "88",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "c2b641ae-213f-42a1-b484-2aa7152146ef",
+        "attempt":  1,
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "90",
+      "eventTime":  "2026-09-30T18:00:40.568601794Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_FAILED",
+      "taskId":  "8388925",
+      "activityTaskFailedEventAttributes":  {
+        "failure":  {
+          "message":  "not created: Unauthorized",
+          "source":  "GoSDK",
+          "applicationFailureInfo":  {
+            "type":  "NOT_CREATED",
+            "details":  {
+              "payloads":  [
+                {
+                  "metadata":  {
+                    "encoding":  "anNvbi9wbGFpbg=="
+                  },
+                  "data":  "eyJFcnJTdGF0dXMiOnsibWV0YWRhdGEiOnt9LCJzdGF0dXMiOiJGYWlsdXJlIiwibWVzc2FnZSI6IlVuYXV0aG9yaXplZCIsInJlYXNvbiI6IlVuYXV0aG9yaXplZCIsImNvZGUiOjQwMX19"
+                }
+              ]
+            }
+          }
+        },
+        "scheduledEventId":  "88",
+        "startedEventId":  "89",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "retryState":  "RETRY_STATE_MAXIMUM_ATTEMPTS_REACHED"
+      }
+    },
+    {
+      "eventId":  "91",
+      "eventTime":  "2026-09-30T18:00:40.568609393Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8388926",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "92",
+      "eventTime":  "2026-09-30T18:00:40.576606094Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8388930",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "91",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "e811f821-908f-4105-ab2e-d817a259e94b",
+        "historySizeBytes":  "19182",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "93",
+      "eventTime":  "2026-09-30T18:00:40.586375696Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8388934",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "91",
+        "startedEventId":  "92",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "94",
+      "eventTime":  "2026-09-30T18:00:40.586404893Z",
+      "eventType":  "EVENT_TYPE_TIMER_STARTED",
+      "taskId":  "8388935",
+      "userMetadata":  {
+        "summary":  {
+          "metadata":  {
+            "encoding":  "anNvbi9wbGFpbg=="
+          },
+          "data":  "IlNsZWVwIg=="
+        }
+      },
+      "timerStartedEventAttributes":  {
+        "timerId":  "94",
+        "startToFireTimeout":  "8s",
+        "workflowTaskCompletedEventId":  "93"
+      }
+    },
+    {
+      "eventId":  "95",
+      "eventTime":  "2026-09-30T18:00:48.588737593Z",
+      "eventType":  "EVENT_TYPE_TIMER_FIRED",
+      "taskId":  "8388938",
+      "timerFiredEventAttributes":  {
+        "timerId":  "94",
+        "startedEventId":  "94"
+      }
+    },
+    {
+      "eventId":  "96",
+      "eventTime":  "2026-09-30T18:00:48.588745292Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8388939",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "97",
+      "eventTime":  "2026-09-30T18:00:48.607314305Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8388943",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "96",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "1c209f53-a74e-446f-827a-fab8ec121bae",
+        "historySizeBytes":  "19696",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "98",
+      "eventTime":  "2026-09-30T18:00:48.617663342Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8388947",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "96",
+        "startedEventId":  "97",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "99",
+      "eventTime":  "2026-09-30T18:00:48.617712536Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId":  "8388948",
+      "activityTaskScheduledEventAttributes":  {
+        "activityId":  "99",
+        "activityType":  {
+          "name":  "CreateJob"
+        },
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header":  {},
+        "input":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJMYXVuY2giOnsiTGF1bmNoSUQiOiJsY2hfTDNDV1dLVlZXSFhMN1ZHQVA3NlNaNlhUIiwiQXR0ZW1wdElEIjoiYXR0X0RHQlAyVE8yUjIzRlMzRjZaUTRGUlRVTiIsIkxhdW5jaEtleSI6InBydi1kZ2JwMnRvMnIyM2ZzM2Y2enE0ZnJ0dW4iLCJJbWFnZURpZ2VzdCI6InNoYTI1NjpjYzUyNjQzZDBlYzRiYzg2OTIzOTRkYmIxYmMwMWFlYWY3YmNiZTJjYmU3NmE3NDg0NjE5YzI1ZWFhZjg1NDZkIiwiTGF1bmNoRXBvY2giOiIxIn0sIlByb2ZpbGVJRCI6InZhbGlkYXRvci1maXhlZC1kZXYtdjEiLCJEZWFkbGluZSI6IjIwMjYtMDktMzBUMTg6MzA6MzIuNjAwNTk3WiIsIlJlcXVlc3QiOjUsIk9wZXJhdGlvbklEIjoib3BfTjNUSUtaQ05JNk80TFFJTEpHWUVMUUdHIiwiRXhlY3V0aW9uRXBvY2giOiIxIiwiTGF1bmNoRXBvY2giOiIxIiwiSW5wdXRzIjpbeyJOYW1lIjoic291cmNlIiwiRGlnZXN0Ijoic2hhMjU2OjU0YjZhOTkzY2M2N2ZlYzJlYmFlYmZhZmQxMzllOTk2OTA0NTk0MzYyZWZmOGI5Y2RmNDE4NzYxMjBmNzI1MmUiLCJIYW5kbGUiOiJoZGxfRU1BTlk0M05BVENLWE01VU1FNUJNV0NHIn1dfQ=="
+            }
+          ]
+        },
+        "scheduleToCloseTimeout":  "0s",
+        "scheduleToStartTimeout":  "0s",
+        "startToCloseTimeout":  "30s",
+        "heartbeatTimeout":  "0s",
+        "workflowTaskCompletedEventId":  "98",
+        "retryPolicy":  {
+          "initialInterval":  "1s",
+          "backoffCoefficient":  2,
+          "maximumInterval":  "100s",
+          "maximumAttempts":  1
+        },
+        "useWorkflowBuildId":  true
+      }
+    },
+    {
+      "eventId":  "100",
+      "eventTime":  "2026-09-30T18:00:48.626984294Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId":  "8388953",
+      "activityTaskStartedEventAttributes":  {
+        "scheduledEventId":  "99",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "11b0be3a-5bcc-42b0-b3e2-a46329f7a105",
+        "attempt":  1,
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "101",
+      "eventTime":  "2026-09-30T18:00:48.642044401Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_FAILED",
+      "taskId":  "8388954",
+      "activityTaskFailedEventAttributes":  {
+        "failure":  {
+          "message":  "not created: Unauthorized",
+          "source":  "GoSDK",
+          "applicationFailureInfo":  {
+            "type":  "NOT_CREATED",
+            "details":  {
+              "payloads":  [
+                {
+                  "metadata":  {
+                    "encoding":  "anNvbi9wbGFpbg=="
+                  },
+                  "data":  "eyJFcnJTdGF0dXMiOnsibWV0YWRhdGEiOnt9LCJzdGF0dXMiOiJGYWlsdXJlIiwibWVzc2FnZSI6IlVuYXV0aG9yaXplZCIsInJlYXNvbiI6IlVuYXV0aG9yaXplZCIsImNvZGUiOjQwMX19"
+                }
+              ]
+            }
+          }
+        },
+        "scheduledEventId":  "99",
+        "startedEventId":  "100",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "retryState":  "RETRY_STATE_MAXIMUM_ATTEMPTS_REACHED"
+      }
+    },
+    {
+      "eventId":  "102",
+      "eventTime":  "2026-09-30T18:00:48.642058700Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8388955",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "103",
+      "eventTime":  "2026-09-30T18:00:48.651226169Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8388959",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "102",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "bdb139de-a608-42fb-8bb8-a90b99d6a5a8",
+        "historySizeBytes":  "21271",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "104",
+      "eventTime":  "2026-09-30T18:00:48.662296225Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8388963",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "102",
+        "startedEventId":  "103",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "105",
+      "eventTime":  "2026-09-30T18:00:48.662326121Z",
+      "eventType":  "EVENT_TYPE_TIMER_STARTED",
+      "taskId":  "8388964",
+      "userMetadata":  {
+        "summary":  {
+          "metadata":  {
+            "encoding":  "anNvbi9wbGFpbg=="
+          },
+          "data":  "IlNsZWVwIg=="
+        }
+      },
+      "timerStartedEventAttributes":  {
+        "timerId":  "105",
+        "startToFireTimeout":  "16s",
+        "workflowTaskCompletedEventId":  "104"
+      }
+    },
+    {
+      "eventId":  "106",
+      "eventTime":  "2026-09-30T18:01:04.664267780Z",
+      "eventType":  "EVENT_TYPE_TIMER_FIRED",
+      "taskId":  "8388967",
+      "timerFiredEventAttributes":  {
+        "timerId":  "105",
+        "startedEventId":  "105"
+      }
+    },
+    {
+      "eventId":  "107",
+      "eventTime":  "2026-09-30T18:01:04.664280680Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8388968",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "108",
+      "eventTime":  "2026-09-30T18:01:04.679894880Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8388972",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "107",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "6a5fcb3e-5145-455c-8ace-35716e4a966f",
+        "historySizeBytes":  "21787",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "109",
+      "eventTime":  "2026-09-30T18:01:04.694763180Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8388976",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "107",
+        "startedEventId":  "108",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "110",
+      "eventTime":  "2026-09-30T18:01:04.694799080Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId":  "8388977",
+      "activityTaskScheduledEventAttributes":  {
+        "activityId":  "110",
+        "activityType":  {
+          "name":  "CreateJob"
+        },
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header":  {},
+        "input":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJMYXVuY2giOnsiTGF1bmNoSUQiOiJsY2hfTDNDV1dLVlZXSFhMN1ZHQVA3NlNaNlhUIiwiQXR0ZW1wdElEIjoiYXR0X0RHQlAyVE8yUjIzRlMzRjZaUTRGUlRVTiIsIkxhdW5jaEtleSI6InBydi1kZ2JwMnRvMnIyM2ZzM2Y2enE0ZnJ0dW4iLCJJbWFnZURpZ2VzdCI6InNoYTI1NjpjYzUyNjQzZDBlYzRiYzg2OTIzOTRkYmIxYmMwMWFlYWY3YmNiZTJjYmU3NmE3NDg0NjE5YzI1ZWFhZjg1NDZkIiwiTGF1bmNoRXBvY2giOiIxIn0sIlByb2ZpbGVJRCI6InZhbGlkYXRvci1maXhlZC1kZXYtdjEiLCJEZWFkbGluZSI6IjIwMjYtMDktMzBUMTg6MzA6MzIuNjAwNTk3WiIsIlJlcXVlc3QiOjYsIk9wZXJhdGlvbklEIjoib3BfTjNUSUtaQ05JNk80TFFJTEpHWUVMUUdHIiwiRXhlY3V0aW9uRXBvY2giOiIxIiwiTGF1bmNoRXBvY2giOiIxIiwiSW5wdXRzIjpbeyJOYW1lIjoic291cmNlIiwiRGlnZXN0Ijoic2hhMjU2OjU0YjZhOTkzY2M2N2ZlYzJlYmFlYmZhZmQxMzllOTk2OTA0NTk0MzYyZWZmOGI5Y2RmNDE4NzYxMjBmNzI1MmUiLCJIYW5kbGUiOiJoZGxfRU1BTlk0M05BVENLWE01VU1FNUJNV0NHIn1dfQ=="
+            }
+          ]
+        },
+        "scheduleToCloseTimeout":  "0s",
+        "scheduleToStartTimeout":  "0s",
+        "startToCloseTimeout":  "30s",
+        "heartbeatTimeout":  "0s",
+        "workflowTaskCompletedEventId":  "109",
+        "retryPolicy":  {
+          "initialInterval":  "1s",
+          "backoffCoefficient":  2,
+          "maximumInterval":  "100s",
+          "maximumAttempts":  1
+        },
+        "useWorkflowBuildId":  true
+      }
+    },
+    {
+      "eventId":  "111",
+      "eventTime":  "2026-09-30T18:01:04.708429180Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId":  "8388982",
+      "activityTaskStartedEventAttributes":  {
+        "scheduledEventId":  "110",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "118be3e1-fa45-44ed-bfc8-82552b5805fa",
+        "attempt":  1,
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "112",
+      "eventTime":  "2026-09-30T18:01:04.724647080Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_FAILED",
+      "taskId":  "8388983",
+      "activityTaskFailedEventAttributes":  {
+        "failure":  {
+          "message":  "not created: Unauthorized",
+          "source":  "GoSDK",
+          "applicationFailureInfo":  {
+            "type":  "NOT_CREATED",
+            "details":  {
+              "payloads":  [
+                {
+                  "metadata":  {
+                    "encoding":  "anNvbi9wbGFpbg=="
+                  },
+                  "data":  "eyJFcnJTdGF0dXMiOnsibWV0YWRhdGEiOnt9LCJzdGF0dXMiOiJGYWlsdXJlIiwibWVzc2FnZSI6IlVuYXV0aG9yaXplZCIsInJlYXNvbiI6IlVuYXV0aG9yaXplZCIsImNvZGUiOjQwMX19"
+                }
+              ]
+            }
+          }
+        },
+        "scheduledEventId":  "110",
+        "startedEventId":  "111",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "retryState":  "RETRY_STATE_MAXIMUM_ATTEMPTS_REACHED"
+      }
+    },
+    {
+      "eventId":  "113",
+      "eventTime":  "2026-09-30T18:01:04.724655280Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8388984",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "114",
+      "eventTime":  "2026-09-30T18:01:04.739186080Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8388988",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "113",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "b47d59bb-b07c-4247-9764-176cda75ee6a",
+        "historySizeBytes":  "23363",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "115",
+      "eventTime":  "2026-09-30T18:01:04.756945280Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8388992",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "113",
+        "startedEventId":  "114",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "116",
+      "eventTime":  "2026-09-30T18:01:04.756992080Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId":  "8388993",
+      "activityTaskScheduledEventAttributes":  {
+        "activityId":  "116",
+        "activityType":  {
+          "name":  "DeleteJob"
+        },
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707-control",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header":  {},
+        "input":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJMYXVuY2giOnsiTGF1bmNoSUQiOiJsY2hfTDNDV1dLVlZXSFhMN1ZHQVA3NlNaNlhUIiwiQXR0ZW1wdElEIjoiYXR0X0RHQlAyVE8yUjIzRlMzRjZaUTRGUlRVTiIsIkxhdW5jaEtleSI6InBydi1kZ2JwMnRvMnIyM2ZzM2Y2enE0ZnJ0dW4iLCJJbWFnZURpZ2VzdCI6InNoYTI1NjpjYzUyNjQzZDBlYzRiYzg2OTIzOTRkYmIxYmMwMWFlYWY3YmNiZTJjYmU3NmE3NDg0NjE5YzI1ZWFhZjg1NDZkIiwiTGF1bmNoRXBvY2giOiIxIn0sIlVuYWNjb3VudGVkIjpudWxsLCJFdmlkZW5jZUZpcnN0IjpmYWxzZSwiUmVjb3JkZWQiOm51bGx9"
+            }
+          ]
+        },
+        "scheduleToCloseTimeout":  "0s",
+        "scheduleToStartTimeout":  "0s",
+        "startToCloseTimeout":  "180s",
+        "heartbeatTimeout":  "30s",
+        "workflowTaskCompletedEventId":  "115",
+        "retryPolicy":  {
+          "initialInterval":  "1s",
+          "backoffCoefficient":  2,
+          "maximumInterval":  "100s",
+          "maximumAttempts":  2
+        }
+      }
+    },
+    {
+      "eventId":  "117",
+      "eventTime":  "2026-09-30T18:01:05.805585847Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId":  "8389001",
+      "activityTaskStartedEventAttributes":  {
+        "scheduledEventId":  "116",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "29929a7c-d887-4c50-bbc9-ed040a28d82f",
+        "attempt":  2,
+        "lastFailure":  {
+          "message":  "Unauthorized",
+          "source":  "GoSDK",
+          "applicationFailureInfo":  {
+            "type":  "StatusError"
+          }
+        },
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "118",
+      "eventTime":  "2026-09-30T18:01:05.840791957Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_FAILED",
+      "taskId":  "8389002",
+      "activityTaskFailedEventAttributes":  {
+        "failure":  {
+          "message":  "Unauthorized",
+          "source":  "GoSDK",
+          "applicationFailureInfo":  {
+            "type":  "StatusError"
+          }
+        },
+        "scheduledEventId":  "116",
+        "startedEventId":  "117",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "retryState":  "RETRY_STATE_MAXIMUM_ATTEMPTS_REACHED"
+      }
+    },
+    {
+      "eventId":  "119",
+      "eventTime":  "2026-09-30T18:01:05.840801222Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8389003",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "120",
+      "eventTime":  "2026-09-30T18:01:05.856727681Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8389007",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "119",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "a3595821-c775-4413-9e76-901e1b71b689",
+        "historySizeBytes":  "24562",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "121",
+      "eventTime":  "2026-09-30T18:01:05.872347727Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8389011",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "119",
+        "startedEventId":  "120",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "122",
+      "eventTime":  "2026-09-30T18:01:05.872381729Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId":  "8389012",
+      "activityTaskScheduledEventAttributes":  {
+        "activityId":  "122",
+        "activityType":  {
+          "name":  "CloseAttempt"
+        },
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707-control",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header":  {},
+        "input":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJBdHRlbXB0Ijp7IkF0dGVtcHRJRCI6ImF0dF9ER0JQMlRPMlIyM0ZTM0Y2WlE0RlJUVU4iLCJUZW5hbnRJRCI6InRlbmFudF9hIiwiUHJvZmlsZUlEIjoidmFsaWRhdG9yLWZpeGVkLWRldi12MSIsIkRlYWRsaW5lIjoiMjAyNi0wOS0zMFQxODozMDozMi42MDA1OTdaIiwiRXhlY3V0aW9uRXBvY2giOiIxIn0sIkNvbW1hbmRJRCI6ImF0dF9ER0JQMlRPMlIyM0ZTM0Y2WlE0RlJUVU46Y2xvc2UiLCJPdXRjb21lIjoiaW5mcmFzdHJ1Y3R1cmVfZmFpbGVkIiwiQ2xlYW51cCI6InVua25vd24iLCJGYWlsdXJlQ29kZSI6Ik9CU0VSVkVSX0ZBSUxFRCJ9"
+            }
+          ]
+        },
+        "scheduleToCloseTimeout":  "0s",
+        "scheduleToStartTimeout":  "0s",
+        "startToCloseTimeout":  "30s",
+        "heartbeatTimeout":  "0s",
+        "workflowTaskCompletedEventId":  "121",
+        "retryPolicy":  {
+          "initialInterval":  "1s",
+          "backoffCoefficient":  2,
+          "maximumInterval":  "30s"
+        }
+      }
+    },
+    {
+      "eventId":  "123",
+      "eventTime":  "2026-09-30T18:01:05.886496716Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId":  "8389017",
+      "activityTaskStartedEventAttributes":  {
+        "scheduledEventId":  "122",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "b3244a1d-b439-4dbe-85a6-50eb618cde80",
+        "attempt":  1,
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "124",
+      "eventTime":  "2026-09-30T18:01:05.910469833Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_COMPLETED",
+      "taskId":  "8389018",
+      "activityTaskCompletedEventAttributes":  {
+        "result":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJMaWZlY3ljbGUiOiJyZWNvbmNpbGluZyJ9"
+            }
+          ]
+        },
+        "scheduledEventId":  "122",
+        "startedEventId":  "123",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232"
+      }
+    },
+    {
+      "eventId":  "125",
+      "eventTime":  "2026-09-30T18:01:05.910479393Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8389019",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "126",
+      "eventTime":  "2026-09-30T18:01:05.925609908Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8389023",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "125",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "4180ba02-d835-4451-a1cb-e7e5660e948c",
+        "historySizeBytes":  "25747",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "127",
+      "eventTime":  "2026-09-30T18:01:05.941564160Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8389027",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "125",
+        "startedEventId":  "126",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "128",
+      "eventTime":  "2026-09-30T18:01:05.941613044Z",
+      "eventType":  "EVENT_TYPE_TIMER_STARTED",
+      "taskId":  "8389028",
+      "userMetadata":  {
+        "summary":  {
+          "metadata":  {
+            "encoding":  "anNvbi9wbGFpbg=="
+          },
+          "data":  "IlNsZWVwIg=="
+        }
+      },
+      "timerStartedEventAttributes":  {
+        "timerId":  "128",
+        "startToFireTimeout":  "5s",
+        "workflowTaskCompletedEventId":  "127"
+      }
+    },
+    {
+      "eventId":  "129",
+      "eventTime":  "2026-09-30T18:01:10.943415691Z",
+      "eventType":  "EVENT_TYPE_TIMER_FIRED",
+      "taskId":  "8389031",
+      "timerFiredEventAttributes":  {
+        "timerId":  "128",
+        "startedEventId":  "128"
+      }
+    },
+    {
+      "eventId":  "130",
+      "eventTime":  "2026-09-30T18:01:10.943427124Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8389032",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "131",
+      "eventTime":  "2026-09-30T18:01:10.961474817Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8389036",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "130",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "a57dbf63-0e87-4f39-a47c-a15d7d3c922b",
+        "historySizeBytes":  "26267",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "132",
+      "eventTime":  "2026-09-30T18:01:10.978016368Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8389040",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "130",
+        "startedEventId":  "131",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "133",
+      "eventTime":  "2026-09-30T18:01:10.978052538Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId":  "8389041",
+      "activityTaskScheduledEventAttributes":  {
+        "activityId":  "133",
+        "activityType":  {
+          "name":  "DeleteJob"
+        },
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707-control",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header":  {},
+        "input":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJMYXVuY2giOnsiTGF1bmNoSUQiOiJsY2hfTDNDV1dLVlZXSFhMN1ZHQVA3NlNaNlhUIiwiQXR0ZW1wdElEIjoiYXR0X0RHQlAyVE8yUjIzRlMzRjZaUTRGUlRVTiIsIkxhdW5jaEtleSI6InBydi1kZ2JwMnRvMnIyM2ZzM2Y2enE0ZnJ0dW4iLCJJbWFnZURpZ2VzdCI6InNoYTI1NjpjYzUyNjQzZDBlYzRiYzg2OTIzOTRkYmIxYmMwMWFlYWY3YmNiZTJjYmU3NmE3NDg0NjE5YzI1ZWFhZjg1NDZkIiwiTGF1bmNoRXBvY2giOiIxIn0sIlVuYWNjb3VudGVkIjpudWxsLCJFdmlkZW5jZUZpcnN0IjpmYWxzZSwiUmVjb3JkZWQiOm51bGx9"
+            }
+          ]
+        },
+        "scheduleToCloseTimeout":  "0s",
+        "scheduleToStartTimeout":  "0s",
+        "startToCloseTimeout":  "180s",
+        "heartbeatTimeout":  "30s",
+        "workflowTaskCompletedEventId":  "132",
+        "retryPolicy":  {
+          "initialInterval":  "1s",
+          "backoffCoefficient":  2,
+          "maximumInterval":  "100s",
+          "maximumAttempts":  2
+        }
+      }
+    },
+    {
+      "eventId":  "134",
+      "eventTime":  "2026-09-30T18:01:12.019752063Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId":  "8389049",
+      "activityTaskStartedEventAttributes":  {
+        "scheduledEventId":  "133",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "20fd2409-d1e4-404c-b20a-dfb5f80c858c",
+        "attempt":  2,
+        "lastFailure":  {
+          "message":  "Unauthorized",
+          "source":  "GoSDK",
+          "applicationFailureInfo":  {
+            "type":  "StatusError"
+          }
+        },
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "135",
+      "eventTime":  "2026-09-30T18:01:12.060316797Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_FAILED",
+      "taskId":  "8389050",
+      "activityTaskFailedEventAttributes":  {
+        "failure":  {
+          "message":  "Unauthorized",
+          "source":  "GoSDK",
+          "applicationFailureInfo":  {
+            "type":  "StatusError"
+          }
+        },
+        "scheduledEventId":  "133",
+        "startedEventId":  "134",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "retryState":  "RETRY_STATE_MAXIMUM_ATTEMPTS_REACHED"
+      }
+    },
+    {
+      "eventId":  "136",
+      "eventTime":  "2026-09-30T18:01:12.060325470Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8389051",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "137",
+      "eventTime":  "2026-09-30T18:01:12.074488848Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8389055",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "136",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "407de364-190e-46f0-8469-f75626eb7eb7",
+        "historySizeBytes":  "27476",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "138",
+      "eventTime":  "2026-09-30T18:01:12.090118356Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8389059",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "136",
+        "startedEventId":  "137",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "139",
+      "eventTime":  "2026-09-30T18:01:12.090138560Z",
+      "eventType":  "EVENT_TYPE_TIMER_STARTED",
+      "taskId":  "8389060",
+      "userMetadata":  {
+        "summary":  {
+          "metadata":  {
+            "encoding":  "anNvbi9wbGFpbg=="
+          },
+          "data":  "IlNsZWVwIg=="
+        }
+      },
+      "timerStartedEventAttributes":  {
+        "timerId":  "139",
+        "startToFireTimeout":  "10s",
+        "workflowTaskCompletedEventId":  "138"
+      }
+    },
+    {
+      "eventId":  "140",
+      "eventTime":  "2026-09-30T18:01:22.092737115Z",
+      "eventType":  "EVENT_TYPE_TIMER_FIRED",
+      "taskId":  "8389063",
+      "timerFiredEventAttributes":  {
+        "timerId":  "139",
+        "startedEventId":  "139"
+      }
+    },
+    {
+      "eventId":  "141",
+      "eventTime":  "2026-09-30T18:01:22.092748481Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8389064",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "142",
+      "eventTime":  "2026-09-30T18:01:22.110817540Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8389068",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "141",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "2b908bcb-5c3f-408e-93a3-ee7dec6473aa",
+        "historySizeBytes":  "27997",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "143",
+      "eventTime":  "2026-09-30T18:01:22.126323140Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8389072",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "141",
+        "startedEventId":  "142",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "144",
+      "eventTime":  "2026-09-30T18:01:22.126357515Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId":  "8389073",
+      "activityTaskScheduledEventAttributes":  {
+        "activityId":  "144",
+        "activityType":  {
+          "name":  "DeleteJob"
+        },
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707-control",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header":  {},
+        "input":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJMYXVuY2giOnsiTGF1bmNoSUQiOiJsY2hfTDNDV1dLVlZXSFhMN1ZHQVA3NlNaNlhUIiwiQXR0ZW1wdElEIjoiYXR0X0RHQlAyVE8yUjIzRlMzRjZaUTRGUlRVTiIsIkxhdW5jaEtleSI6InBydi1kZ2JwMnRvMnIyM2ZzM2Y2enE0ZnJ0dW4iLCJJbWFnZURpZ2VzdCI6InNoYTI1NjpjYzUyNjQzZDBlYzRiYzg2OTIzOTRkYmIxYmMwMWFlYWY3YmNiZTJjYmU3NmE3NDg0NjE5YzI1ZWFhZjg1NDZkIiwiTGF1bmNoRXBvY2giOiIxIn0sIlVuYWNjb3VudGVkIjpudWxsLCJFdmlkZW5jZUZpcnN0IjpmYWxzZSwiUmVjb3JkZWQiOm51bGx9"
+            }
+          ]
+        },
+        "scheduleToCloseTimeout":  "0s",
+        "scheduleToStartTimeout":  "0s",
+        "startToCloseTimeout":  "180s",
+        "heartbeatTimeout":  "30s",
+        "workflowTaskCompletedEventId":  "143",
+        "retryPolicy":  {
+          "initialInterval":  "1s",
+          "backoffCoefficient":  2,
+          "maximumInterval":  "100s",
+          "maximumAttempts":  2
+        }
+      }
+    },
+    {
+      "eventId":  "145",
+      "eventTime":  "2026-09-30T18:01:23.167392015Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId":  "8389081",
+      "activityTaskStartedEventAttributes":  {
+        "scheduledEventId":  "144",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "cbbc186a-e6f9-4216-874d-2bcfe98ba7bd",
+        "attempt":  2,
+        "lastFailure":  {
+          "message":  "Unauthorized",
+          "source":  "GoSDK",
+          "applicationFailureInfo":  {
+            "type":  "StatusError"
+          }
+        },
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "146",
+      "eventTime":  "2026-09-30T18:01:23.215409490Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_FAILED",
+      "taskId":  "8389082",
+      "activityTaskFailedEventAttributes":  {
+        "failure":  {
+          "message":  "Unauthorized",
+          "source":  "GoSDK",
+          "applicationFailureInfo":  {
+            "type":  "StatusError"
+          }
+        },
+        "scheduledEventId":  "144",
+        "startedEventId":  "145",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "retryState":  "RETRY_STATE_MAXIMUM_ATTEMPTS_REACHED"
+      }
+    },
+    {
+      "eventId":  "147",
+      "eventTime":  "2026-09-30T18:01:23.215418290Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8389083",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "148",
+      "eventTime":  "2026-09-30T18:01:23.228958465Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8389087",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "147",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "37916eee-be49-4be6-a2aa-b84e5173e083",
+        "historySizeBytes":  "29203",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "149",
+      "eventTime":  "2026-09-30T18:01:23.243084481Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8389091",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "147",
+        "startedEventId":  "148",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "150",
+      "eventTime":  "2026-09-30T18:01:23.243107673Z",
+      "eventType":  "EVENT_TYPE_TIMER_STARTED",
+      "taskId":  "8389092",
+      "userMetadata":  {
+        "summary":  {
+          "metadata":  {
+            "encoding":  "anNvbi9wbGFpbg=="
+          },
+          "data":  "IlNsZWVwIg=="
+        }
+      },
+      "timerStartedEventAttributes":  {
+        "timerId":  "150",
+        "startToFireTimeout":  "20s",
+        "workflowTaskCompletedEventId":  "149"
+      }
+    },
+    {
+      "eventId":  "151",
+      "eventTime":  "2026-09-30T18:01:43.245455909Z",
+      "eventType":  "EVENT_TYPE_TIMER_FIRED",
+      "taskId":  "8389095",
+      "timerFiredEventAttributes":  {
+        "timerId":  "150",
+        "startedEventId":  "150"
+      }
+    },
+    {
+      "eventId":  "152",
+      "eventTime":  "2026-09-30T18:01:43.245463657Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8389096",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "153",
+      "eventTime":  "2026-09-30T18:01:43.299020422Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8389100",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "152",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "2004b31f-be3b-4e9d-acef-8e4af17bcde9",
+        "historySizeBytes":  "29724",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "154",
+      "eventTime":  "2026-09-30T18:01:43.324356060Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8389104",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "152",
+        "startedEventId":  "153",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "155",
+      "eventTime":  "2026-09-30T18:01:43.324389013Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId":  "8389105",
+      "activityTaskScheduledEventAttributes":  {
+        "activityId":  "155",
+        "activityType":  {
+          "name":  "DeleteJob"
+        },
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707-control",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header":  {},
+        "input":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJMYXVuY2giOnsiTGF1bmNoSUQiOiJsY2hfTDNDV1dLVlZXSFhMN1ZHQVA3NlNaNlhUIiwiQXR0ZW1wdElEIjoiYXR0X0RHQlAyVE8yUjIzRlMzRjZaUTRGUlRVTiIsIkxhdW5jaEtleSI6InBydi1kZ2JwMnRvMnIyM2ZzM2Y2enE0ZnJ0dW4iLCJJbWFnZURpZ2VzdCI6InNoYTI1NjpjYzUyNjQzZDBlYzRiYzg2OTIzOTRkYmIxYmMwMWFlYWY3YmNiZTJjYmU3NmE3NDg0NjE5YzI1ZWFhZjg1NDZkIiwiTGF1bmNoRXBvY2giOiIxIn0sIlVuYWNjb3VudGVkIjpudWxsLCJFdmlkZW5jZUZpcnN0IjpmYWxzZSwiUmVjb3JkZWQiOm51bGx9"
+            }
+          ]
+        },
+        "scheduleToCloseTimeout":  "0s",
+        "scheduleToStartTimeout":  "0s",
+        "startToCloseTimeout":  "180s",
+        "heartbeatTimeout":  "30s",
+        "workflowTaskCompletedEventId":  "154",
+        "retryPolicy":  {
+          "initialInterval":  "1s",
+          "backoffCoefficient":  2,
+          "maximumInterval":  "100s",
+          "maximumAttempts":  2
+        }
+      }
+    },
+    {
+      "eventId":  "156",
+      "eventTime":  "2026-09-30T18:01:44.365229657Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId":  "8389113",
+      "activityTaskStartedEventAttributes":  {
+        "scheduledEventId":  "155",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "77f8c5a1-8e7b-4bb6-b295-293f43e74759",
+        "attempt":  2,
+        "lastFailure":  {
+          "message":  "Unauthorized",
+          "source":  "GoSDK",
+          "applicationFailureInfo":  {
+            "type":  "StatusError"
+          }
+        },
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "157",
+      "eventTime":  "2026-09-30T18:01:44.406599457Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_FAILED",
+      "taskId":  "8389114",
+      "activityTaskFailedEventAttributes":  {
+        "failure":  {
+          "message":  "Unauthorized",
+          "source":  "GoSDK",
+          "applicationFailureInfo":  {
+            "type":  "StatusError"
+          }
+        },
+        "scheduledEventId":  "155",
+        "startedEventId":  "156",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "retryState":  "RETRY_STATE_MAXIMUM_ATTEMPTS_REACHED"
+      }
+    },
+    {
+      "eventId":  "158",
+      "eventTime":  "2026-09-30T18:01:44.406605257Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8389115",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "159",
+      "eventTime":  "2026-09-30T18:01:44.420947857Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8389119",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "158",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "57c43e55-5c83-4039-8af4-0c3069f4b96e",
+        "historySizeBytes":  "30936",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "160",
+      "eventTime":  "2026-09-30T18:01:44.437238457Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8389123",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "158",
+        "startedEventId":  "159",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "161",
+      "eventTime":  "2026-09-30T18:01:44.437259557Z",
+      "eventType":  "EVENT_TYPE_TIMER_STARTED",
+      "taskId":  "8389124",
+      "userMetadata":  {
+        "summary":  {
+          "metadata":  {
+            "encoding":  "anNvbi9wbGFpbg=="
+          },
+          "data":  "IlNsZWVwIg=="
+        }
+      },
+      "timerStartedEventAttributes":  {
+        "timerId":  "161",
+        "startToFireTimeout":  "40s",
+        "workflowTaskCompletedEventId":  "160"
+      }
+    },
+    {
+      "eventId":  "162",
+      "eventTime":  "2026-09-30T18:02:24.913669791Z",
+      "eventType":  "EVENT_TYPE_TIMER_FIRED",
+      "taskId":  "8389127",
+      "timerFiredEventAttributes":  {
+        "timerId":  "161",
+        "startedEventId":  "161"
+      }
+    },
+    {
+      "eventId":  "163",
+      "eventTime":  "2026-09-30T18:02:24.913677691Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8389128",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "164",
+      "eventTime":  "2026-09-30T18:02:24.930421495Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8389132",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "163",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "82bd07d2-0934-4b13-8684-0438d46b4a95",
+        "historySizeBytes":  "31462",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "165",
+      "eventTime":  "2026-09-30T18:02:24.946499900Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8389136",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "163",
+        "startedEventId":  "164",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "166",
+      "eventTime":  "2026-09-30T18:02:24.946538Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId":  "8389137",
+      "activityTaskScheduledEventAttributes":  {
+        "activityId":  "166",
+        "activityType":  {
+          "name":  "DeleteJob"
+        },
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707-control",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header":  {},
+        "input":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJMYXVuY2giOnsiTGF1bmNoSUQiOiJsY2hfTDNDV1dLVlZXSFhMN1ZHQVA3NlNaNlhUIiwiQXR0ZW1wdElEIjoiYXR0X0RHQlAyVE8yUjIzRlMzRjZaUTRGUlRVTiIsIkxhdW5jaEtleSI6InBydi1kZ2JwMnRvMnIyM2ZzM2Y2enE0ZnJ0dW4iLCJJbWFnZURpZ2VzdCI6InNoYTI1NjpjYzUyNjQzZDBlYzRiYzg2OTIzOTRkYmIxYmMwMWFlYWY3YmNiZTJjYmU3NmE3NDg0NjE5YzI1ZWFhZjg1NDZkIiwiTGF1bmNoRXBvY2giOiIxIn0sIlVuYWNjb3VudGVkIjpudWxsLCJFdmlkZW5jZUZpcnN0IjpmYWxzZSwiUmVjb3JkZWQiOm51bGx9"
+            }
+          ]
+        },
+        "scheduleToCloseTimeout":  "0s",
+        "scheduleToStartTimeout":  "0s",
+        "startToCloseTimeout":  "180s",
+        "heartbeatTimeout":  "30s",
+        "workflowTaskCompletedEventId":  "165",
+        "retryPolicy":  {
+          "initialInterval":  "1s",
+          "backoffCoefficient":  2,
+          "maximumInterval":  "100s",
+          "maximumAttempts":  2
+        }
+      }
+    },
+    {
+      "eventId":  "167",
+      "eventTime":  "2026-09-30T18:02:25.992420471Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId":  "8389145",
+      "activityTaskStartedEventAttributes":  {
+        "scheduledEventId":  "166",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "9261b9fd-59ba-40ed-9fc5-80da41b0af3c",
+        "attempt":  2,
+        "lastFailure":  {
+          "message":  "Unauthorized",
+          "source":  "GoSDK",
+          "applicationFailureInfo":  {
+            "type":  "StatusError"
+          }
+        },
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "168",
+      "eventTime":  "2026-09-30T18:02:26.035242282Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_FAILED",
+      "taskId":  "8389146",
+      "activityTaskFailedEventAttributes":  {
+        "failure":  {
+          "message":  "Unauthorized",
+          "source":  "GoSDK",
+          "applicationFailureInfo":  {
+            "type":  "StatusError"
+          }
+        },
+        "scheduledEventId":  "166",
+        "startedEventId":  "167",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "retryState":  "RETRY_STATE_MAXIMUM_ATTEMPTS_REACHED"
+      }
+    },
+    {
+      "eventId":  "169",
+      "eventTime":  "2026-09-30T18:02:26.035250182Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8389147",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "170",
+      "eventTime":  "2026-09-30T18:02:26.050082886Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8389151",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "169",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "56a68434-13fd-4df6-a2e1-91e3c58519e8",
+        "historySizeBytes":  "32672",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "171",
+      "eventTime":  "2026-09-30T18:02:26.066107090Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8389155",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "169",
+        "startedEventId":  "170",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "172",
+      "eventTime":  "2026-09-30T18:02:26.066128490Z",
+      "eventType":  "EVENT_TYPE_TIMER_STARTED",
+      "taskId":  "8389156",
+      "userMetadata":  {
+        "summary":  {
+          "metadata":  {
+            "encoding":  "anNvbi9wbGFpbg=="
+          },
+          "data":  "IlNsZWVwIg=="
+        }
+      },
+      "timerStartedEventAttributes":  {
+        "timerId":  "172",
+        "startToFireTimeout":  "60s",
+        "workflowTaskCompletedEventId":  "171"
+      }
+    },
+    {
+      "eventId":  "173",
+      "eventTime":  "2026-09-30T18:03:26.068439876Z",
+      "eventType":  "EVENT_TYPE_TIMER_FIRED",
+      "taskId":  "8389159",
+      "timerFiredEventAttributes":  {
+        "timerId":  "172",
+        "startedEventId":  "172"
+      }
+    },
+    {
+      "eventId":  "174",
+      "eventTime":  "2026-09-30T18:03:26.068447476Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8389160",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "175",
+      "eventTime":  "2026-09-30T18:03:26.103031369Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8389164",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "174",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "988d1a11-6651-4f5a-aef7-0a4351f5b071",
+        "historySizeBytes":  "33193",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "176",
+      "eventTime":  "2026-09-30T18:03:26.120672865Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8389168",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "174",
+        "startedEventId":  "175",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "177",
+      "eventTime":  "2026-09-30T18:03:26.120715765Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId":  "8389169",
+      "activityTaskScheduledEventAttributes":  {
+        "activityId":  "177",
+        "activityType":  {
+          "name":  "DeleteJob"
+        },
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707-control",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header":  {},
+        "input":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJMYXVuY2giOnsiTGF1bmNoSUQiOiJsY2hfTDNDV1dLVlZXSFhMN1ZHQVA3NlNaNlhUIiwiQXR0ZW1wdElEIjoiYXR0X0RHQlAyVE8yUjIzRlMzRjZaUTRGUlRVTiIsIkxhdW5jaEtleSI6InBydi1kZ2JwMnRvMnIyM2ZzM2Y2enE0ZnJ0dW4iLCJJbWFnZURpZ2VzdCI6InNoYTI1NjpjYzUyNjQzZDBlYzRiYzg2OTIzOTRkYmIxYmMwMWFlYWY3YmNiZTJjYmU3NmE3NDg0NjE5YzI1ZWFhZjg1NDZkIiwiTGF1bmNoRXBvY2giOiIxIn0sIlVuYWNjb3VudGVkIjpudWxsLCJFdmlkZW5jZUZpcnN0IjpmYWxzZSwiUmVjb3JkZWQiOm51bGx9"
+            }
+          ]
+        },
+        "scheduleToCloseTimeout":  "0s",
+        "scheduleToStartTimeout":  "0s",
+        "startToCloseTimeout":  "180s",
+        "heartbeatTimeout":  "30s",
+        "workflowTaskCompletedEventId":  "176",
+        "retryPolicy":  {
+          "initialInterval":  "1s",
+          "backoffCoefficient":  2,
+          "maximumInterval":  "100s",
+          "maximumAttempts":  2
+        }
+      }
+    },
+    {
+      "eventId":  "178",
+      "eventTime":  "2026-09-30T18:03:27.641287567Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId":  "8389177",
+      "activityTaskStartedEventAttributes":  {
+        "scheduledEventId":  "177",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "ebba6f27-6f43-48fe-a625-bd426300c381",
+        "attempt":  2,
+        "lastFailure":  {
+          "message":  "Unauthorized",
+          "source":  "GoSDK",
+          "applicationFailureInfo":  {
+            "type":  "StatusError"
+          }
+        },
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "179",
+      "eventTime":  "2026-09-30T18:03:27.666835462Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_FAILED",
+      "taskId":  "8389178",
+      "activityTaskFailedEventAttributes":  {
+        "failure":  {
+          "message":  "Unauthorized",
+          "source":  "GoSDK",
+          "applicationFailureInfo":  {
+            "type":  "StatusError"
+          }
+        },
+        "scheduledEventId":  "177",
+        "startedEventId":  "178",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "retryState":  "RETRY_STATE_MAXIMUM_ATTEMPTS_REACHED"
+      }
+    },
+    {
+      "eventId":  "180",
+      "eventTime":  "2026-09-30T18:03:27.666841362Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8389179",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "181",
+      "eventTime":  "2026-09-30T18:03:27.682022159Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8389183",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "180",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "e450433e-b48d-4667-a696-ab8cd95d8020",
+        "historySizeBytes":  "34402",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "182",
+      "eventTime":  "2026-09-30T18:03:27.697625755Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8389187",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "180",
+        "startedEventId":  "181",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "183",
+      "eventTime":  "2026-09-30T18:03:27.697645855Z",
+      "eventType":  "EVENT_TYPE_TIMER_STARTED",
+      "taskId":  "8389188",
+      "userMetadata":  {
+        "summary":  {
+          "metadata":  {
+            "encoding":  "anNvbi9wbGFpbg=="
+          },
+          "data":  "IlNsZWVwIg=="
+        }
+      },
+      "timerStartedEventAttributes":  {
+        "timerId":  "183",
+        "startToFireTimeout":  "60s",
+        "workflowTaskCompletedEventId":  "182"
+      }
+    },
+    {
+      "eventId":  "184",
+      "eventTime":  "2026-09-30T18:04:28.268657193Z",
+      "eventType":  "EVENT_TYPE_TIMER_FIRED",
+      "taskId":  "8389191",
+      "timerFiredEventAttributes":  {
+        "timerId":  "183",
+        "startedEventId":  "183"
+      }
+    },
+    {
+      "eventId":  "185",
+      "eventTime":  "2026-09-30T18:04:28.268669181Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8389192",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "186",
+      "eventTime":  "2026-09-30T18:04:28.304941270Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8389196",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "185",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "381ccf2d-74d5-46b0-b75b-e75c701b2b36",
+        "historySizeBytes":  "34928",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "187",
+      "eventTime":  "2026-09-30T18:04:28.338973233Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8389200",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "185",
+        "startedEventId":  "186",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "188",
+      "eventTime":  "2026-09-30T18:04:28.339132372Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId":  "8389201",
+      "activityTaskScheduledEventAttributes":  {
+        "activityId":  "188",
+        "activityType":  {
+          "name":  "DeleteJob"
+        },
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707-control",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header":  {},
+        "input":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJMYXVuY2giOnsiTGF1bmNoSUQiOiJsY2hfTDNDV1dLVlZXSFhMN1ZHQVA3NlNaNlhUIiwiQXR0ZW1wdElEIjoiYXR0X0RHQlAyVE8yUjIzRlMzRjZaUTRGUlRVTiIsIkxhdW5jaEtleSI6InBydi1kZ2JwMnRvMnIyM2ZzM2Y2enE0ZnJ0dW4iLCJJbWFnZURpZ2VzdCI6InNoYTI1NjpjYzUyNjQzZDBlYzRiYzg2OTIzOTRkYmIxYmMwMWFlYWY3YmNiZTJjYmU3NmE3NDg0NjE5YzI1ZWFhZjg1NDZkIiwiTGF1bmNoRXBvY2giOiIxIn0sIlVuYWNjb3VudGVkIjpudWxsLCJFdmlkZW5jZUZpcnN0IjpmYWxzZSwiUmVjb3JkZWQiOm51bGx9"
+            }
+          ]
+        },
+        "scheduleToCloseTimeout":  "0s",
+        "scheduleToStartTimeout":  "0s",
+        "startToCloseTimeout":  "180s",
+        "heartbeatTimeout":  "30s",
+        "workflowTaskCompletedEventId":  "187",
+        "retryPolicy":  {
+          "initialInterval":  "1s",
+          "backoffCoefficient":  2,
+          "maximumInterval":  "100s",
+          "maximumAttempts":  2
+        }
+      }
+    },
+    {
+      "eventId":  "189",
+      "eventTime":  "2026-09-30T18:04:29.402620493Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId":  "8389209",
+      "activityTaskStartedEventAttributes":  {
+        "scheduledEventId":  "188",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "27701aa9-03ce-4bd7-8343-0f8519449bc9",
+        "attempt":  2,
+        "lastFailure":  {
+          "message":  "Unauthorized",
+          "source":  "GoSDK",
+          "applicationFailureInfo":  {
+            "type":  "StatusError"
+          }
+        },
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "190",
+      "eventTime":  "2026-09-30T18:04:29.451155138Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_FAILED",
+      "taskId":  "8389210",
+      "activityTaskFailedEventAttributes":  {
+        "failure":  {
+          "message":  "Unauthorized",
+          "source":  "GoSDK",
+          "applicationFailureInfo":  {
+            "type":  "StatusError"
+          }
+        },
+        "scheduledEventId":  "188",
+        "startedEventId":  "189",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "retryState":  "RETRY_STATE_MAXIMUM_ATTEMPTS_REACHED"
+      }
+    },
+    {
+      "eventId":  "191",
+      "eventTime":  "2026-09-30T18:04:29.451163130Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8389211",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "192",
+      "eventTime":  "2026-09-30T18:04:29.472784987Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8389215",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "191",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "66251d28-1caa-496b-89ed-849981744eb7",
+        "historySizeBytes":  "36140",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "193",
+      "eventTime":  "2026-09-30T18:04:29.492322260Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8389219",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "191",
+        "startedEventId":  "192",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "194",
+      "eventTime":  "2026-09-30T18:04:29.492349732Z",
+      "eventType":  "EVENT_TYPE_TIMER_STARTED",
+      "taskId":  "8389220",
+      "userMetadata":  {
+        "summary":  {
+          "metadata":  {
+            "encoding":  "anNvbi9wbGFpbg=="
+          },
+          "data":  "IlNsZWVwIg=="
+        }
+      },
+      "timerStartedEventAttributes":  {
+        "timerId":  "194",
+        "startToFireTimeout":  "60s",
+        "workflowTaskCompletedEventId":  "193"
+      }
+    },
+    {
+      "eventId":  "195",
+      "eventTime":  "2026-09-30T18:05:30.002603283Z",
+      "eventType":  "EVENT_TYPE_TIMER_FIRED",
+      "taskId":  "8389223",
+      "timerFiredEventAttributes":  {
+        "timerId":  "194",
+        "startedEventId":  "194"
+      }
+    },
+    {
+      "eventId":  "196",
+      "eventTime":  "2026-09-30T18:05:30.002611831Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8389224",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "197",
+      "eventTime":  "2026-09-30T18:05:30.033478445Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8389228",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "196",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "dbbab877-e14c-49ee-b926-38646b649f58",
+        "historySizeBytes":  "36664",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "198",
+      "eventTime":  "2026-09-30T18:05:30.049806346Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8389232",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "196",
+        "startedEventId":  "197",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "199",
+      "eventTime":  "2026-09-30T18:05:30.049842702Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId":  "8389233",
+      "activityTaskScheduledEventAttributes":  {
+        "activityId":  "199",
+        "activityType":  {
+          "name":  "DeleteJob"
+        },
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707-control",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header":  {},
+        "input":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJMYXVuY2giOnsiTGF1bmNoSUQiOiJsY2hfTDNDV1dLVlZXSFhMN1ZHQVA3NlNaNlhUIiwiQXR0ZW1wdElEIjoiYXR0X0RHQlAyVE8yUjIzRlMzRjZaUTRGUlRVTiIsIkxhdW5jaEtleSI6InBydi1kZ2JwMnRvMnIyM2ZzM2Y2enE0ZnJ0dW4iLCJJbWFnZURpZ2VzdCI6InNoYTI1NjpjYzUyNjQzZDBlYzRiYzg2OTIzOTRkYmIxYmMwMWFlYWY3YmNiZTJjYmU3NmE3NDg0NjE5YzI1ZWFhZjg1NDZkIiwiTGF1bmNoRXBvY2giOiIxIn0sIlVuYWNjb3VudGVkIjpudWxsLCJFdmlkZW5jZUZpcnN0IjpmYWxzZSwiUmVjb3JkZWQiOm51bGx9"
+            }
+          ]
+        },
+        "scheduleToCloseTimeout":  "0s",
+        "scheduleToStartTimeout":  "0s",
+        "startToCloseTimeout":  "180s",
+        "heartbeatTimeout":  "30s",
+        "workflowTaskCompletedEventId":  "198",
+        "retryPolicy":  {
+          "initialInterval":  "1s",
+          "backoffCoefficient":  2,
+          "maximumInterval":  "100s",
+          "maximumAttempts":  2
+        }
+      }
+    },
+    {
+      "eventId":  "200",
+      "eventTime":  "2026-09-30T18:05:31.094087004Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId":  "8389241",
+      "activityTaskStartedEventAttributes":  {
+        "scheduledEventId":  "199",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "3a053d9b-2532-4fb3-bef9-3e6eebcb0eee",
+        "attempt":  2,
+        "lastFailure":  {
+          "message":  "Unauthorized",
+          "source":  "GoSDK",
+          "applicationFailureInfo":  {
+            "type":  "StatusError"
+          }
+        },
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "201",
+      "eventTime":  "2026-09-30T18:05:31.150398428Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_FAILED",
+      "taskId":  "8389242",
+      "activityTaskFailedEventAttributes":  {
+        "failure":  {
+          "message":  "Unauthorized",
+          "source":  "GoSDK",
+          "applicationFailureInfo":  {
+            "type":  "StatusError"
+          }
+        },
+        "scheduledEventId":  "199",
+        "startedEventId":  "200",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "retryState":  "RETRY_STATE_MAXIMUM_ATTEMPTS_REACHED"
+      }
+    },
+    {
+      "eventId":  "202",
+      "eventTime":  "2026-09-30T18:05:31.150407763Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8389243",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "203",
+      "eventTime":  "2026-09-30T18:05:31.165474124Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8389247",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "202",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "69164f03-76ed-42fb-aa07-40ea7b78d890",
+        "historySizeBytes":  "37870",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "204",
+      "eventTime":  "2026-09-30T18:05:31.182120087Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8389251",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "202",
+        "startedEventId":  "203",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "205",
+      "eventTime":  "2026-09-30T18:05:31.182139739Z",
+      "eventType":  "EVENT_TYPE_TIMER_STARTED",
+      "taskId":  "8389252",
+      "userMetadata":  {
+        "summary":  {
+          "metadata":  {
+            "encoding":  "anNvbi9wbGFpbg=="
+          },
+          "data":  "IlNsZWVwIg=="
+        }
+      },
+      "timerStartedEventAttributes":  {
+        "timerId":  "205",
+        "startToFireTimeout":  "60s",
+        "workflowTaskCompletedEventId":  "204"
+      }
+    },
+    {
+      "eventId":  "206",
+      "eventTime":  "2026-09-30T18:06:31.784148065Z",
+      "eventType":  "EVENT_TYPE_TIMER_FIRED",
+      "taskId":  "8389255",
+      "timerFiredEventAttributes":  {
+        "timerId":  "205",
+        "startedEventId":  "205"
+      }
+    },
+    {
+      "eventId":  "207",
+      "eventTime":  "2026-09-30T18:06:31.784156220Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8389256",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "208",
+      "eventTime":  "2026-09-30T18:06:31.816699279Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8389260",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "207",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "b901949d-5502-4aa7-9c90-74b82e4f7e9b",
+        "historySizeBytes":  "38393",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "209",
+      "eventTime":  "2026-09-30T18:06:31.834992195Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8389264",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "207",
+        "startedEventId":  "208",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "210",
+      "eventTime":  "2026-09-30T18:06:31.835041126Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId":  "8389265",
+      "activityTaskScheduledEventAttributes":  {
+        "activityId":  "210",
+        "activityType":  {
+          "name":  "DeleteJob"
+        },
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707-control",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header":  {},
+        "input":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJMYXVuY2giOnsiTGF1bmNoSUQiOiJsY2hfTDNDV1dLVlZXSFhMN1ZHQVA3NlNaNlhUIiwiQXR0ZW1wdElEIjoiYXR0X0RHQlAyVE8yUjIzRlMzRjZaUTRGUlRVTiIsIkxhdW5jaEtleSI6InBydi1kZ2JwMnRvMnIyM2ZzM2Y2enE0ZnJ0dW4iLCJJbWFnZURpZ2VzdCI6InNoYTI1NjpjYzUyNjQzZDBlYzRiYzg2OTIzOTRkYmIxYmMwMWFlYWY3YmNiZTJjYmU3NmE3NDg0NjE5YzI1ZWFhZjg1NDZkIiwiTGF1bmNoRXBvY2giOiIxIn0sIlVuYWNjb3VudGVkIjpudWxsLCJFdmlkZW5jZUZpcnN0IjpmYWxzZSwiUmVjb3JkZWQiOm51bGx9"
+            }
+          ]
+        },
+        "scheduleToCloseTimeout":  "0s",
+        "scheduleToStartTimeout":  "0s",
+        "startToCloseTimeout":  "180s",
+        "heartbeatTimeout":  "30s",
+        "workflowTaskCompletedEventId":  "209",
+        "retryPolicy":  {
+          "initialInterval":  "1s",
+          "backoffCoefficient":  2,
+          "maximumInterval":  "100s",
+          "maximumAttempts":  2
+        }
+      }
+    },
+    {
+      "eventId":  "211",
+      "eventTime":  "2026-09-30T18:06:32.879963432Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId":  "8389273",
+      "activityTaskStartedEventAttributes":  {
+        "scheduledEventId":  "210",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "5111a370-fdbf-4467-be20-6c89e4deee85",
+        "attempt":  2,
+        "lastFailure":  {
+          "message":  "Unauthorized",
+          "source":  "GoSDK",
+          "applicationFailureInfo":  {
+            "type":  "StatusError"
+          }
+        },
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "212",
+      "eventTime":  "2026-09-30T18:06:32.922734053Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_FAILED",
+      "taskId":  "8389274",
+      "activityTaskFailedEventAttributes":  {
+        "failure":  {
+          "message":  "Unauthorized",
+          "source":  "GoSDK",
+          "applicationFailureInfo":  {
+            "type":  "StatusError"
+          }
+        },
+        "scheduledEventId":  "210",
+        "startedEventId":  "211",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "retryState":  "RETRY_STATE_MAXIMUM_ATTEMPTS_REACHED"
+      }
+    },
+    {
+      "eventId":  "213",
+      "eventTime":  "2026-09-30T18:06:32.922742209Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8389275",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "214",
+      "eventTime":  "2026-09-30T18:06:32.940533479Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8389279",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "213",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "c943e5f4-ad88-4cb5-ba5b-39823ee24ed8",
+        "historySizeBytes":  "39605",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "215",
+      "eventTime":  "2026-09-30T18:06:32.957309906Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8389283",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "213",
+        "startedEventId":  "214",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "216",
+      "eventTime":  "2026-09-30T18:06:32.957335925Z",
+      "eventType":  "EVENT_TYPE_TIMER_STARTED",
+      "taskId":  "8389284",
+      "userMetadata":  {
+        "summary":  {
+          "metadata":  {
+            "encoding":  "anNvbi9wbGFpbg=="
+          },
+          "data":  "IlNsZWVwIg=="
+        }
+      },
+      "timerStartedEventAttributes":  {
+        "timerId":  "216",
+        "startToFireTimeout":  "60s",
+        "workflowTaskCompletedEventId":  "215"
+      }
+    },
+    {
+      "eventId":  "217",
+      "eventTime":  "2026-09-30T18:07:33.548321892Z",
+      "eventType":  "EVENT_TYPE_TIMER_FIRED",
+      "taskId":  "8389287",
+      "timerFiredEventAttributes":  {
+        "timerId":  "216",
+        "startedEventId":  "216"
+      }
+    },
+    {
+      "eventId":  "218",
+      "eventTime":  "2026-09-30T18:07:33.548350992Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8389288",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "219",
+      "eventTime":  "2026-09-30T18:07:33.596509584Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8389292",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "218",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "2e2d9150-cc79-4739-8416-3b332c93fd62",
+        "historySizeBytes":  "40131",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "220",
+      "eventTime":  "2026-09-30T18:07:33.614398581Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8389296",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "218",
+        "startedEventId":  "219",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "221",
+      "eventTime":  "2026-09-30T18:07:33.614446781Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId":  "8389297",
+      "activityTaskScheduledEventAttributes":  {
+        "activityId":  "221",
+        "activityType":  {
+          "name":  "DeleteJob"
+        },
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707-control",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header":  {},
+        "input":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJMYXVuY2giOnsiTGF1bmNoSUQiOiJsY2hfTDNDV1dLVlZXSFhMN1ZHQVA3NlNaNlhUIiwiQXR0ZW1wdElEIjoiYXR0X0RHQlAyVE8yUjIzRlMzRjZaUTRGUlRVTiIsIkxhdW5jaEtleSI6InBydi1kZ2JwMnRvMnIyM2ZzM2Y2enE0ZnJ0dW4iLCJJbWFnZURpZ2VzdCI6InNoYTI1NjpjYzUyNjQzZDBlYzRiYzg2OTIzOTRkYmIxYmMwMWFlYWY3YmNiZTJjYmU3NmE3NDg0NjE5YzI1ZWFhZjg1NDZkIiwiTGF1bmNoRXBvY2giOiIxIn0sIlVuYWNjb3VudGVkIjpudWxsLCJFdmlkZW5jZUZpcnN0IjpmYWxzZSwiUmVjb3JkZWQiOm51bGx9"
+            }
+          ]
+        },
+        "scheduleToCloseTimeout":  "0s",
+        "scheduleToStartTimeout":  "0s",
+        "startToCloseTimeout":  "180s",
+        "heartbeatTimeout":  "30s",
+        "workflowTaskCompletedEventId":  "220",
+        "retryPolicy":  {
+          "initialInterval":  "1s",
+          "backoffCoefficient":  2,
+          "maximumInterval":  "100s",
+          "maximumAttempts":  2
+        }
+      }
+    },
+    {
+      "eventId":  "222",
+      "eventTime":  "2026-09-30T18:07:34.655237019Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId":  "8389305",
+      "activityTaskStartedEventAttributes":  {
+        "scheduledEventId":  "221",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "cae6e8a4-451c-4567-82c7-76d36d926c35",
+        "attempt":  2,
+        "lastFailure":  {
+          "message":  "Unauthorized",
+          "source":  "GoSDK",
+          "applicationFailureInfo":  {
+            "type":  "StatusError"
+          }
+        },
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "223",
+      "eventTime":  "2026-09-30T18:07:34.697237212Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_FAILED",
+      "taskId":  "8389306",
+      "activityTaskFailedEventAttributes":  {
+        "failure":  {
+          "message":  "Unauthorized",
+          "source":  "GoSDK",
+          "applicationFailureInfo":  {
+            "type":  "StatusError"
+          }
+        },
+        "scheduledEventId":  "221",
+        "startedEventId":  "222",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "retryState":  "RETRY_STATE_MAXIMUM_ATTEMPTS_REACHED"
+      }
+    },
+    {
+      "eventId":  "224",
+      "eventTime":  "2026-09-30T18:07:34.697245112Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8389307",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "225",
+      "eventTime":  "2026-09-30T18:07:34.712850710Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8389311",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "224",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "a378e7b0-0fde-4794-8fd8-25c97685bb87",
+        "historySizeBytes":  "41343",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "226",
+      "eventTime":  "2026-09-30T18:07:34.728566107Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8389315",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "224",
+        "startedEventId":  "225",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "227",
+      "eventTime":  "2026-09-30T18:07:34.728586107Z",
+      "eventType":  "EVENT_TYPE_TIMER_STARTED",
+      "taskId":  "8389316",
+      "userMetadata":  {
+        "summary":  {
+          "metadata":  {
+            "encoding":  "anNvbi9wbGFpbg=="
+          },
+          "data":  "IlNsZWVwIg=="
+        }
+      },
+      "timerStartedEventAttributes":  {
+        "timerId":  "227",
+        "startToFireTimeout":  "60s",
+        "workflowTaskCompletedEventId":  "226"
+      }
+    },
+    {
+      "eventId":  "228",
+      "eventTime":  "2026-09-30T18:08:35.710932237Z",
+      "eventType":  "EVENT_TYPE_TIMER_FIRED",
+      "taskId":  "8389319",
+      "timerFiredEventAttributes":  {
+        "timerId":  "227",
+        "startedEventId":  "227"
+      }
+    },
+    {
+      "eventId":  "229",
+      "eventTime":  "2026-09-30T18:08:35.710962660Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8389320",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "230",
+      "eventTime":  "2026-09-30T18:08:35.750004223Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8389324",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "229",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "04f51edf-c889-447e-b839-ddd5894ccf17",
+        "historySizeBytes":  "41869",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "231",
+      "eventTime":  "2026-09-30T18:08:35.787033669Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8389328",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "229",
+        "startedEventId":  "230",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "232",
+      "eventTime":  "2026-09-30T18:08:35.787111084Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId":  "8389329",
+      "activityTaskScheduledEventAttributes":  {
+        "activityId":  "232",
+        "activityType":  {
+          "name":  "DeleteJob"
+        },
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707-control",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header":  {},
+        "input":  {
+          "payloads":  [
+            {
+              "metadata":  {
+                "encoding":  "anNvbi9wbGFpbg=="
+              },
+              "data":  "eyJMYXVuY2giOnsiTGF1bmNoSUQiOiJsY2hfTDNDV1dLVlZXSFhMN1ZHQVA3NlNaNlhUIiwiQXR0ZW1wdElEIjoiYXR0X0RHQlAyVE8yUjIzRlMzRjZaUTRGUlRVTiIsIkxhdW5jaEtleSI6InBydi1kZ2JwMnRvMnIyM2ZzM2Y2enE0ZnJ0dW4iLCJJbWFnZURpZ2VzdCI6InNoYTI1NjpjYzUyNjQzZDBlYzRiYzg2OTIzOTRkYmIxYmMwMWFlYWY3YmNiZTJjYmU3NmE3NDg0NjE5YzI1ZWFhZjg1NDZkIiwiTGF1bmNoRXBvY2giOiIxIn0sIlVuYWNjb3VudGVkIjpudWxsLCJFdmlkZW5jZUZpcnN0IjpmYWxzZSwiUmVjb3JkZWQiOm51bGx9"
+            }
+          ]
+        },
+        "scheduleToCloseTimeout":  "0s",
+        "scheduleToStartTimeout":  "0s",
+        "startToCloseTimeout":  "180s",
+        "heartbeatTimeout":  "30s",
+        "workflowTaskCompletedEventId":  "231",
+        "retryPolicy":  {
+          "initialInterval":  "1s",
+          "backoffCoefficient":  2,
+          "maximumInterval":  "100s",
+          "maximumAttempts":  2
+        }
+      }
+    },
+    {
+      "eventId":  "233",
+      "eventTime":  "2026-09-30T18:08:36.828420623Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId":  "8389337",
+      "activityTaskStartedEventAttributes":  {
+        "scheduledEventId":  "232",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "30f5857d-eef4-48ae-87dc-85163aa80e2a",
+        "attempt":  2,
+        "lastFailure":  {
+          "message":  "Unauthorized",
+          "source":  "GoSDK",
+          "applicationFailureInfo":  {
+            "type":  "StatusError"
+          }
+        },
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "234",
+      "eventTime":  "2026-09-30T18:08:36.868487573Z",
+      "eventType":  "EVENT_TYPE_ACTIVITY_TASK_FAILED",
+      "taskId":  "8389338",
+      "activityTaskFailedEventAttributes":  {
+        "failure":  {
+          "message":  "Unauthorized",
+          "source":  "GoSDK",
+          "applicationFailureInfo":  {
+            "type":  "StatusError"
+          }
+        },
+        "scheduledEventId":  "232",
+        "startedEventId":  "233",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "retryState":  "RETRY_STATE_MAXIMUM_ATTEMPTS_REACHED"
+      }
+    },
+    {
+      "eventId":  "235",
+      "eventTime":  "2026-09-30T18:08:36.868494258Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8389339",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "236",
+      "eventTime":  "2026-09-30T18:08:36.883573744Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId":  "8389343",
+      "workflowTaskStartedEventAttributes":  {
+        "scheduledEventId":  "235",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "requestId":  "138ba9df-f80f-40bb-8441-f6b73184d7ae",
+        "historySizeBytes":  "43081",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        }
+      }
+    },
+    {
+      "eventId":  "237",
+      "eventTime":  "2026-09-30T18:08:36.898972095Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId":  "8389347",
+      "workflowTaskCompletedEventAttributes":  {
+        "scheduledEventId":  "235",
+        "startedEventId":  "236",
+        "identity":  "anvilkit-agent-workflow@integration-1790791232",
+        "workerVersion":  {
+          "buildId":  "5967e8d0d91b79fe09446bdcc8b3f070"
+        },
+        "sdkMetadata":  {},
+        "meteringMetadata":  {}
+      }
+    },
+    {
+      "eventId":  "238",
+      "eventTime":  "2026-09-30T18:08:36.898991570Z",
+      "eventType":  "EVENT_TYPE_TIMER_STARTED",
+      "taskId":  "8389348",
+      "userMetadata":  {
+        "summary":  {
+          "metadata":  {
+            "encoding":  "anNvbi9wbGFpbg=="
+          },
+          "data":  "IlNsZWVwIg=="
+        }
+      },
+      "timerStartedEventAttributes":  {
+        "timerId":  "238",
+        "startToFireTimeout":  "60s",
+        "workflowTaskCompletedEventId":  "237"
+      }
+    },
+    {
+      "eventId":  "239",
+      "eventTime":  "2026-09-30T18:09:37.642578460Z",
+      "eventType":  "EVENT_TYPE_TIMER_FIRED",
+      "taskId":  "8389351",
+      "timerFiredEventAttributes":  {
+        "timerId":  "238",
+        "startedEventId":  "238"
+      }
+    },
+    {
+      "eventId":  "240",
+      "eventTime":  "2026-09-30T18:09:37.642587067Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8389352",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "Nico:c16183bd-8a9f-472b-8b76-998742388b53",
+          "kind":  "TASK_QUEUE_KIND_STICKY",
+          "normalName":  "anvilkit-integration-16511-1790791224910710707"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    },
+    {
+      "eventId":  "241",
+      "eventTime":  "2026-09-30T18:09:42.644992614Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_TIMED_OUT",
+      "taskId":  "8389356",
+      "workflowTaskTimedOutEventAttributes":  {
+        "scheduledEventId":  "240",
+        "timeoutType":  "TIMEOUT_TYPE_SCHEDULE_TO_START"
+      }
+    },
+    {
+      "eventId":  "242",
+      "eventTime":  "2026-09-30T18:09:42.645005722Z",
+      "eventType":  "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId":  "8389357",
+      "workflowTaskScheduledEventAttributes":  {
+        "taskQueue":  {
+          "name":  "anvilkit-integration-16511-1790791224910710707",
+          "kind":  "TASK_QUEUE_KIND_NORMAL"
+        },
+        "startToCloseTimeout":  "10s",
+        "attempt":  1
+      }
+    }
+  ]
+}
