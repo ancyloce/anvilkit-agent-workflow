@@ -33,4 +33,6 @@ go.work.sum
 
 # Machine-local state (kubeconfigs, scratch)
 /.local/
-internal/workflows/testdata/
+
+# internal/workflows/testdata/histories is source: TestReplay requires the recorded
+# histories (P1.7 replay evidence); a clean clone without them fails (P3.1).
