@@ -59,6 +59,61 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 {{- end -}}
 
+{{/* P1.7 Worker Deployment Versioning (config.temporal.versioning.enabled):
+a release renders one worker version. Its Deployment, ConfigMap, HPA and
+PodDisruptionBudget are named and selected per Build ID, so the release of
+build B starts B's workers beside build A's instead of replacing them, and
+they carry helm.sh/resource-policy keep and Argo CD's Prune=false, so
+neither Helm nor Argo CD deletes A's objects when B's release no longer
+renders them. The rollout removes them once A's pinned runs have drained
+(deploy/qualification/workflow-rollout.py of the deploying repository).
+The ServiceAccount, RBAC and certificates stay shared by the release.
+Without versioning every name, label and selector is the unversioned one. */}}
+{{- define "anvilkit-agent-workflow.versioned" -}}
+{{- if dig "temporal" "versioning" "enabled" false .Values.config -}}true{{- end -}}
+{{- end -}}
+
+{{/* The label-safe key of this worker version: the first 10 hex digits of
+the Build ID's SHA-256 (a digest Build ID exceeds a label value). */}}
+{{- define "anvilkit-agent-workflow.versionKey" -}}
+{{- include "anvilkit-agent-workflow.buildId" . | sha256sum | trunc 10 -}}
+{{- end -}}
+
+{{/* The name of the per-version objects: the fullname, followed by the
+version key under versioning. */}}
+{{- define "anvilkit-agent-workflow.workerName" -}}
+{{- if include "anvilkit-agent-workflow.versioned" . -}}
+{{- printf "%s-%s" (include "anvilkit-agent-workflow.fullname" . | trunc 52 | trimSuffix "-") (include "anvilkit-agent-workflow.versionKey" .) -}}
+{{- else -}}
+{{- include "anvilkit-agent-workflow.fullname" . -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "anvilkit-agent-workflow.workerLabels" -}}
+{{ include "anvilkit-agent-workflow.labels" . }}
+{{- if include "anvilkit-agent-workflow.versioned" . }}
+anvilkit.io/worker-version: {{ include "anvilkit-agent-workflow.versionKey" . }}
+{{- end -}}
+{{- end -}}
+
+{{- define "anvilkit-agent-workflow.workerSelectorLabels" -}}
+{{ include "anvilkit-agent-workflow.selectorLabels" . }}
+{{- if include "anvilkit-agent-workflow.versioned" . }}
+anvilkit.io/worker-version: {{ include "anvilkit-agent-workflow.versionKey" . }}
+{{- end -}}
+{{- end -}}
+
+{{/* The annotations of the per-version objects under versioning (empty
+otherwise): the Temporal version they serve and the keep policies. */}}
+{{- define "anvilkit-agent-workflow.workerAnnotations" -}}
+{{- if include "anvilkit-agent-workflow.versioned" . -}}
+anvilkit.io/worker-deployment: {{ required "config.temporal.versioning.deployment_name is required under versioning" .Values.config.temporal.versioning.deployment_name | quote }}
+anvilkit.io/worker-build-id: {{ include "anvilkit-agent-workflow.buildId" . | quote }}
+helm.sh/resource-policy: keep
+argocd.argoproj.io/sync-options: Prune=false
+{{- end -}}
+{{- end -}}
+
 {{/* Required environment values of the worker Deployment. */}}
 {{- define "anvilkit-agent-workflow.require" -}}
 {{- /* P2.2: the filesystem Pagix/Knowledge double is DEVELOPMENT_ONLY. */ -}}

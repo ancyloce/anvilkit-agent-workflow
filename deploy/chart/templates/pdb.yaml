@@ -2,12 +2,16 @@
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: {{ include "anvilkit-agent-workflow.fullname" . }}
+  name: {{ include "anvilkit-agent-workflow.workerName" . }}
   labels:
-    {{- include "anvilkit-agent-workflow.labels" . | nindent 4 }}
+    {{- include "anvilkit-agent-workflow.workerLabels" . | nindent 4 }}
+  {{- with include "anvilkit-agent-workflow.workerAnnotations" . }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
 spec:
   minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
   selector:
     matchLabels:
-      {{- include "anvilkit-agent-workflow.selectorLabels" . | nindent 6 }}
+      {{- include "anvilkit-agent-workflow.workerSelectorLabels" . | nindent 6 }}
 {{- end }}

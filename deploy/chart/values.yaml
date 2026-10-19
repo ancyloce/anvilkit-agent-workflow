@@ -175,11 +175,15 @@ config:
     build_id: dev
     # Worker Deployment Versioning (P1.7): the worker is version <buildId>
     # (the image digest, see buildId above) of deployment_name and every
-    # Workflow is pinned to the version it started on. Enable it only with a
-    # rollout that keeps the previous version's workers until their pinned
-    # runs drain (for example the Temporal Worker Controller); promotion of
-    # the new version is that rollout's step. A plain rolling update with it
-    # enabled would leave pinned runs without a worker.
+    # Workflow is pinned to the version it started on. Enabled, the chart
+    # names and selects the Deployment, ConfigMap, HPA and PDB per Build ID
+    # (<fullname>-<first 10 hex of sha256(buildId)>, label
+    # anvilkit.io/worker-version) and keeps them (helm.sh/resource-policy
+    # keep, Argo CD Prune=false): the next release starts its version beside
+    # this one instead of rolling it. Promoting the new version and removing
+    # this one once its pinned runs drained is the rollout's step
+    # (deploy/qualification/workflow-rollout.py in anvilkit-services); a
+    # plain rolling update would leave pinned runs without a worker.
     versioning:
       enabled: false
       deployment_name: anvilkit-agent-workflow

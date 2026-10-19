@@ -4,20 +4,24 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "anvilkit-agent-workflow.fullname" . }}
+  name: {{ include "anvilkit-agent-workflow.workerName" . }}
   labels:
-    {{- include "anvilkit-agent-workflow.labels" . | nindent 4 }}
+    {{- include "anvilkit-agent-workflow.workerLabels" . | nindent 4 }}
+  {{- with include "anvilkit-agent-workflow.workerAnnotations" . }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
 spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
   selector:
     matchLabels:
-      {{- include "anvilkit-agent-workflow.selectorLabels" . | nindent 6 }}
+      {{- include "anvilkit-agent-workflow.workerSelectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "anvilkit-agent-workflow.selectorLabels" . | nindent 8 }}
+        {{- include "anvilkit-agent-workflow.workerSelectorLabels" . | nindent 8 }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -154,7 +158,7 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: {{ include "anvilkit-agent-workflow.fullname" . }}
+            name: {{ include "anvilkit-agent-workflow.workerName" . }}
         {{- if eq .Values.identity.mode "mtls" }}
         - name: identity
           secret:

@@ -2,9 +2,13 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "anvilkit-agent-workflow.fullname" . }}
+  name: {{ include "anvilkit-agent-workflow.workerName" . }}
   labels:
-    {{- include "anvilkit-agent-workflow.labels" . | nindent 4 }}
+    {{- include "anvilkit-agent-workflow.workerLabels" . | nindent 4 }}
+  {{- with include "anvilkit-agent-workflow.workerAnnotations" . }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
 data:
   config.yaml: |
     {{- include "anvilkit-agent-workflow.config" . | nindent 4 }}
