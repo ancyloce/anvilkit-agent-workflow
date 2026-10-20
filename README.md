@@ -44,7 +44,7 @@ The unit suites use the Temporal test environment and fake clientsets; the lifec
 The contract module is an ordinary published dependency. The version this build requires is the generated line below: a tag of the `anvilkit-agent-contracts` repository, served by `proxy.golang.org` (origin `refs/tags/go/...`) and verified against the checksum database (`go.sum`; the zip includes that repository's root `LICENSE`, as Go requires for a module in a subdirectory); a newer contract version is adopted by changing the `require` line and the two `go.sum` lines. No replace directive, workspace or local proxy is involved.
 
 <!-- generated:contracts -->
-Contracts: this build requires `github.com/ancyloce/anvilkit-agent-contracts/go v0.1.12` (`go.mod`; tag `go/v0.1.12`).
+Contracts: this build requires `github.com/ancyloce/anvilkit-agent-contracts/go v0.1.13` (`go.mod`; tag `go/v0.1.13`).
 <!-- /generated:contracts -->
 
 ## Deploy
