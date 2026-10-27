@@ -301,7 +301,7 @@ func TestHarnessOnTheDevelopmentCluster(t *testing.T) {
 	})
 
 	t.Run("the fixed validator Job certifies its component in the cluster and Control binds npm, browser, css and evidence", func(t *testing.T) {
-		// P10d: the anvilkit-validator image (validator-fixture-v1, P0.8) under
+		// P10d: the anvilkit-job-validator image (validator-fixture-v1, P0.8) under
 		// the same harness layout, admission and sidecar; the chain runs on
 		// the reviewed fixed component baked into the image, the deliverables
 		// reach the foundation's store through the kind network and Control
