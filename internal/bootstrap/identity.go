@@ -95,10 +95,10 @@ func (ids *identities) client(name string, ci config.ClientIdentity, defaultServ
 	return nil, fmt.Errorf("%s.identity: unknown mode %q", name, ci.Mode)
 }
 
-// collector is the transport credential of an outbound gRPC connection to
-// a non-AnvilKit server (the Temporal frontend, the OTLP exporter) under a
-// ClientTLS section (tls verifies against the bundle read once; mtls
-// rotates with the workload's files).
+// collectorCredentials is the transport credential of an outbound gRPC
+// connection to a non-AnvilKit server (the Temporal frontend, the OTLP
+// exporter) under a ClientTLS section (tls verifies against the bundle read
+// once; mtls rotates with the workload's files).
 func (ids *identities) collectorCredentials(name string, t config.ClientTLS) (credentials.TransportCredentials, error) {
 	switch t.Mode {
 	case "development":

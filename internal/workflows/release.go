@@ -301,7 +301,7 @@ func Release(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Context, 
 			return nil
 		}
 
-		// 8. Activation after both verified receipts and a re-read approval,
+		// 7. Activation after both verified receipts and a re-read approval,
 		// conditional on the catalog revision read now.
 		if ctx.Err() != nil {
 			outcome, failureCode = settleOutcome(ctx, ctx.Err(), "CANCELED")

@@ -29,9 +29,9 @@ const serviceName = "anvilkit-agent-workflow"
 // telemetry is the worker's redacted signals. The Temporal SDK's own
 // tracing interceptor names spans after Workflow and Activity types and
 // tags them with their identifiers only (never inputs, results or
-// payloads) and is replay-safe; the Control client's gRPC stats handler
-// continues the trace. The SDK metrics and the process metrics are served on
-// the health listener's /metrics.
+// payloads) and is replay-safe; the gRPC stats handlers of the Control and
+// Knowledge clients continue the trace. The SDK metrics and the process
+// metrics are served on the health listener's /metrics.
 type telemetry struct {
 	interceptors []interceptor.ClientInterceptor
 	metrics      client.MetricsHandler

@@ -9,10 +9,12 @@ import (
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/activities"
 )
 
-// The profiles of the preview build: the DEVELOPMENT_ONLY fixed validator
-// Job builds the saved revision under the build-support profile for the
-// host ABI its fixture exercises (jobs/validator/profiles); a real Studio
-// host profile is ENV-08.
+// The profiles the preview records: the validator Job of
+// lifecycle.preview.build_profile builds the saved revision under the
+// DEVELOPMENT_ONLY build-support profile for the host ABI it exercises
+// (jobs/validator/profiles). The RecordPreview Activity replaces the host
+// profile with the environment's lifecycle.host_abi_profile (ENV-08) when
+// the worker places one.
 const (
 	previewStepID         = "preview-build"
 	previewBuildProfileID = "build-support-dev-v1"

@@ -19,17 +19,18 @@ import (
 	k8s "github.com/ancyloce/anvilkit-agent-workflow/internal/adapters/kubernetes"
 )
 
-// TestRenderPolicyFixtures writes the Jobs and Pods the launcher renders
-// for every enabled profile into deploy/policies/tests/resources when
-// ANVILKIT_RENDER_POLICY_FIXTURES names that directory: the admission
-// policies are checked offline (deploy/policies/check.sh) against exactly
-// what the launcher submits, and the negative variants are derived from
-// these files. Without the variable it only checks that the render works.
-// policyProfiles are the profiles whose Jobs and Pods the policies are
-// checked against (P2.4 adds the team and the preview build).
+// policyProfiles are the profiles whose Jobs and Pods the admission
+// policies are checked against, the team and the preview build among them
+// (P2.4).
 var policyProfiles = []string{"local-check-v1", "harness-wiring-dev-v1", "codegen-fixed-v1", "validator-fixture-v1", "validator-source-v1", "validator-source-dev-v1",
 	"preview-build-v1", "codegen-team-v1", "codegen-team-dev-v1"}
 
+// TestRenderPolicyFixtures writes the Jobs and Pods the launcher renders
+// for every profile of policyProfiles into deploy/policies/tests/resources
+// when ANVILKIT_RENDER_POLICY_FIXTURES names that directory: the admission
+// policies are checked offline (deploy/policies/check.sh) against exactly
+// what the launcher submits, and the negative variants are derived from
+// these files. Without the variable it only checks that the render works.
 func TestRenderPolicyFixtures(t *testing.T) {
 	l := k8s.NewWithClient(fake.NewClientset(), namespace, k8s.Options{
 		Backend: "kind-anvilkit-dev", ImageRegistry: "localhost:5001", EnabledProfiles: policyProfiles,

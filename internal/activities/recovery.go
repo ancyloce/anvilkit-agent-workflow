@@ -138,9 +138,9 @@ func (a *Activities) ReconcileFinding(ctx context.Context, in ReconcileFindingIn
 
 // ReconcileFindings advances a page of findings, each under its own
 // ReconcileFinding command with Control, heartbeating per finding. A
-// finding that fails is reported and left to the next round; when every
-// finding of the page failed transiently (Control unreachable) the
-// Activity fails so its retry policy applies.
+// finding that fails is reported and left to the next round; when no
+// finding of the page advanced and the last failure was transient
+// (Control unreachable) the Activity fails so its retry policy applies.
 func (a *Activities) ReconcileFindings(ctx context.Context, in ReconcileFindingsInput) (ReconcileFindingsResult, error) {
 	out := ReconcileFindingsResult{Failures: map[string]string{}}
 	var last error

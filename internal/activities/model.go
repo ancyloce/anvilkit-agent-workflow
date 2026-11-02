@@ -14,8 +14,11 @@ import (
 // permission and sends once; a retry of the Activity under the same call id
 // is a reentry the Proxy answers from its record — it never sends again —
 // so transport loss between the worker and the Proxy is safe to retry while
-// the original deadline holds, and a query never sends. Preparation and the
-// agent team (P12/P13) compose these; nothing here orchestrates a call.
+// the original deadline holds, and a query never sends. Nothing here
+// orchestrates a call. No Workflow of this worker schedules these three
+// Activities: Preparation's AnalyzeRequirements calls the ModelCaller port
+// inside its own Activity, and the agent team's calls reach the Proxy
+// through its Job's access-sidecar relay.
 const (
 	NameCallModel       = "CallModel"
 	NameGetModelCall    = "GetModelCall"

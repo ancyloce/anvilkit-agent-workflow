@@ -2,10 +2,11 @@
 # alone: build, vet, test (the Temporal test environment, fake clientsets),
 # the race check of the Workflows and Activities, the image from the
 # repository root, and the chart's lint and render. GOWORK=off: the contract
-# module is a versioned requirement. The integration test against a real
-# cluster (internal/adapters/kubernetes, tag integration) needs the parent
-# repository's development foundation and a Control it prepares; it is not
-# run here.
+# module is a versioned requirement. The integration tests (tag integration:
+# the launcher against a real cluster, the bootstrap's shutdown, redaction
+# and upgrade drill, the Model Proxy Activity chain) need the parent
+# repository's development foundation and the services it prepares; they
+# are vetted, not run here.
 name: ci
 on:
   push:

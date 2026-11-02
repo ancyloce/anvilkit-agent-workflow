@@ -145,9 +145,10 @@ type ReleaseEffectResult struct {
 	State    string // succeeded | failed | unknown | denied | conflict
 	EffectID string
 	Target   ReleaseTargetRecord
-	// Review registration
+	// ReleaseID is the release id a review registration answered.
 	ReleaseID string
-	// Activation
+	// CatalogRevision is an activation's catalog revision: the one it
+	// produced, or the current one a conflict names.
 	CatalogRevision string
 }
 
@@ -158,7 +159,8 @@ type ReleaseEffectCall struct {
 	ReleaseID string
 	Target    string // npm | browser (publication)
 	Artifacts ReleaseArtifacts
-	// Activation: the catalog revision the conditional write expects.
+	// ExpectedCatalogRevision is the catalog revision an activation's
+	// conditional write expects.
 	ExpectedCatalogRevision string
 }
 

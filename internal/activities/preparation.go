@@ -8,7 +8,7 @@ import (
 
 // The Preparation Activities (DD-01 §3, delivery.md P13-02): thin use
 // cases over the Control preparation port, the trusted artifact port, the
-// controlled model caller and the Knowledge double. Every durable command
+// controlled model caller and the Knowledge port. Every durable command
 // carries a stable identity derived by the Workflow; the analysis reads
 // the prompt and the accepted answers through Control's artifact read and
 // asks the Proxy for one structured call under a stable call id.
@@ -152,10 +152,9 @@ type GetAnswerInput struct {
 	QuestionSetID string
 }
 
-// AnswerRef.Found is false when no answer is accepted for the question set.
-
 // AnswerRef is an accepted answer as Control records it.
 type AnswerRef struct {
+	// Found is false when no answer is accepted for the question set.
 	Found               bool
 	AnswerID            string
 	QuestionSetID       string
@@ -233,8 +232,10 @@ type Artifacts interface {
 }
 
 // Knowledge is the port that freezes the content digests of the selected
-// source revisions (DD-07); until P15/P16 deliver Knowledge it is an
-// explicitly labeled DEVELOPMENT_ONLY double.
+// source revisions (DD-07). The bootstrap places Knowledge's SourceService
+// client (lifecycle.knowledge.address), else the explicitly labeled
+// DEVELOPMENT_ONLY double (lifecycle.pagix_double_dir), else a port that
+// answers DEPENDENCY_UNAVAILABLE.
 type Knowledge interface {
 	ContentDigest(ctx context.Context, scope ReferenceScope, ref SourceReference) (ContentDigest, error)
 }

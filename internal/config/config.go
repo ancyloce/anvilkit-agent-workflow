@@ -148,7 +148,8 @@ type Kubernetes struct {
 	EnabledProfiles []string `koanf:"enabled_profiles"`
 	// Sidecar is what the harness template tells the access sidecar of a
 	// Job Pod: where Control is from inside the cluster and which identity
-	// mode the environment provides (development or mtls).
+	// mode the environment provides (development or mtls; disabled, the
+	// default, refuses every harness profile).
 	Sidecar Sidecar `koanf:"sidecar"`
 	// CandidateSeccompProfile is the node-local syscall profile
 	// (Localhost type) of the candidate/supervisor container, relative to
@@ -249,14 +250,18 @@ type Settle struct {
 	PollBound   int32         `koanf:"poll_bound"`
 }
 
-// Development is DEVELOPMENT_ONLY fault injection for the integration
-// scenarios of delivery.md P05: it can only be enabled explicitly and is
-// reported at startup. LoseReceiptOnce names Activities whose first
-// successful completion is not reported to Temporal, so the retry reenters
-// the same durable command identity. HoldUntilCanceledOnce names Activities
-// whose first successful call is not returned to the Workflow until the
-// Activity is canceled: the request landed on the backend while the caller
-// only sees the canceled request (an unresolved create).
+// Development is the top-level DEVELOPMENT_ONLY guard (Enabled, P0.1: it
+// admits the development transports, the Pagix/Knowledge double, the
+// development-state job profiles and the other DEVELOPMENT_ONLY
+// placements, and downgrades nothing by itself) and the fault injection of
+// the integration scenarios of delivery.md P05, which can only be enabled
+// explicitly and is reported at startup. LoseReceiptOnce names Activities
+// whose first successful completion is not reported to Temporal, so the
+// retry reenters the same durable command identity. HoldUntilCanceledOnce
+// names Activities whose first successful call is not returned to the
+// Workflow until the Activity is canceled: the request landed on the
+// backend while the caller only sees the canceled request (an unresolved
+// create).
 type Development struct {
 	Enabled               bool     `koanf:"enabled"`
 	LoseReceiptOnce       []string `koanf:"lose_receipt_once"`
@@ -280,10 +285,11 @@ const (
 )
 
 // Telemetry places the redacted signals (security.md "data classification,
-// logging and deletion"): Temporal and Control-call spans over OTLP to the
-// collector when an endpoint is placed (no exporter otherwise), sampled at
-// SampleRatio; the SDK and process metrics are served on the health
-// listener's /metrics. Neither enters a Workflow's history or its decisions.
+// logging and deletion"): Temporal spans and the Control and Knowledge
+// clients' gRPC spans over OTLP to the collector when an endpoint is placed
+// (no exporter otherwise), sampled at SampleRatio; the SDK and process
+// metrics are served on the health listener's /metrics. Neither enters a
+// Workflow's history or its decisions.
 type Telemetry struct {
 	OTLPEndpoint string  `koanf:"otlp_endpoint"`
 	SampleRatio  float64 `koanf:"sample_ratio"`
@@ -310,13 +316,15 @@ type Config struct {
 	ShutdownTimeout time.Duration `koanf:"shutdown_timeout"`
 }
 
-// Lifecycle bounds the P13 business workflows: the Preparation analysis
-// call (route, output and exposure bounds, the Activity bound, the frozen
-// content-repair allowance) and the Generation admission and lease
-// supervision (the permit poll interval, the lease TTL asked of the port,
-// the renewal lead, the lease call bound, the definition activations this
-// worker registers) plus the placements of the trusted artifact port and
-// the DEVELOPMENT_ONLY Pagix/Knowledge doubles.
+// Lifecycle bounds the lifecycle business workflows: the Preparation
+// analysis call (route, output and exposure bounds, the Activity bound, the
+// frozen content-repair allowance, the input bound), the Generation
+// admission and lease supervision (the permit poll interval, the lease TTL
+// asked of the port, the renewal lead, the lease call bound, the definition
+// activations this worker registers) and the preview and release profiles,
+// plus the placements of the trusted artifact port and of the Pagix and
+// Knowledge ports (the declared Pagix adapter, the Knowledge client or the
+// DEVELOPMENT_ONLY Pagix/Knowledge double).
 type Lifecycle struct {
 	Preparation struct {
 		RouteID                string        `koanf:"route_id"`
@@ -338,14 +346,16 @@ type Lifecycle struct {
 		TransferWindow time.Duration `koanf:"transfer_window"`
 	} `koanf:"artifacts"`
 	// Preview: the reviewed job profile that builds a preview's saved
-	// revision (P20; DEVELOPMENT_ONLY: the fixed validator profile).
+	// revision (P20; validator-source-v1 by default).
 	Preview struct {
 		BuildProfile string `koanf:"build_profile"`
 	} `koanf:"preview"`
 	// PagixDoubleDir is the directory of the DEVELOPMENT_ONLY lease,
-	// source and content-digest doubles (ANVILKIT_WORKFLOW_PAGIX_DOUBLE_DIR);
-	// empty leaves the Generation ports unavailable (every generation
-	// fails at bootstrap with DEPENDENCY_UNAVAILABLE) until ENV-07.
+	// source, release and content-digest doubles
+	// (ANVILKIT_WORKFLOW_PAGIX_DOUBLE_DIR). Empty, the Pagix ports are the
+	// declared adapter (Pagix) and the content digests the Knowledge client
+	// (Knowledge); a port neither places answers DEPENDENCY_UNAVAILABLE
+	// (without the Pagix ports every generation fails at bootstrap).
 	PagixDoubleDir string `koanf:"pagix_double_dir"`
 	// HostAbiProfile is the Studio host ABI profile of the environment
 	// (P2.2, ENV-08): host-abi-dev-v1 serves development only; a real
@@ -367,15 +377,18 @@ type Lifecycle struct {
 	} `koanf:"pagix"`
 	// Knowledge (P2.2) places the content-digest read of brief references
 	// through Knowledge's SourceService (gRPC with the workload certificate,
-	// ANVILKIT_WORKFLOW_KNOWLEDGE_ADDRESS).
+	// plaintext only on the development foundation without one;
+	// ANVILKIT_WORKFLOW_KNOWLEDGE_ADDRESS). A placed address takes
+	// precedence over the double's digests.
 	Knowledge struct {
 		Address    string        `koanf:"address"`
 		ServerName string        `koanf:"server_name"`
 		Timeout    time.Duration `koanf:"timeout"`
 	} `koanf:"knowledge"`
 	// Release (P21): the reviewed validator profile that certifies the
-	// exact source, the release profile's destinations (DEVELOPMENT_ONLY
-	// until ENV-07/08 name the real registry and origin), the maintainer's
+	// exact source, the release profile's destinations (the .invalid
+	// defaults are DEVELOPMENT_ONLY; outside development the environment
+	// names its ENV-07/ENV-08 registry and origin), the maintainer's
 	// approval wait (bounded again by the operation deadline), its poll
 	// interval, the polls one run makes before it continues as new, and the
 	// bound on original-identity queries of an unknown target.

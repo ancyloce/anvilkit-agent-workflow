@@ -238,7 +238,7 @@ type ReleasePort interface {
 	Publish(ctx context.Context, effectID string, in PublishInput) (PublishResult, error)
 	QueryPublication(ctx context.Context, effectID string) (PublishResult, bool, error)
 	// FetchPublished reads a published file back from the destination:
-	// the npm tarball by its name, a browser file by its path.
+	// the npm tarball by <package>@<version>, a browser file by its path.
 	FetchPublished(ctx context.Context, target, destination, releaseID, path string) ([]byte, error)
 	Activate(ctx context.Context, effectID string, in ActivateInput) (ActivationResult, error)
 	QueryActivation(ctx context.Context, effectID string) (ActivationResult, bool, error)

@@ -18,8 +18,10 @@ import (
 
 // ---- ReviewPort, PublicationPort, ActivationPort (P21) ----
 //
-// DEVELOPMENT_ONLY doubles of Pagix's release ports (DD-06 §1/§4) until
-// ENV-07 names the real ones. Layout under the double's directory:
+// DEVELOPMENT_ONLY doubles of Pagix's release ports (DD-06 §1/§4); the
+// declaration-driven Client serves the ENV-07 upstream's. Layout under the
+// double's directory (effect ids and package names appear as the hex
+// SHA-256 of the value):
 //
 //	reviews/<effect>.json         the subject registered under an effect id
 //	decisions/<releaseId>.json    the maintainer's decision (written by the

@@ -114,8 +114,8 @@ func Bounds(e config.Execution) workflows.Bounds {
 	}
 }
 
-// Lifecycle maps the validated lifecycle section onto the P13 workflows'
-// frozen bounds.
+// Lifecycle maps the validated lifecycle section onto the lifecycle
+// workflows' frozen bounds.
 func Lifecycle(l config.Lifecycle) workflows.LifecycleBounds {
 	lb := workflows.LifecycleBounds{
 		AnalysisRouteID: l.Preparation.RouteID, AnalysisMaxOutputTokens: l.Preparation.MaxOutputTokens,
@@ -135,9 +135,11 @@ func Lifecycle(l config.Lifecycle) workflows.LifecycleBounds {
 }
 
 // unavailablePorts answer DEPENDENCY_UNAVAILABLE for every lease, source
-// and content-digest call of a deployment without the Pagix double or a
-// real declaration (ENV-07): a generation fails at bootstrap before any
-// send, a preparation before its brief.
+// and content-digest call whose port the deployment does not place (see
+// newLifecyclePorts): the lease and source calls without the Pagix double
+// or a declaration (ENV-07), the content digests without the double or a
+// Knowledge address. A generation then fails at bootstrap before any send,
+// a preparation that references sources before its brief.
 type unavailablePorts struct{}
 
 func (unavailablePorts) refuse() error {
@@ -181,9 +183,10 @@ func (u unavailablePorts) ContentDigest(context.Context, activities.ReferenceSco
 type lifecycleDouble struct{ *pagix.Double }
 
 // newLifecyclePorts selects each lifecycle port (P2.2): the declared Pagix
-// adapter or the double for the lease, source and release ports; the
-// Knowledge client or the double for the content digests; otherwise the
-// ports answer DEPENDENCY_UNAVAILABLE.
+// adapter or the double for the lease, source and release ports (the loader
+// keeps them exclusive); the Knowledge client or the double for the
+// content digests, the client taking precedence when both are placed;
+// otherwise the ports answer DEPENDENCY_UNAVAILABLE.
 func newLifecyclePorts(lc fx.Lifecycle, cfg config.Config, ids *identities, double lifecycleDouble, log *slog.Logger) (lifecyclePorts, error) {
 	out := lifecyclePorts{lease: unavailablePorts{}, source: unavailablePorts{}, knowledge: unavailablePorts{}, release: activities.ReleaseUnavailable{}}
 	if double.Double != nil {
@@ -361,10 +364,12 @@ func Register(business, control worker.Worker, acts *activities.Activities, q wo
 	registerFixed(business, control, acts)
 }
 
-// RegisterLifecycle registers the P13 business workflows and their
-// Activities: the ordinary ones on the business queue, the lease calls,
-// the settlement and the candidate registration on the reserved control
-// queue (DD-01 §4: protected supervision).
+// RegisterLifecycle registers the lifecycle business workflows
+// (Preparation, Generation, PreviewBuild, Release) and their Activities:
+// the reads and ordinary commands on the business queue; the settlement,
+// the lease calls, the effects (candidate registration, source save,
+// review, publication, activation) and the preview and release records on
+// the reserved control queue (DD-01 §4: protected supervision).
 func RegisterLifecycle(business, control worker.Worker, acts *activities.LifecycleActivities, q workflows.Queues, b workflows.Bounds, lb workflows.LifecycleBounds) {
 	business.RegisterWorkflowWithOptions(workflows.Preparation(q, b, lb), workflow.RegisterOptions{Name: workflows.PreparationWorkflowName})
 	business.RegisterWorkflowWithOptions(workflows.Generation(q, b, lb), workflow.RegisterOptions{Name: workflows.GenerationWorkflowName})

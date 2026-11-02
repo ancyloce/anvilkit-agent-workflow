@@ -10,8 +10,9 @@ import (
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/activities"
 )
 
-// Registered names of the P13 business workflows and their tracked Updates
-// (DD-01 §7; the names are shared with Control's relay adapter).
+// Registered names of the lifecycle business workflows (Preparation,
+// Generation, PreviewBuild, Release) and their tracked Updates (DD-01 §7;
+// the names are shared with Control's relay adapter).
 const (
 	PreparationWorkflowName = "PreparationWorkflow"
 	GenerationWorkflowName  = "GenerationWorkflow"
@@ -47,8 +48,8 @@ type UpdateResult struct {
 	ReasonCode string `json:"reasonCode,omitempty"`
 }
 
-// LifecycleBounds are the reviewed bounds of the P13 workflows the worker
-// freezes into each run's history (like Bounds).
+// LifecycleBounds are the reviewed bounds of the lifecycle workflows the
+// worker freezes into each run's history (like Bounds).
 type LifecycleBounds struct {
 	// Preparation: the analysis route and per-call bounds, the content
 	// repair allowance (schema/content rejections that may be retried
@@ -59,9 +60,9 @@ type LifecycleBounds struct {
 	AnalysisCallTimeout     time.Duration
 	ContentRepairAllowance  int
 	// Generation: the permit poll interval, the lease TTL asked of the
-	// port, the renewal lead before the known expiry, the bound of a
-	// codegen/validator launch window and the definition activations this
-	// worker registered.
+	// port, the renewal lead before the known expiry, the StartToClose
+	// bound of one lease call and the definition activations this worker
+	// registered.
 	PermitPollInterval time.Duration
 	LeaseTTL           time.Duration
 	LeaseRenewLead     time.Duration

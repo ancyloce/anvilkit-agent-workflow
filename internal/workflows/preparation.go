@@ -27,22 +27,23 @@ type preparationState struct {
 }
 
 // Preparation runs the Preparation lifecycle (DD-01 §3, P13-02): read the
-// intake, open the analysis attempt and fund it, analyze through the
-// controlled Model Proxy into structured requirements; when the analysis
-// asks a grouped round, record the question set with Control (which fixes
-// the immutable expiry), wait on a durable timer to that absolute instant
-// for the answer's tracked Update (or the answer Control accepted before
-// the instant), and analyze again with the answers; after the last round
-// the analysis must conclude. The brief then freezes the requirements,
-// the prompt, the answers, the source revisions and the brand/asset
-// content digests as a brief artifact recorded with Control, and the
-// operation settles succeeded. Waiting holds no Job, model permit, source
-// lease or spendable reservation: the analysis attempt is closed before
-// the wait and reopened (a new visit) after it; incurred model cost stays
-// in the ledger. Expiry ends the preparation (CLARIFICATION_EXPIRED);
-// cancellation closes the attempt and settles canceled. No Signal,
-// polling loop or wake-up service exists: the answer arrives as an Update
-// under its own identity, and a lost receipt re-issues that Update.
+// intake, fund the analysis once under the operation identity, analyze in
+// an attempt per round through the controlled Model Proxy into structured
+// requirements; when the analysis asks a grouped round, record the
+// question set with Control (which fixes the immutable expiry), wait on a
+// durable timer to that absolute instant for the answer's tracked Update
+// (or the answer Control accepted before the instant), and analyze again
+// with the answers; after the last round the analysis must conclude. The
+// brief then freezes the requirements, the prompt, the answers, the source
+// revisions and the brand/asset content digests as a brief artifact
+// recorded with Control, and the operation settles succeeded. Waiting holds
+// no Job, model permit, source lease or spendable reservation: the analysis
+// attempt is closed before the wait and reopened (a new visit) after it;
+// incurred model cost stays in the ledger. Expiry ends the preparation
+// (CLARIFICATION_EXPIRED); cancellation closes the attempt and settles
+// canceled. No Signal, polling loop or wake-up service exists: the answer
+// arrives as an Update under its own identity, and a lost receipt re-issues
+// that Update.
 func Preparation(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Context, in Input) error {
 	return func(ctx workflow.Context, in Input) (err error) {
 		if in.Settle != nil {

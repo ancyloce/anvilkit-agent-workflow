@@ -1,7 +1,9 @@
-// Package control is the Workflow's grpc-go client for
-// anvilkit.control.v1.ExecutionService. Every durable command carries a
-// stable identity derived by the Workflow, so retries reenter the same
-// command and never create a second attempt, launch or result.
+// Package control is the Workflow's grpc-go client for Control
+// (anvilkit.control.v1): ExecutionService and RecoveryService here, the
+// lifecycle services in lifecycle.go, preview.go and release.go. Every
+// durable command carries a stable identity derived by the Workflow, so
+// retries reenter the same command and never create a second attempt,
+// launch or result.
 package control
 
 import (

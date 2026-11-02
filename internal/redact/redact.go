@@ -112,8 +112,9 @@ func (c *FailureConverter) FailureToError(f *failurepb.Failure) error {
 	return c.next.FailureToError(f)
 }
 
-// Exporter redacts span status descriptions and event attributes (an
-// exception message carries the error text) before the next exporter.
+// Exporter redacts span status descriptions, span attributes and event
+// attributes (an exception message carries the error text) before the next
+// exporter.
 type Exporter struct{ next sdktrace.SpanExporter }
 
 func NewExporter(next sdktrace.SpanExporter) *Exporter { return &Exporter{next: next} }

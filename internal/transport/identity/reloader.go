@@ -104,7 +104,7 @@ func (r *Reloader) Stop() {
 }
 
 // Reload checks the files once; it returns whether a new material was
-// published. Callers other than the poller are tests and operators.
+// published. In this module only the poller that Start runs calls it.
 func (r *Reloader) Reload() bool {
 	cur := r.current.Load()
 	digest, err := filesDigest(r.files)

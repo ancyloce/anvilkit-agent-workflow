@@ -19,8 +19,9 @@ replicaCount: 2
 
 # HorizontalPodAutoscaler (autoscaling/v2). Off unless the environment enables
 # it with an explicit maxReplicas: the maximum is bounded by downstream caps
-# and the database connection budget (deploy/gitops/lock.yaml), never a chart
-# default. While enabled the Deployment leaves replicas to the autoscaler.
+# (the worker holds no database pool) and declared in the deployment lock
+# (deploy/gitops/lock.yaml), never a chart default. While enabled the
+# Deployment leaves replicas to the autoscaler.
 autoscaling:
   enabled: false
   minReplicas: 2
@@ -106,11 +107,11 @@ modelProxy:
     name: ""
     key: workflow
 
-# P2.3: placements this chart does not model one by one (the lifecycle
-# ports of an environment, P2.2): extra allowlisted ANVILKIT_WORKFLOW_*
-# variables (the loader refuses any other name) and extra volumes with
-# their mounts in the worker container. Secrets reach them as CSI or
-# Secret volumes, never as literal values here.
+# P2.3: placements this chart does not model one by one (for example the
+# access sidecar's relay placements, P2.4): extra allowlisted
+# ANVILKIT_WORKFLOW_* variables (the loader refuses any other name) and
+# extra volumes with their mounts in the worker container. Secrets reach
+# them as CSI or Secret volumes, never as literal values here.
 extraEnv: []
 extraVolumes: []
 extraVolumeMounts: []
@@ -120,7 +121,9 @@ extraVolumeMounts: []
 # (ANVILKIT_WORKFLOW_PAGIX_URL, https) and the credential: identity mtls
 # presents the workload certificate; token reads tokenFile (a CSI-mounted
 # OAuth client-credentials token, mounted through extraVolumes). Empty
-# declarationConfigMap leaves the Pagix ports unavailable.
+# declarationConfigMap leaves the Pagix ports unavailable unless
+# config.lifecycle.pagix_double_dir places the double (development.enabled
+# only).
 pagix:
   declarationConfigMap: ""
   baseUrl: ""

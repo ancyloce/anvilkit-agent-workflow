@@ -18,7 +18,9 @@ import (
 // the Generation permit, lease, funding, scope and candidate registration.
 // They bind the ports; every method is registered under its stable name.
 
-// LifecycleActivities binds the P13 ports beside the LocalCheck ones.
+// LifecycleActivities binds the ports of the lifecycle workflows
+// (Preparation, Generation, PreviewBuild, Release) beside the LocalCheck
+// ones.
 type LifecycleActivities struct {
 	Preparation PreparationControl
 	Generation  GenerationControl

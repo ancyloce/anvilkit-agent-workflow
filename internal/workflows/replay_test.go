@@ -13,11 +13,12 @@ import (
 )
 
 // TestReplay is P1.7's replay evidence: every history recorded under
-// testdata/histories (runs of each Workflow type from before the P1.6
-// version markers and after them, exported from the development
-// foundation by TestExportHistories) replays on the current code without
-// a non-determinism error. A change to a Workflow that is not guarded by
-// workflow.GetVersion fails here before it reaches a worker.
+// testdata/histories (runs from before the P1.6 version markers and after
+// them, exported from the development foundation by TestExportHistories or
+// recorded there by TestRecordHistories; see testdata/histories/README.md)
+// replays on the current code without a non-determinism error. A change to
+// a Workflow that is not guarded by workflow.GetVersion fails here before
+// it reaches a worker.
 func TestReplay(t *testing.T) {
 	files, err := filepath.Glob(filepath.Join("testdata", "histories", "*.json"))
 	require.NoError(t, err)

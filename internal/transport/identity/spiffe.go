@@ -3,7 +3,9 @@
 // credentials loaded from mounted certificate files, the strict SPIFFE URI
 // SAN of a peer and the method→principal authorization that runs ahead of
 // every handler. A workload certificate identifies a service; it never
-// establishes a user, tenant, role or approver.
+// establishes a user, tenant, role or approver. The worker serves no gRPC:
+// it uses the Reloader and the client side (NewClientCredentials,
+// HTTPTransport) only.
 package identity
 
 import (

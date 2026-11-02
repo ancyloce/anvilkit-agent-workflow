@@ -1,12 +1,13 @@
-// Package pagix holds the DEVELOPMENT_ONLY doubles of the Pagix-owned
-// ports the Generation, Preview and Release lifecycles need (DD-06 §1
-// LeasePort, SourcePort and, since P21, ReviewPort, PublicationPort and
-// ActivationPort)
-// and of the Knowledge content-digest read (DD-07) until their real
-// declarations exist (ENV-07, P15/P16). The doubles are explicit: every
-// answer is recorded under a directory so two worker processes and a
-// restart see the same lease and registration facts, and no answer is
-// ever a claim about the real upstream. Nothing here reaches a network.
+// Package pagix holds the adapters of the Pagix-owned ports the
+// Generation, Preview and Release lifecycles need (DD-06 §1 LeasePort,
+// SourcePort, ReviewPort, PublicationPort and ActivationPort): the
+// declaration-driven Client of an ENV-07 upstream (http.go, declaration.go)
+// and the DEVELOPMENT_ONLY Double, which also answers the Knowledge
+// content-digest read (DD-07) of a worker without a Knowledge address. The
+// doubles are explicit: every answer is recorded under a directory so two
+// worker processes and a restart see the same lease and registration facts,
+// and no answer is ever a claim about the real upstream. The Double never
+// reaches a network.
 package pagix
 
 import (
@@ -24,7 +25,8 @@ import (
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/activities"
 )
 
-// Double is the filesystem-backed double of the three ports.
+// Double is the filesystem-backed double of the LeasePort, the SourcePort,
+// the ReleasePort and the Knowledge content-digest read.
 type Double struct {
 	dir string
 	// origin is the browser origin directory of the release double (P21).
@@ -452,7 +454,7 @@ func (d *Double) SetRevision(subject string, revision uint64) error {
 // ContentDigest is the DEVELOPMENT_ONLY content digest of a source
 // revision: a deterministic digest of the reference itself, so a brief
 // freezes an exact and reproducible binding; it establishes nothing about
-// real source content (P15/P16).
+// real source content (the Knowledge client reads that).
 func (d *Double) ContentDigest(ctx context.Context, scope activities.ReferenceScope, ref activities.SourceReference) (activities.ContentDigest, error) {
 	if ref.SourceID == "" {
 		return activities.ContentDigest{}, errors.New("a source reference needs a source id")

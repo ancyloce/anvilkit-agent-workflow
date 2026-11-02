@@ -27,8 +27,8 @@ var lifecycleBounds = workflows.LifecycleBounds{
 
 type lifecycleStub struct{ activities.LifecycleActivities }
 
-// registerLifecycle registers both P13 workflows and every Activity they
-// use under the stable names; the tests mock the Activities.
+// registerLifecycle registers both P13 workflows and their Activities under
+// the stable names (generation tests add BriefIdentity); tests mock them.
 func registerLifecycle(env *testsuite.TestWorkflowEnvironment, lb workflows.LifecycleBounds) {
 	registerWith(env, bounds)
 	var a lifecycleStub

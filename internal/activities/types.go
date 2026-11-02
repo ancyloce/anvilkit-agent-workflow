@@ -1,6 +1,8 @@
-// Package activities holds the LocalCheck Activities: thin, testable use
-// cases over the Control and launcher ports (DD-01 §1). All I/O lives here;
-// the Workflow never touches the network or the wall clock.
+// Package activities holds the worker's Activities (LocalCheck, recovery,
+// the model calls and the lifecycle workflows): thin, testable use cases
+// over the ports of Control, the launcher, the Model Proxy and the
+// lifecycle upstreams (DD-01 §1). All I/O lives here; the Workflow never
+// touches the network or the wall clock.
 package activities
 
 import (

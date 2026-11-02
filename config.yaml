@@ -1,11 +1,8 @@
 # anvilkit-agent-workflow configuration (reviewed, secret-free). Loaded by
 # internal/config with precedence defaults < this file < allowed environment
-# overrides (ANVILKIT_WORKFLOW_TEMPORAL_ADDRESS, ANVILKIT_WORKFLOW_CONTROL_ADDRESS,
-# ANVILKIT_WORKFLOW_MODEL_PROXY_ADDRESS, ANVILKIT_WORKFLOW_MODEL_PROXY_TOKEN (secret),
-# ANVILKIT_WORKFLOW_KUBECONFIG, ANVILKIT_WORKFLOW_LAUNCH_BACKEND,
-# ANVILKIT_WORKFLOW_BUILD_ID, ANVILKIT_WORKFLOW_IMAGE_REGISTRY,
-# ANVILKIT_WORKFLOW_SIDECAR_CONTROL_ADDRESS, ANVILKIT_WORKFLOW_HEALTH_LISTEN,
-# ANVILKIT_WORKFLOW_IDENTITY_{CERT,KEY,CA}_FILE).
+# overrides (the complete allowlist is envOverrides in
+# internal/config/config.go; ANVILKIT_WORKFLOW_MODEL_PROXY_TOKEN is the one
+# secret and is accepted only from the environment).
 # Unknown keys fail startup. The execution section is frozen into each
 # Workflow run's history at its start.
 #
@@ -127,9 +124,12 @@ execution:
 # be one Control's generation profile lists; an empty profile or a negative
 # max_repairs inherits Control's value). pagix_double_dir
 # (ANVILKIT_WORKFLOW_PAGIX_DOUBLE_DIR) places the DEVELOPMENT_ONLY lease,
-# source and content-digest doubles; without it every generation fails at
-# bootstrap with DEPENDENCY_UNAVAILABLE and no preparation freezes a brief
-# (ENV-07 supplies the real declarations).
+# source, release and content-digest doubles; lifecycle.pagix (the ENV-07
+# declaration) places the real Pagix ports and lifecycle.knowledge.address
+# the real content digests, the only placements outside development. A
+# port none of them places answers DEPENDENCY_UNAVAILABLE: every
+# generation fails at bootstrap, and a preparation that references sources
+# freezes no brief.
 lifecycle:
   preparation:
     route_id: controlled-openai-v1
@@ -160,8 +160,9 @@ lifecycle:
   # release (P21): the reviewed validator profile that certifies the exact
   # source (validator-source-v1 by default; DEVELOPMENT_ONLY here
   # validator-source-dev-v1, P0.8), the release
-  # profile's destinations (DEVELOPMENT_ONLY names served by the Pagix
-  # double until ENV-07/08), the maintainer's approval wait (never beyond
+  # profile's destinations (DEVELOPMENT_ONLY .invalid names served by the
+  # Pagix double; outside development the environment names its
+  # ENV-07/ENV-08 destinations), the maintainer's approval wait (never beyond
   # the operation deadline), its poll interval, the polls one run makes
   # before it continues as new, and the bounded original-identity queries of
   # an unknown target.

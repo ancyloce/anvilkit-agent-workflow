@@ -14,7 +14,8 @@ import (
 
 // The P13 client paths: PreparationService, GenerationService, the
 // SettleOperation and scoped GetAcceptedStage of ExecutionService and the
-// EffectService path of the candidate registration.
+// EffectService path of the candidate registration (the preview's source
+// save uses it too).
 
 func (c *Client) preparation() controlv1.PreparationServiceClient {
 	return controlv1.NewPreparationServiceClient(c.conn)

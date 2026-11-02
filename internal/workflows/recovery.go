@@ -351,7 +351,7 @@ func confirmStop(ctx workflow.Context, control workflow.Context, runID, findingI
 }
 
 // recordLaunch makes an observation durable with Control (the Activity
-// result is already in history) and strikes its markers into the ledger.
+// result is already in history) and records its markers in the ledger.
 func recordLaunch(ctx workflow.Context, control workflow.Context, runID, findingID string, observation activities.LaunchObservation, ledger *launchLedger) error {
 	var recorded activities.Finding
 	if err := workflow.ExecuteActivity(control, activities.NameRecordLaunchOutcome, activities.RecordLaunchOutcomeInput{

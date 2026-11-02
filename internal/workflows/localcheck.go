@@ -121,10 +121,10 @@ type Input struct {
 // (reconcileCleanup) until the backend evidence settles it, then closes the
 // attempt again with that evidence; reaching the reconciliation bound fails
 // the Workflow visibly instead of completing with an unsettled operation.
-// Every close is closeAttempt's durable Control command under the attempt's
-// identity, and a refusal fails the Workflow, except that the close of a
-// prepared launch whose attempt Control lost to a point-in-time restore is
-// kept until the recovery restores the attempt (closeLaunchAttempt).
+// Every close is closeAttemptFrom's durable Control command under the
+// attempt's identity, and a refusal fails the Workflow, except that the close
+// of a prepared launch whose attempt Control lost to a point-in-time restore
+// is kept until the recovery restores the attempt (closeLaunchAttemptFrom).
 func LocalCheck(q Queues, b Bounds) func(ctx workflow.Context, in Input) error {
 	return func(ctx workflow.Context, in Input) (err error) {
 		if in.Close != nil {
@@ -579,15 +579,8 @@ func reconcileCleanup(ctx workflow.Context, q Queues, b Bounds, attempt activiti
 	}
 }
 
-// closeAttempt reenters the same durable close command until Control
-// answers (no attempt cap); only a refusal ends the retries, and it is
-// returned as a visible non-retryable failure of the run. While Control
-// keeps the operation reconciling after a definite cleanup, the close is
-// re-polled with capped backoff; at the poll bound the wait ends with a
-// *closeRollover (P1.6): a LocalCheck run continues as new into a run that
-// only closes, a multi-step run proceeds to its settlement (Control fences
-// new dispatch while the operation reconciles and re-applies the stored
-// settlement intent itself).
+// closeAttempt is closeAttemptFrom from a fresh backoff, waiting on
+// Control's obligations. No Workflow calls it; settlement_wait_test.go does.
 func closeAttempt(ctx workflow.Context, q Queues, b Bounds, attempt activities.AttemptRef, commandID, outcome, cleanup, failureCode string) error {
 	return closeAttemptFrom(ctx, q, b, attempt, commandID, outcome, cleanup, failureCode, 0, true)
 }
@@ -643,6 +636,16 @@ type CloseCarry struct {
 	Interval    time.Duration         `json:"interval,omitempty"`
 }
 
+// closeAttemptFrom reenters the same durable close command until Control
+// answers (no attempt cap); only a refusal ends the retries, and it is
+// returned as a visible non-retryable failure of the run. With wait, while
+// Control keeps the operation reconciling after a definite cleanup, the
+// close is re-polled with capped backoff, resuming at start (the backoff a
+// continued run carries, zero for a fresh one); at the poll bound the wait
+// ends with a *closeRollover (P1.6): a LocalCheck run continues as new into
+// a run that only closes, a multi-step run proceeds to its settlement
+// (Control fences new dispatch while the operation reconciles and re-applies
+// the stored settlement intent itself).
 func closeAttemptFrom(ctx workflow.Context, q Queues, b Bounds, attempt activities.AttemptRef, commandID, outcome, cleanup, failureCode string, start time.Duration, wait bool) error {
 	closeCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 		TaskQueue: q.Control, StartToCloseTimeout: b.ControlActivityTimeout,
@@ -695,8 +698,15 @@ func closeOrContinue(ctx workflow.Context, q Queues, b Bounds, operationID, tena
 	return err
 }
 
-// closeLaunchAttempt delivers the close of an attempt, keeping it for the
-// recovery when Control no longer knows the attempt of a launch this run
+// closeLaunchAttempt is closeLaunchAttemptFrom from a fresh backoff, waiting
+// on Control's obligations. Nothing calls it.
+func closeLaunchAttempt(ctx workflow.Context, q Queues, b Bounds, attempt activities.AttemptRef, launched bool, commandID, outcome, cleanup, failureCode string) error {
+	return closeLaunchAttemptFrom(ctx, q, b, attempt, launched, commandID, outcome, cleanup, failureCode, 0, true)
+}
+
+// closeLaunchAttemptFrom delivers the close of an attempt through
+// closeAttemptFrom (resume and wait are its start and wait), keeping it for
+// the recovery when Control no longer knows the attempt of a launch this run
 // prepared. PrepareLaunch succeeded only after Control confirmed the launch
 // obligation in the independent inventory, so an attempt that Control now
 // answers NOT_FOUND for was lost by a restore of its database to a point
@@ -708,11 +718,7 @@ func closeOrContinue(ctx workflow.Context, q Queues, b Bounds, operationID, tena
 // resubmitted on durable timers with capped backoff until Control knows the
 // attempt again or the reconciliation bound is reached, and only then is the
 // refusal returned. Without a launch no obligation restores the attempt and
-// nothing needs the evidence: the refusal ends the run as before.
-func closeLaunchAttempt(ctx workflow.Context, q Queues, b Bounds, attempt activities.AttemptRef, launched bool, commandID, outcome, cleanup, failureCode string) error {
-	return closeLaunchAttemptFrom(ctx, q, b, attempt, launched, commandID, outcome, cleanup, failureCode, 0, true)
-}
-
+// nothing needs the evidence: the refusal ends the run at once.
 func closeLaunchAttemptFrom(ctx workflow.Context, q Queues, b Bounds, attempt activities.AttemptRef, launched bool, commandID, outcome, cleanup, failureCode string, resume time.Duration, wait bool) error {
 	err := closeAttemptFrom(ctx, q, b, attempt, commandID, outcome, cleanup, failureCode, resume, wait)
 	if !launched || activities.RefusalCode(err) != "NOT_FOUND" {

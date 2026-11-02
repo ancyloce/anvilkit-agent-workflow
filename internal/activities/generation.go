@@ -8,9 +8,9 @@ import (
 // The Generation Activities (DD-01 §4, delivery.md P13-03/05/06): the
 // execution permit, the lease (through the LeasePort, only confirmed
 // results reported to Control), the funding, the source scope check, the
-// accepted stage read of an attempt and the candidate registration under
-// an effect identity (a lost receipt queries the original effect, never
-// registers again).
+// accepted stage read of an attempt, the brief's identity read and the
+// candidate registration under an effect identity (a lost receipt queries
+// the original effect, never registers again).
 const (
 	NameGetGeneration          = "GetGeneration"
 	NameRequestExecutionPermit = "RequestExecutionPermit"
@@ -222,8 +222,9 @@ type EffectPermit struct {
 
 // LeasePort is the source lease upstream (DD-06 §1 LeasePort): acquire,
 // renew, query and release with a stable occurrence, explicit expiry and
-// explicit loss. Until ENV-07 supplies the Pagix declaration it is an
-// explicitly labeled DEVELOPMENT_ONLY double.
+// explicit loss. The bootstrap places the declaration-driven Pagix adapter
+// (lifecycle.pagix, ENV-07), else the explicitly labeled DEVELOPMENT_ONLY
+// double, else a port that answers DEPENDENCY_UNAVAILABLE.
 type LeasePort interface {
 	Acquire(ctx context.Context, in LeaseInput) (LeaseResult, error)
 	Renew(ctx context.Context, in LeaseInput) (LeaseResult, error)
@@ -233,7 +234,7 @@ type LeasePort interface {
 
 // SourcePort is the source authority upstream (DD-06 §1 SourcePort): the
 // scope decision and the candidate registration with original-identity
-// query. DEVELOPMENT_ONLY double until ENV-07.
+// query. Placed like the LeasePort.
 type SourcePort interface {
 	CheckScope(ctx context.Context, in CheckSourceScopeInput) (ScopeDecision, error)
 	RegisterCandidate(ctx context.Context, effectID string, in RegisterCandidateInput) (CandidateRef, error)

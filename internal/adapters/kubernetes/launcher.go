@@ -588,8 +588,9 @@ func launchObservation(job *batchv1.Job, jobGone bool, pods []corev1.Pod, launch
 	return obs
 }
 
-// observePod maps what the API server reports for one Pod of the fixture
-// into the trusted observation Control records.
+// observePod maps what the API server reports for one Pod of a launch (its
+// fixture or supervisor container) into the trusted observation Control
+// records.
 func observePod(pod corev1.Pod) activities.PodObservation {
 	po := activities.PodObservation{PodUID: string(pod.UID), Phase: phaseOf(pod), Reason: pod.Status.Reason, ObservedAt: time.Now().UTC()}
 	for _, cs := range pod.Status.ContainerStatuses {
