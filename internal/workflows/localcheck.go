@@ -108,36 +108,23 @@ type Input struct {
 // launches and results are never revived under a new identity.
 //
 // Cleanup is reported complete only when the launcher observed the Job and
-// its Pods gone and every create request this run issued is accounted for.
-// The Job is created under one launch key by numbered requests, one at a
-// time; a request the API server answered, or that is known not to have
-// been created, is settled by its answer, but a request that was written
-// and never answered may still commit, also after a later request's Job
-// was deleted and released the name. Such requests stay in the run's
-// ledger (Workflow state, replayed from history) until the launch key
-// shows the object they made or its lifetime is over. Absence is no
-// evidence while a request may still commit, so the cleanup is
-// evidence-first: while an unaccounted request is within its lifetime
-// (CreateRequestLifetime after its create Activity ended), a read-only
-// observation of the original launch key must report the Job or a Pod,
-// with the request marker it carries, before anything is deleted; once its
-// lifetime is over, a delete that starts later and reports the launch key
-// empty proves it never committed (cleanupRound). That observation is recorded in this run's history
-// and every Pod it reports is registered with Control under the same
-// command identities the running path uses, so the evidence survives a lost
-// completion receipt, an Activity retry, a replaced worker and every later
-// reconciliation round; the delete then confirms the absence of what was
-// seen. When cleanup cannot be confirmed, the attempt is closed with cleanup
-// unknown (Control keeps the operation reconciling and its cancel pending)
-// and this same run remains the durable recovery owner: it keeps
-// reconciling the original launch key with capped backoff until the backend
-// evidence settles it, then closes the attempt again with the evidence.
-// Only the reconciliation bound ends that loop, and then the Workflow fails
-// visibly instead of completing with an unsettled operation. The close is a
-// durable Control command under the attempt's identity: it is retried until
-// Control answers, and a refusal fails the Workflow — except that the close
-// of a prepared launch whose attempt Control lost to a point-in-time restore
-// is kept until the recovery restores the attempt (closeLaunchAttempt).
+// its Pods gone and every create request this run issued is accounted for
+// (createLedger, createJob). A request that was written and never answered
+// may still commit, even after a later request's Job was deleted and
+// released the name, so absence alone is no evidence while it may:
+// cleanupRound defines the evidence that settles such a request, and
+// recordObservation keeps it in this run's history and with Control, where
+// it survives a lost receipt, an Activity retry, a replaced worker and every
+// later round. When cleanup cannot be confirmed, the attempt is closed with
+// cleanup unknown (Control keeps the operation reconciling and its cancel
+// pending) and this same run remains the durable recovery owner
+// (reconcileCleanup) until the backend evidence settles it, then closes the
+// attempt again with that evidence; reaching the reconciliation bound fails
+// the Workflow visibly instead of completing with an unsettled operation.
+// Every close is closeAttempt's durable Control command under the attempt's
+// identity, and a refusal fails the Workflow, except that the close of a
+// prepared launch whose attempt Control lost to a point-in-time restore is
+// kept until the recovery restores the attempt (closeLaunchAttempt).
 func LocalCheck(q Queues, b Bounds) func(ctx workflow.Context, in Input) error {
 	return func(ctx workflow.Context, in Input) (err error) {
 		if in.Close != nil {
@@ -428,33 +415,32 @@ func cleanupOptions(ctx workflow.Context, q Queues, b Bounds) workflow.Context {
 // cleanupRound is one protected attempt to confirm that the launch stopped.
 // It is complete only when the backend reports neither the Job nor a Pod
 // under the launch key and the ledger holds no unaccounted create request.
-// While an unaccounted request is still within its lifetime, the round
-// first needs the read-only observation of the launch key (observeLaunch),
-// which records what it sees and strikes the requests whose objects it
-// saw; the delete then confirms
-// the absence of what was seen. The delete itself stops at an object of a
-// request still unaccounted for (a create that lands while the earlier
-// Job is being deleted) and returns it unstopped; the round records that
-// evidence the same way and deletes again. A request still unaccounted for
-// after an empty delete may land under the released name, so the round
-// observes again; a pass that attributes nothing new ends the round
-// unconfirmed, as does nothing observed within the settle window or a
-// delete that is not confirmed: the caller records cleanup unknown and
-// keeps recovering under the same launch identity.
+// An unaccounted request leaves the ledger on one of two kinds of evidence.
 //
-// A request also leaves the ledger once its lifetime is over
-// (CreateRequestLifetime after its create Activity ended): the API server
-// can commit a request only while it handles it, and a write that did not
-// commit before the next committed one never commits later. Each request
-// whose lifetime had ended when the round's step began is struck when the
-// delete that follows reports the launch key empty — a consistent read,
-// with the unaccounted requests' objects reported instead of deleted
-// unseen — which proves it never committed and never can. The observation
-// is skipped only when every unaccounted request's lifetime has ended; a
-// request still within its lifetime keeps the observation-first rule, and
-// absence before its lifetime ends stays what it was: no evidence. A zero
-// lifetime and runs recorded before the create-request-lifetime version
-// keep observation as the only evidence (lifetimeEnded).
+// Observation: while any unaccounted request is still within its lifetime
+// (CreateRequestLifetime after its create Activity ended), the round first
+// observes the launch key read-only (observeLaunch), which records what it
+// sees and strikes the requests whose objects it saw; the delete then
+// confirms the absence of what was seen. Absence before a request's
+// lifetime ends is no evidence.
+//
+// Lifetime: the API server can commit a request only while it handles it,
+// and a write that did not commit before the next committed one never
+// commits later. Each request whose lifetime had ended when the round's
+// step began (lifetimeEnded) is struck when the delete that follows reports
+// the launch key empty, a consistent read that proves it never committed
+// and never can. The observation is skipped only when every unaccounted
+// request's lifetime has ended.
+//
+// The delete stops at an object of a request still unaccounted for (a
+// create that lands while the earlier Job is being deleted) and returns it
+// unstopped; the round records that evidence the same way and deletes
+// again. A request still unaccounted for after an empty delete may land
+// under the released name, so the round observes again. A pass that
+// attributes nothing new, nothing observed within the settle window or a
+// delete that is not confirmed ends the round unconfirmed: the caller
+// records cleanup unknown and keeps recovering under the same launch
+// identity.
 func cleanupRound(ctx workflow.Context, q Queues, b Bounds, attempt activities.AttemptRef, launch activities.LaunchRef, ledger *createLedger) bool {
 	logger := workflow.GetLogger(ctx)
 	for observed := false; ; observed = true {
