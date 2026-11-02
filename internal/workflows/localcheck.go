@@ -115,11 +115,14 @@ type Input struct {
 // and never answered may still commit, also after a later request's Job
 // was deleted and released the name. Such requests stay in the run's
 // ledger (Workflow state, replayed from history) until the launch key
-// shows the object they made. Absence for any length of time is not
-// evidence, so the cleanup is evidence-first: while a request is
-// unaccounted for, a read-only observation of the original launch key must
-// report the Job or a Pod, with the request marker it carries, before
-// anything is deleted. That observation is recorded in this run's history
+// shows the object they made or its lifetime is over. Absence is no
+// evidence while a request may still commit, so the cleanup is
+// evidence-first: while an unaccounted request is within its lifetime
+// (CreateRequestLifetime after its create Activity ended), a read-only
+// observation of the original launch key must report the Job or a Pod,
+// with the request marker it carries, before anything is deleted; once its
+// lifetime is over, a delete that starts later and reports the launch key
+// empty proves it never committed (cleanupRound). That observation is recorded in this run's history
 // and every Pod it reports is registered with Control under the same
 // command identities the running path uses, so the evidence survives a lost
 // completion receipt, an Activity retry, a replaced worker and every later
@@ -425,9 +428,10 @@ func cleanupOptions(ctx workflow.Context, q Queues, b Bounds) workflow.Context {
 // cleanupRound is one protected attempt to confirm that the launch stopped.
 // It is complete only when the backend reports neither the Job nor a Pod
 // under the launch key and the ledger holds no unaccounted create request.
-// While a request is unaccounted for, the round first needs the read-only
-// observation of the launch key (observeLaunch), which records what it sees
-// and strikes the requests whose objects it saw; the delete then confirms
+// While an unaccounted request is still within its lifetime, the round
+// first needs the read-only observation of the launch key (observeLaunch),
+// which records what it sees and strikes the requests whose objects it
+// saw; the delete then confirms
 // the absence of what was seen. The delete itself stops at an object of a
 // request still unaccounted for (a create that lands while the earlier
 // Job is being deleted) and returns it unstopped; the round records that
@@ -441,12 +445,16 @@ func cleanupOptions(ctx workflow.Context, q Queues, b Bounds) workflow.Context {
 // A request also leaves the ledger once its lifetime is over
 // (CreateRequestLifetime after its create Activity ended): the API server
 // can commit a request only while it handles it, and a write that did not
-// commit before the next committed one never commits later, so a delete
-// call that starts after every unaccounted request's lifetime ended and
-// reports the launch key empty — a consistent read, with the unaccounted
-// requests' objects reported instead of deleted unseen — proves that none
-// of them committed and none can. Absence before that point stays what it
-// was: no evidence.
+// commit before the next committed one never commits later. Each request
+// whose lifetime had ended when the round's step began is struck when the
+// delete that follows reports the launch key empty — a consistent read,
+// with the unaccounted requests' objects reported instead of deleted
+// unseen — which proves it never committed and never can. The observation
+// is skipped only when every unaccounted request's lifetime has ended; a
+// request still within its lifetime keeps the observation-first rule, and
+// absence before its lifetime ends stays what it was: no evidence. A zero
+// lifetime and runs recorded before the create-request-lifetime version
+// keep observation as the only evidence (lifetimeEnded).
 func cleanupRound(ctx workflow.Context, q Queues, b Bounds, attempt activities.AttemptRef, launch activities.LaunchRef, ledger *createLedger) bool {
 	logger := workflow.GetLogger(ctx)
 	for observed := false; ; observed = true {

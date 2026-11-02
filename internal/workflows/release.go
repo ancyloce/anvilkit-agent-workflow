@@ -369,15 +369,6 @@ func targetOf(res activities.ReleaseEffectResult) activities.ReleaseTargetRecord
 	return t
 }
 
-func hasUnknown(targets ...activities.ReleaseTargetRecord) bool {
-	for _, t := range targets {
-		if t.State == "unknown" {
-			return true
-		}
-	}
-	return false
-}
-
 // publicationState is the release state the two targets support.
 func publicationState(rel *releaseRun) string {
 	n, b := rel.npm.State, rel.browser.State
