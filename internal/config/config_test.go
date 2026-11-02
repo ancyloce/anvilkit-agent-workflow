@@ -120,6 +120,13 @@ func TestModelProxyPlacementAndSecret(t *testing.T) {
 	c, err = config.LoadFrom(write(t, minimal), append(env, "ANVILKIT_WORKFLOW_MODEL_PROXY_ADDRESS=https://proxy"))
 	require.NoError(t, err, "the process identity serves the Proxy client")
 	require.Equal(t, "/etc/anvilkit/identity/tls.key", c.Resolved(c.ModelProxy.Identity).KeyFile)
+	// mtls presents the workload certificate only over TLS: an http address
+	// would send model calls in plaintext without it, so it is refused, and
+	// the development guard does not relax that.
+	_, err = config.LoadFrom(write(t, minimal), append(env, "ANVILKIT_WORKFLOW_MODEL_PROXY_ADDRESS=http://proxy:9103"))
+	require.ErrorContains(t, err, "model_proxy.address must be an https URL under identity mode mtls")
+	_, err = config.LoadFrom(write(t, minimal+"development:\n  enabled: true\n"), append(env, "ANVILKIT_WORKFLOW_MODEL_PROXY_ADDRESS=http://proxy:9103"))
+	require.ErrorContains(t, err, "model_proxy.address must be an https URL under identity mode mtls")
 }
 
 func TestTelemetryPlacement(t *testing.T) {

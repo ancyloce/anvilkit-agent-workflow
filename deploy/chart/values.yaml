@@ -98,7 +98,8 @@ identity:
 modelProxy:
   serverName: anvilkit-agent-model-proxy
   # P2.3: the placement (ANVILKIT_WORKFLOW_MODEL_PROXY_ADDRESS, an https URL
-  # outside development) and, under identity.mode development only, the
+  # under identity.mode mtls: the loader refuses http) and, under
+  # identity.mode development only, the
   # Secret of the DEVELOPMENT_ONLY bearer token
   # (ANVILKIT_WORKFLOW_MODEL_PROXY_TOKEN). Empty address: the model call
   # Activities answer DEPENDENCY_UNAVAILABLE.

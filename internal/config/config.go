@@ -112,7 +112,8 @@ type ClientTLS struct {
 // Activities (P11): the base URL, the request bound, and the identity the
 // worker presents to the Proxy — development is a DEVELOPMENT_ONLY bearer
 // token supplied only through ANVILKIT_WORKFLOW_MODEL_PROXY_TOKEN, mtls the
-// workload certificate files. Without an address the Activities answer
+// workload certificate files over an https address (an http address is
+// refused under mtls). Without an address the Activities answer
 // DEPENDENCY_UNAVAILABLE and reach no network.
 type ModelProxy struct {
 	Address  string         `koanf:"address"`
@@ -651,6 +652,13 @@ func (c Config) validate() error {
 		}
 		if mp.Token != "" {
 			errs = append(errs, errors.New("model_proxy.token is not used under identity mode mtls"))
+		}
+		// The client presents the workload certificate only over TLS
+		// (identity.HTTPTransport): an http address would send every model
+		// call in plaintext and without it. development.enabled does not
+		// relax this; the plaintext path is identity mode development.
+		if u, err := url.Parse(mp.Address); mp.Address != "" && err == nil && u.Scheme == "http" {
+			errs = append(errs, errors.New("model_proxy.address must be an https URL under identity mode mtls (the workload certificate is presented only over TLS)"))
 		}
 	default:
 		errs = append(errs, fmt.Errorf("model_proxy.identity.mode %q is not one of development, mtls", mp.Identity.Mode))

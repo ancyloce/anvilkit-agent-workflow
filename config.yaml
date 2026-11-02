@@ -44,7 +44,8 @@ control:
 # Activities (P11; ANVILKIT_WORKFLOW_MODEL_PROXY_ADDRESS). Without an address
 # CallModel/GetModelCall/CancelModelCall answer DEPENDENCY_UNAVAILABLE. The
 # identity the worker presents: mtls is the workload certificate (the
-# process identity, verified by server_name); development is a
+# process identity, verified by server_name) over an https address (an
+# http address is refused); development is a
 # DEVELOPMENT_ONLY bearer token supplied only through
 # ANVILKIT_WORKFLOW_MODEL_PROXY_TOKEN (needs development.enabled).
 model_proxy:
