@@ -1,8 +1,12 @@
 {{- if .Values.rbac.create }}
 # The launcher's least-privilege permissions (DD-03 §4, DD-10 §4), owned by
-# this chart: Jobs create/get/list/watch/delete and Pods read in the
-# components namespace only; no exec, no ephemeral containers, no secrets,
-# no token minting. The binding names the worker's ServiceAccount.
+# this chart: Jobs create/get/list/watch/delete, Pods read, and the
+# per-launch Secret (DEC-045: the launch secret both harness containers
+# receive by reference) create/delete only, in the components namespace
+# only; never get, list or watch on secrets, so the launcher can read
+# neither the sidecar identity Secret nor a launch secret back; no exec,
+# no ephemeral containers, no token minting. The binding names the
+# worker's ServiceAccount.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -17,6 +21,9 @@ rules:
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
