@@ -8,6 +8,8 @@ package kubernetes
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
@@ -340,6 +342,17 @@ func (l *Launcher) CreateJob(ctx context.Context, in activities.CreateJobInput) 
 	if err != nil {
 		return activities.JobRef{}, activities.Refused("PROFILE_UNQUALIFIED", err)
 	}
+	if profile.SidecarImage != nil {
+		// DEC-045: the harness layout's per-launch secret precedes the Job
+		// of the same request. A Secret without a Job is harmless (it holds
+		// random bytes and is removed by DeleteJob); a Job without its
+		// Secret does not start. An existing Secret under the name belongs
+		// to an earlier request of this launch and stands unchanged (the
+		// launcher cannot read it back: no get on secrets).
+		if err := l.createLaunchSecret(ctx, in, spec); err != nil {
+			return activities.JobRef{}, err
+		}
+	}
 	createCtx, written := traceWrite(ctx)
 	created, err := jobs.Create(createCtx, spec, metav1.CreateOptions{})
 	switch {
@@ -356,6 +369,39 @@ func (l *Launcher) CreateJob(ctx context.Context, in activities.CreateJobInput) 
 		return activities.JobRef{}, activities.NotCreated(err)
 	default:
 		return activities.JobRef{}, fmt.Errorf("job %s create request %d unanswered: %w", in.Launch.LaunchKey, in.Request, err)
+	}
+}
+
+// createLaunchSecret stores the DEC-045 launch secret of a harness launch:
+// 32 random bytes as 64 hex characters under launchSecretKey in an
+// immutable Secret named after the launch key, carrying the Job's labels
+// and create-request marker. Both containers of the Pod receive it by
+// reference; the trusted side derives the peer tokens and the sidecar's
+// proof from it, the candidate only ever sees its own derived token. A
+// failed create is classified like the Job's: a definitive rejection or a
+// request that never reached the wire is NotCreated; anything else is
+// unresolved (the same request's Job create never happens, and the next
+// request finds the Secret or creates it).
+func (l *Launcher) createLaunchSecret(ctx context.Context, in activities.CreateJobInput, job *batchv1.Job) error {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return activities.NotCreated(fmt.Errorf("launch secret: %w", err))
+	}
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: in.Launch.LaunchKey, Labels: map[string]string{labelLaunchKey: in.Launch.LaunchKey, labelAttempt: in.Launch.AttemptID}, Annotations: job.Annotations},
+		Type:       corev1.SecretTypeOpaque,
+		Immutable:  ptr.To(true),
+		StringData: map[string]string{launchSecretKey: hex.EncodeToString(raw)},
+	}
+	createCtx, written := traceWrite(ctx)
+	_, err := l.client.CoreV1().Secrets(l.namespace).Create(createCtx, secret, metav1.CreateOptions{})
+	switch {
+	case err == nil, apierrors.IsAlreadyExists(err):
+		return nil
+	case rejected(err) || !written():
+		return activities.NotCreated(fmt.Errorf("launch secret %s: %w", in.Launch.LaunchKey, err))
+	default:
+		return fmt.Errorf("launch secret %s create request %d unanswered: %w", in.Launch.LaunchKey, in.Request, err)
 	}
 }
 
@@ -709,6 +755,14 @@ func (l *Launcher) DeleteJob(ctx context.Context, in activities.DeleteJobInput, 
 			}
 		}
 		if jobGone && len(list.Items) == 0 {
+			// Nothing of the launch remains to observe: the per-launch secret
+			// (DEC-045) goes last, after every marked object was accounted
+			// for; a launch that never had one (the fixture layout, or a
+			// create that failed before it) reports NotFound.
+			err := l.client.CoreV1().Secrets(l.namespace).Delete(ctx, in.Launch.LaunchKey, metav1.DeleteOptions{})
+			if err != nil && !apierrors.IsNotFound(err) {
+				return activities.LaunchObservation{}, fmt.Errorf("launch secret %s: %w", in.Launch.LaunchKey, err)
+			}
 			return activities.LaunchObservation{}, nil
 		}
 		if !jobGone {

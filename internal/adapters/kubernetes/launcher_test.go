@@ -829,3 +829,106 @@ func TestDeleteJobEvidenceFirstStopsOnlyRecordedObjects(t *testing.T) {
 		t.Fatal("DeleteJob did not confirm the key empty")
 	}
 }
+
+// DEC-045 B2: a harness launch stores its launch secret before its Job, under
+// the launch key, immutable, by this request's marker; a repeated request
+// keeps the existing Secret (AlreadyExists is not read back: the launcher
+// has no get on secrets); DeleteJob removes it last, once the Job and its
+// Pods are gone, and never in evidence-first mode; the fixture layout
+// creates none.
+func TestLaunchSecretLifecycle(t *testing.T) {
+	cs := fake.NewClientset()
+	l := k8s.NewWithClient(cs, namespace, harnessOptions(harnessProfile))
+	in := harnessInput(t)
+	in.Request = 1
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	var order []string
+	cs.PrependReactor("create", "*", func(a k8stesting.Action) (bool, runtime.Object, error) {
+		order = append(order, a.GetResource().Resource)
+		return false, nil, nil
+	})
+	first, err := l.CreateJob(ctx, in)
+	require.NoError(t, err)
+	require.Equal(t, []string{"secrets", "jobs"}, order, "the secret precedes the Job of the same request")
+	secret, err := cs.CoreV1().Secrets(namespace).Get(ctx, in.Launch.LaunchKey, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, corev1.SecretTypeOpaque, secret.Type)
+	require.True(t, *secret.Immutable)
+	require.Regexp(t, "^[0-9a-f]{64}$", secret.StringData["launch-secret"], "32 random bytes as lowercase hex")
+	require.Equal(t, in.Launch.LaunchKey, secret.Labels["anvilkit.io/launch-key"])
+	require.Equal(t, in.Launch.AttemptID, secret.Labels["anvilkit.io/attempt-id"])
+	require.Equal(t, "1", secret.Annotations["anvilkit.io/create-request"])
+	value := secret.StringData["launch-secret"]
+
+	in.Request = 2
+	second, err := l.CreateJob(ctx, in)
+	require.NoError(t, err)
+	require.Equal(t, first.JobUID, second.JobUID)
+	again, err := cs.CoreV1().Secrets(namespace).Get(ctx, in.Launch.LaunchKey, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, value, again.StringData["launch-secret"], "an existing secret stands unchanged")
+
+	// A Job of the launch exists with a Pod the caller has not recorded:
+	// evidence-first reports it and deletes nothing, the secret included.
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: in.Launch.LaunchKey + "-x1", Namespace: namespace, UID: types.UID("pod-h1"),
+		Labels: map[string]string{"anvilkit.io/launch-key": in.Launch.LaunchKey, "anvilkit.io/attempt-id": in.Launch.AttemptID}, Annotations: map[string]string{"anvilkit.io/create-request": "1"}},
+		Status: corev1.PodStatus{Phase: corev1.PodRunning}}
+	_, err = cs.CoreV1().Pods(namespace).Create(ctx, pod, metav1.CreateOptions{})
+	require.NoError(t, err)
+	obs, err := l.DeleteJob(ctx, activities.DeleteJobInput{Launch: in.Launch, EvidenceFirst: true, Recorded: []int{}}, func() {})
+	require.NoError(t, err)
+	require.False(t, obs.Empty(), "reported, not deleted")
+	_, err = cs.CoreV1().Secrets(namespace).Get(ctx, in.Launch.LaunchKey, metav1.GetOptions{})
+	require.NoError(t, err, "the secret stays while the launch is reported")
+
+	// The fake clientset propagates no deletion: the Pod goes away as the
+	// kubelet would make it, then DeleteJob confirms the key empty and
+	// removes the secret last.
+	done := make(chan error, 1)
+	go func() {
+		_, err := l.DeleteJob(ctx, activities.DeleteJobInput{Launch: in.Launch}, func() {})
+		done <- err
+	}()
+	require.Eventually(t, func() bool {
+		_, err := cs.BatchV1().Jobs(namespace).Get(ctx, in.Launch.LaunchKey, metav1.GetOptions{})
+		return apierrors.IsNotFound(err)
+	}, 3*time.Second, 20*time.Millisecond)
+	require.NoError(t, cs.CoreV1().Pods(namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{}))
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(4 * time.Second):
+		t.Fatal("DeleteJob did not return after the Pod was gone")
+	}
+	_, err = cs.CoreV1().Secrets(namespace).Get(ctx, in.Launch.LaunchKey, metav1.GetOptions{})
+	require.True(t, apierrors.IsNotFound(err), "the secret is removed once nothing of the launch remains")
+	again2, err := l.DeleteJob(ctx, activities.DeleteJobInput{Launch: in.Launch}, func() {})
+	require.NoError(t, err, "a repeated delete finds no secret and is complete")
+	require.True(t, again2.Empty())
+
+	// The fixture layout has no sidecar and no secret.
+	fixture := k8s.NewWithClient(cs, namespace)
+	_, err = fixture.CreateJob(ctx, activities.CreateJobInput{Launch: launch, ProfileID: "local-check-v1", Deadline: time.Now().Add(time.Minute), Request: 1})
+	require.NoError(t, err)
+	_, err = cs.CoreV1().Secrets(namespace).Get(ctx, launch.LaunchKey, metav1.GetOptions{})
+	require.True(t, apierrors.IsNotFound(err), "no secret for the fixture profile")
+}
+
+// A secret create that is refused or never sent is NotCreated like the
+// Job's; its Job is then not created by the same request.
+func TestLaunchSecretCreateFailureIsClassified(t *testing.T) {
+	cs := fake.NewClientset()
+	cs.PrependReactor("create", "secrets", func(a k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, apierrors.NewForbidden(corev1.Resource("secrets"), "x", fmt.Errorf("secrets is forbidden"))
+	})
+	l := k8s.NewWithClient(cs, namespace, harnessOptions(harnessProfile))
+	in := harnessInput(t)
+	in.Request = 1
+	_, err := l.CreateJob(context.Background(), in)
+	require.Error(t, err)
+	require.True(t, activities.IsNotCreated(err), "a definitive rejection of the secret create is NotCreated: %v", err)
+	list, err := cs.BatchV1().Jobs(namespace).List(context.Background(), metav1.ListOptions{})
+	require.NoError(t, err)
+	require.Empty(t, list.Items, "no Job without its secret")
+}

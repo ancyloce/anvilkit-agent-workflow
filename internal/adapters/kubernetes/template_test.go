@@ -88,12 +88,24 @@ func TestHarnessTemplateIsFixed(t *testing.T) {
 	for _, m := range sup.VolumeMounts {
 		mounts[m.MountPath] = m.ReadOnly
 	}
-	require.Equal(t, map[string]bool{"/workspace": false, "/anvilkit/verdict": false, "/run/anvilkit": true}, mounts)
+	require.Equal(t, map[string]bool{"/workspace": false, "/anvilkit/verdict": false}, mounts, "no sockets volume: the sidecar is reached over abstract-namespace sockets (DEC-045)")
 	names := map[string]string{}
+	var supEnv []string
 	for _, e := range sup.Env {
 		names[e.Name] = e.Value
+		supEnv = append(supEnv, e.Name)
 	}
-	require.Equal(t, []string{"ANVILKIT_ATTEMPT_ID", "ANVILKIT_LAUNCH_ENVELOPE", "ANVILKIT_LAUNCH_ID"}, sortedKeys(names))
+	require.Equal(t, []string{"ANVILKIT_LAUNCH_ID", "ANVILKIT_ATTEMPT_ID", "ANVILKIT_LAUNCH_ENVELOPE", "ANVILKIT_LAUNCH_SECRET"}, supEnv)
+	secretRef := func(e corev1.EnvVar) {
+		t.Helper()
+		require.Empty(t, e.Value, "%s is never a literal value", e.Name)
+		require.NotNil(t, e.ValueFrom, e.Name)
+		require.NotNil(t, e.ValueFrom.SecretKeyRef, e.Name)
+		require.Equal(t, "cg-h1", e.ValueFrom.SecretKeyRef.Name, "the per-launch Secret is named after the launch key")
+		require.Equal(t, "launch-secret", e.ValueFrom.SecretKeyRef.Key)
+		require.Nil(t, e.ValueFrom.SecretKeyRef.Optional, "a Pod without its launch secret does not start")
+	}
+	secretRef(sup.Env[3])
 	var envelope map[string]any
 	require.NoError(t, json.Unmarshal([]byte(names["ANVILKIT_LAUNCH_ENVELOPE"]), &envelope))
 	require.Equal(t, "op_h1", envelope["operationId"])
@@ -108,27 +120,30 @@ func TestHarnessTemplateIsFixed(t *testing.T) {
 	require.True(t, *side.SecurityContext.RunAsNonRoot)
 	require.Equal(t, []corev1.Capability{"ALL"}, side.SecurityContext.Capabilities.Drop)
 	require.Empty(t, side.SecurityContext.Capabilities.Add)
-	require.Len(t, side.VolumeMounts, 2)
-	require.Equal(t, "/run/anvilkit", side.VolumeMounts[0].MountPath)
-	require.False(t, side.VolumeMounts[0].ReadOnly)
-	require.Equal(t, "identity", side.VolumeMounts[1].Name)
-	require.Equal(t, "/etc/anvilkit/identity", side.VolumeMounts[1].MountPath)
-	require.True(t, side.VolumeMounts[1].ReadOnly, "the sidecar's certificate is read-only in the sidecar alone")
+	require.Len(t, side.VolumeMounts, 1)
+	require.Equal(t, "identity", side.VolumeMounts[0].Name)
+	require.Equal(t, "/etc/anvilkit/identity", side.VolumeMounts[0].MountPath)
+	require.True(t, side.VolumeMounts[0].ReadOnly, "the sidecar's certificate is read-only in the sidecar alone")
 	sideEnv := map[string]corev1.EnvVar{}
+	var sideNames []string
 	for _, e := range side.Env {
 		sideEnv[e.Name] = e
+		sideNames = append(sideNames, e.Name)
 	}
+	require.Equal(t, []string{"ANVILKIT_SIDECAR_CONTROL_ADDRESS", "ANVILKIT_SIDECAR_IDENTITY_MODE", "ANVILKIT_SIDECAR_BACKEND", "ANVILKIT_SIDECAR_LAUNCH_KEY", "ANVILKIT_SIDECAR_POD_UID", "ANVILKIT_SIDECAR_LAUNCH_ENVELOPE", "ANVILKIT_SIDECAR_LAUNCH_SECRET"}, sideNames)
+	secretRef(sideEnv["ANVILKIT_SIDECAR_LAUNCH_SECRET"])
 	require.Equal(t, "metadata.uid", sideEnv["ANVILKIT_SIDECAR_POD_UID"].ValueFrom.FieldRef.FieldPath, "the Pod UID comes from the kubelet, never from a value")
 	require.Equal(t, "172.22.0.1:9101", sideEnv["ANVILKIT_SIDECAR_CONTROL_ADDRESS"].Value)
 	require.Equal(t, "mtls", sideEnv["ANVILKIT_SIDECAR_IDENTITY_MODE"].Value)
 	require.Equal(t, "kind-anvilkit-dev", sideEnv["ANVILKIT_SIDECAR_BACKEND"].Value)
 	require.Equal(t, "cg-h1", sideEnv["ANVILKIT_SIDECAR_LAUNCH_KEY"].Value)
 	require.Equal(t, names["ANVILKIT_LAUNCH_ENVELOPE"], sideEnv["ANVILKIT_SIDECAR_LAUNCH_ENVELOPE"].Value)
-	require.Len(t, spec.Volumes, 4)
-	for _, v := range spec.Volumes[:3] {
+	require.Len(t, spec.Volumes, 3)
+	for _, v := range spec.Volumes[:2] {
 		require.NotNil(t, v.EmptyDir, "only emptyDir volumes beside the identity Secret: %s", v.Name)
+		require.NotEqual(t, "sockets", v.Name)
 	}
-	identity := spec.Volumes[3]
+	identity := spec.Volumes[2]
 	require.Equal(t, "identity", identity.Name)
 	require.NotNil(t, identity.Secret)
 	require.Equal(t, "anvilkit-job-access-sidecar-identity", identity.Secret.SecretName)
@@ -147,8 +162,8 @@ func TestHarnessSidecarIdentityVolume(t *testing.T) {
 	l := k8s.NewWithClient(fake.NewClientset(), namespace, dev)
 	job, err := l.Render(in, time.Now())
 	require.NoError(t, err)
-	require.Len(t, job.Spec.Template.Spec.Volumes, 3)
-	require.Len(t, job.Spec.Template.Spec.InitContainers[0].VolumeMounts, 1)
+	require.Len(t, job.Spec.Template.Spec.Volumes, 2)
+	require.Empty(t, job.Spec.Template.Spec.InitContainers[0].VolumeMounts)
 	noSecret := harnessOptions(harnessProfile)
 	noSecret.SidecarIdentitySecret = ""
 	_, err = k8s.NewWithClient(fake.NewClientset(), namespace, noSecret).CreateJob(context.Background(), in)
@@ -411,7 +426,7 @@ func TestSidecarRelayPlacements(t *testing.T) {
 		names = append(names, e.Name)
 	}
 	require.Equal(t, []string{
-		"ANVILKIT_SIDECAR_CONTROL_ADDRESS", "ANVILKIT_SIDECAR_IDENTITY_MODE", "ANVILKIT_SIDECAR_BACKEND", "ANVILKIT_SIDECAR_LAUNCH_KEY", "ANVILKIT_SIDECAR_POD_UID", "ANVILKIT_SIDECAR_LAUNCH_ENVELOPE",
+		"ANVILKIT_SIDECAR_CONTROL_ADDRESS", "ANVILKIT_SIDECAR_IDENTITY_MODE", "ANVILKIT_SIDECAR_BACKEND", "ANVILKIT_SIDECAR_LAUNCH_KEY", "ANVILKIT_SIDECAR_POD_UID", "ANVILKIT_SIDECAR_LAUNCH_ENVELOPE", "ANVILKIT_SIDECAR_LAUNCH_SECRET",
 		"ANVILKIT_SIDECAR_MODEL_PROXY_URL", "ANVILKIT_SIDECAR_MCP_ADDRESS", "ANVILKIT_SIDECAR_KNOWLEDGE_ADDRESS",
 	}, names)
 	require.Contains(t, side.VolumeMounts, corev1.VolumeMount{Name: "identity", MountPath: "/etc/anvilkit/identity", ReadOnly: true})
@@ -425,7 +440,7 @@ func TestSidecarRelayPlacements(t *testing.T) {
 	require.NoError(t, err)
 	last := job.Spec.Template.Spec.InitContainers[0].Env
 	require.Equal(t, "ANVILKIT_SIDECAR_MCP_ADDRESS", last[len(last)-1].Name, "only the set placements are rendered")
-	require.Len(t, last, 7)
+	require.Len(t, last, 8)
 }
 
 // TestTeamAndPreviewProfileStates (P2.4 AC1): the production team and

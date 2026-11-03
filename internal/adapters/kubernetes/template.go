@@ -52,29 +52,33 @@ type Options struct {
 
 // Fixed identities of the harness layout (DD-03 §5).
 const (
-	labelCandidateCode   = "anvilkit.io/candidate-code"
-	nodePoolLabel        = "anvilkit.io/pool"
-	nodePoolComponents   = "components"
-	containerSupervisor  = "supervisor"
-	containerSidecar     = "access-sidecar"
-	containerFixture     = "fixture"
-	candidateUID         = int64(10001)
-	sidecarUID           = int64(10002)
-	workspaceMount       = "/workspace"
-	verdictMount         = "/anvilkit/verdict"
-	socketsMount         = "/run/anvilkit"
-	socketsDir           = "/run/anvilkit/sockets"
-	identityMount        = "/etc/anvilkit/identity"
-	identityMode         = int32(0o440)
-	envLaunchID          = "ANVILKIT_LAUNCH_ID"
-	envAttemptID         = "ANVILKIT_ATTEMPT_ID"
-	envLaunchEnvelope    = "ANVILKIT_LAUNCH_ENVELOPE"
-	envSidecarControl    = "ANVILKIT_SIDECAR_CONTROL_ADDRESS"
-	envSidecarIdentity   = "ANVILKIT_SIDECAR_IDENTITY_MODE"
-	envSidecarBackend    = "ANVILKIT_SIDECAR_BACKEND"
-	envSidecarLaunchKey  = "ANVILKIT_SIDECAR_LAUNCH_KEY"
-	envSidecarPodUID     = "ANVILKIT_SIDECAR_POD_UID"
-	envSidecarEnvelope   = "ANVILKIT_SIDECAR_LAUNCH_ENVELOPE"
+	labelCandidateCode  = "anvilkit.io/candidate-code"
+	nodePoolLabel       = "anvilkit.io/pool"
+	nodePoolComponents  = "components"
+	containerSupervisor = "supervisor"
+	containerSidecar    = "access-sidecar"
+	containerFixture    = "fixture"
+	candidateUID        = int64(10001)
+	sidecarUID          = int64(10002)
+	workspaceMount      = "/workspace"
+	verdictMount        = "/anvilkit/verdict"
+	identityMount       = "/etc/anvilkit/identity"
+	identityMode        = int32(0o440)
+	envLaunchID         = "ANVILKIT_LAUNCH_ID"
+	envAttemptID        = "ANVILKIT_ATTEMPT_ID"
+	envLaunchEnvelope   = "ANVILKIT_LAUNCH_ENVELOPE"
+	envLaunchSecret     = "ANVILKIT_LAUNCH_SECRET"
+	envSidecarControl   = "ANVILKIT_SIDECAR_CONTROL_ADDRESS"
+	envSidecarIdentity  = "ANVILKIT_SIDECAR_IDENTITY_MODE"
+	envSidecarBackend   = "ANVILKIT_SIDECAR_BACKEND"
+	envSidecarLaunchKey = "ANVILKIT_SIDECAR_LAUNCH_KEY"
+	envSidecarPodUID    = "ANVILKIT_SIDECAR_POD_UID"
+	envSidecarEnvelope  = "ANVILKIT_SIDECAR_LAUNCH_ENVELOPE"
+	envSidecarSecret    = "ANVILKIT_SIDECAR_LAUNCH_SECRET"
+	// launchSecretKey is the key of the per-launch Secret (named after the
+	// launch key) that holds the DEC-045 launch secret both containers
+	// receive by reference; the candidate never does.
+	launchSecretKey      = "launch-secret"
 	envSidecarModelProxy = "ANVILKIT_SIDECAR_MODEL_PROXY_URL"
 	envSidecarMCP        = "ANVILKIT_SIDECAR_MCP_ADDRESS"
 	envSidecarKnowledge  = "ANVILKIT_SIDECAR_KNOWLEDGE_ADDRESS"
@@ -82,7 +86,6 @@ const (
 	sidecarMemory        = "64Mi"
 	workspaceSizeLimit   = "1Gi"
 	verdictSizeLimit     = "256Mi"
-	socketsSizeLimit     = "1Mi"
 	launchEnvelopeSchema = 1
 )
 
@@ -197,9 +200,12 @@ func launchEnvelope(in activities.CreateJobInput, profile jobschema.Profile) ([]
 // harnessPodSpec renders the fixed two-container layout of a harness
 // profile: the supervisor (UID 0 with SETUID, SETGID and SETPCAP only, the
 // candidate syscall profile, a read-only root, the workspace and verdict
-// volumes, the sockets read-only) and the access sidecar (UID 10002, no
-// capability, supplementary groups 0 and 10001 through the Pod, the
-// sockets volume writable, the Pod UID from the downward API). The sidecar
+// volumes) and the access sidecar (UID 10002, no capability, supplementary
+// groups 0 and 10001 through the Pod, the Pod UID from the downward API).
+// The two talk over abstract-namespace Unix sockets inside the Pod (DD-03
+// §5, DEC-045): no shared volume; both containers receive the per-launch
+// secret of the launch's Secret by reference (never a literal value), from
+// which the peer tokens and the sidecar's proof are derived. The sidecar
 // is a Kubernetes native sidecar (an init container with restartPolicy
 // Always): it starts before the supervisor and is stopped by the kubelet
 // once the supervisor exited, so the Pod completes exactly when the
@@ -239,10 +245,11 @@ func (l *Launcher) harnessPodSpec(in activities.CreateJobInput, profile jobschem
 		Name: containerSupervisor, Image: image, Command: profile.Entrypoint,
 		Env: []corev1.EnvVar{
 			{Name: envLaunchID, Value: in.Launch.LaunchID}, {Name: envAttemptID, Value: in.Launch.AttemptID}, {Name: envLaunchEnvelope, Value: string(envelope)},
+			{Name: envLaunchSecret, ValueFrom: launchSecretRef(in.Launch.LaunchKey)},
 		},
 		Resources: res,
 		VolumeMounts: []corev1.VolumeMount{
-			{Name: "workspace", MountPath: workspaceMount}, {Name: "verdict", MountPath: verdictMount}, {Name: "sockets", MountPath: socketsMount, ReadOnly: true},
+			{Name: "workspace", MountPath: workspaceMount}, {Name: "verdict", MountPath: verdictMount},
 		},
 		TerminationMessagePolicy: corev1.TerminationMessageReadFile,
 		SecurityContext: &corev1.SecurityContext{
@@ -259,9 +266,9 @@ func (l *Launcher) harnessPodSpec(in activities.CreateJobInput, profile jobschem
 			{Name: envSidecarBackend, Value: l.options.Backend}, {Name: envSidecarLaunchKey, Value: in.Launch.LaunchKey},
 			{Name: envSidecarPodUID, ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{APIVersion: "v1", FieldPath: "metadata.uid"}}},
 			{Name: envSidecarEnvelope, Value: string(envelope)},
+			{Name: envSidecarSecret, ValueFrom: launchSecretRef(in.Launch.LaunchKey)},
 		},
 		Resources:                sidecarRes,
-		VolumeMounts:             []corev1.VolumeMount{{Name: "sockets", MountPath: socketsMount}},
 		TerminationMessagePolicy: corev1.TerminationMessageReadFile,
 		SecurityContext: &corev1.SecurityContext{
 			RunAsUser: ptr.To(sidecarUID), RunAsGroup: ptr.To(sidecarUID), RunAsNonRoot: ptr.To(true), Privileged: ptr.To(false),
@@ -285,11 +292,10 @@ func (l *Launcher) harnessPodSpec(in activities.CreateJobInput, profile jobschem
 		Volumes: []corev1.Volume{
 			{Name: "workspace", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{SizeLimit: ptr.To(resource.MustParse(workspaceSizeLimit))}}},
 			{Name: "verdict", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{SizeLimit: ptr.To(resource.MustParse(verdictSizeLimit))}}},
-			{Name: "sockets", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{Medium: corev1.StorageMediumMemory, SizeLimit: ptr.To(resource.MustParse(socketsSizeLimit))}}},
 		},
 	}
 	if l.options.SidecarIdentityMode == "mtls" {
-		// The relay placements (P2.4), in a fixed order after the six
+		// The relay placements (P2.4), in a fixed order after the seven
 		// launch variables; the sidecar reaches each with the certificate
 		// below.
 		for _, p := range []corev1.EnvVar{{Name: envSidecarModelProxy, Value: l.options.SidecarModelProxyURL}, {Name: envSidecarMCP, Value: l.options.SidecarMCPAddress}, {Name: envSidecarKnowledge, Value: l.options.SidecarKnowledgeAddress}} {
@@ -309,6 +315,13 @@ func (l *Launcher) harnessPodSpec(in activities.CreateJobInput, profile jobschem
 		spec.RuntimeClassName = ptr.To(profile.RuntimeClass)
 	}
 	return spec, nil
+}
+
+// launchSecretRef is the reference both harness containers carry to the
+// per-launch Secret: the launch key names it, launchSecretKey is its one
+// key, and it is never optional (a Pod without it does not start).
+func launchSecretRef(launchKey string) *corev1.EnvVarSource {
+	return &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: launchKey}, Key: launchSecretKey}}
 }
 
 // fixturePodSpec is the single-container layout of a fixture profile

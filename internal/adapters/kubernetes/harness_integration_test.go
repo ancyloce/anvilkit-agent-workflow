@@ -267,14 +267,18 @@ func TestHarnessOnTheDevelopmentCluster(t *testing.T) {
 		require.Equal(t, "0", p["inherited-fds"])
 		require.Equal(t, "EACCES", p["read:verdict.json"])
 		require.Equal(t, "EACCES", p["read:resources.json"])
-		require.Equal(t, "EACCES", p["connect:trusted.sock"])
+		// DEC-045: the trusted name is reachable (abstract namespace inside
+		// the Pod), but the sidecar closes the candidate's identity at
+		// accept: connected, then closed unanswered, never a route answer.
+		require.Equal(t, "CONNECTED", p["connect:trusted"])
+		require.Equal(t, "CLOSED", p["trusted:scope"])
 		require.Equal(t, "403 ROUTE_FORBIDDEN", p["candidate:results"])
 		require.Equal(t, "CLOSED", p["candidate:fd-delegation"])
 		require.NotEqual(t, "CREATED", p["socket:af-inet"], "the syscall profile denies AF_INET sockets in the candidate container: %v", p)
 		require.NotEqual(t, "CREATED", p["socket:af-inet6"], "%v", p)
 		require.Equal(t, "CREATED", p["socket:af-unix"])
 		for k, v := range p {
-			if strings.HasPrefix(k, "connect:") && k != "connect:trusted.sock" {
+			if strings.HasPrefix(k, "connect:") && k != "connect:trusted" {
 				require.NotEqual(t, "CONNECTED", v, "%s", k)
 			}
 		}
