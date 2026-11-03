@@ -698,12 +698,6 @@ func closeOrContinue(ctx workflow.Context, q Queues, b Bounds, operationID, tena
 	return err
 }
 
-// closeLaunchAttempt is closeLaunchAttemptFrom from a fresh backoff, waiting
-// on Control's obligations. Nothing calls it.
-func closeLaunchAttempt(ctx workflow.Context, q Queues, b Bounds, attempt activities.AttemptRef, launched bool, commandID, outcome, cleanup, failureCode string) error {
-	return closeLaunchAttemptFrom(ctx, q, b, attempt, launched, commandID, outcome, cleanup, failureCode, 0, true)
-}
-
 // closeLaunchAttemptFrom delivers the close of an attempt through
 // closeAttemptFrom (resume and wait are its start and wait), keeping it for
 // the recovery when Control no longer knows the attempt of a launch this run

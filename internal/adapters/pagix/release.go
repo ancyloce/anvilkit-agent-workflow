@@ -1,7 +1,6 @@
 package pagix
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -448,21 +447,4 @@ func (d *Double) QueryActivation(ctx context.Context, effectID string) (activiti
 	var res activities.ActivationResult
 	ok, err := d.readJSON(filepath.Join(d.dir, "activations", safe(effectID)+".json"), &res)
 	return res, ok, err
-}
-
-// SetCatalogRevision moves the catalog's revision (tests: a concurrent
-// activation by another release).
-func (d *Double) SetCatalogRevision(revision uint64) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	doc, err := d.readCatalog()
-	if err != nil {
-		return err
-	}
-	doc.Revision = strconv.FormatUint(revision, 10)
-	raw, err := json.Marshal(doc)
-	if err != nil {
-		return err
-	}
-	return writeFileAtomic(filepath.Join(d.originDir(), "catalog.json"), bytes.TrimSpace(raw), 0o644)
 }
