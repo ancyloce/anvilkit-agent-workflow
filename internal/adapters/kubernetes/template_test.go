@@ -157,14 +157,24 @@ func TestHarnessSidecarIdentityVolume(t *testing.T) {
 }
 
 // P0.8: a profile's state is enforced before the environment's allowlist:
-// disabled everywhere, development only behind the worker's guard.
+// disabled everywhere, development only behind the worker's guard, enabled
+// wherever the environment lists it (validator-source-v1 since DEC-044).
 func TestProfileStateIsEnforced(t *testing.T) {
+	disabled, err := jobschema.ProfileByID("preview-build-v1")
+	require.NoError(t, err)
+	require.Equal(t, jobschema.StateDisabled, disabled.State)
+	_, err = k8s.NewWithClient(fake.NewClientset(), namespace, harnessOptions("preview-build-v1")).CreateJob(context.Background(), sourceInput(t, "preview-build-v1"))
+	require.Equal(t, "PROFILE_DISABLED", activities.RefusalCode(err))
+
 	source, err := jobschema.ProfileByID("validator-source-v1")
 	require.NoError(t, err)
-	require.Equal(t, jobschema.StateDisabled, source.State)
+	require.Equal(t, jobschema.StateEnabled, source.State)
 	in := sourceInput(t, "validator-source-v1")
-	_, err = k8s.NewWithClient(fake.NewClientset(), namespace, harnessOptions("validator-source-v1")).CreateJob(context.Background(), in)
-	require.Equal(t, "PROFILE_DISABLED", activities.RefusalCode(err))
+	_, err = k8s.NewWithClient(fake.NewClientset(), namespace, harnessOptions("validator-source-dev-v1")).CreateJob(context.Background(), in)
+	require.Equal(t, "PROFILE_UNQUALIFIED", activities.RefusalCode(err), "enabled, but not listed by this environment")
+	enabled, err := k8s.NewWithClient(fake.NewClientset(), namespace, harnessOptions("validator-source-v1")).CreateJob(context.Background(), in)
+	require.NoError(t, err)
+	require.Equal(t, 1, enabled.Request, "the enabled profile is created where the environment lists it")
 
 	dev := sourceInput(t, "validator-source-dev-v1")
 	noGuard := harnessOptions("validator-source-dev-v1")
@@ -423,15 +433,24 @@ func TestSidecarRelayPlacements(t *testing.T) {
 // development team twin runs only behind the development guard
 // (PROFILE_UNQUALIFIED outside it).
 func TestTeamAndPreviewProfileStates(t *testing.T) {
-	for _, id := range []string{"codegen-team-v1", "preview-build-v1"} {
-		p, err := jobschema.ProfileByID(id)
-		require.NoError(t, err)
-		require.Equal(t, jobschema.StateDisabled, p.State)
-		require.Equal(t, "gvisor", p.RuntimeClass)
-		require.True(t, p.CandidateCode)
-		_, err = k8s.NewWithClient(fake.NewClientset(), namespace, harnessOptions(id)).CreateJob(context.Background(), sourceInput(t, id))
-		require.Equal(t, "PROFILE_DISABLED", activities.RefusalCode(err), id)
-	}
+	// preview-build-v1 stays disabled; codegen-team-v1 is enabled since
+	// DEC-044 (2026-11-03) and still pins the gVisor RuntimeClass.
+	preview, err := jobschema.ProfileByID("preview-build-v1")
+	require.NoError(t, err)
+	require.Equal(t, jobschema.StateDisabled, preview.State)
+	require.Equal(t, "gvisor", preview.RuntimeClass)
+	require.True(t, preview.CandidateCode)
+	_, err = k8s.NewWithClient(fake.NewClientset(), namespace, harnessOptions("preview-build-v1")).CreateJob(context.Background(), sourceInput(t, "preview-build-v1"))
+	require.Equal(t, "PROFILE_DISABLED", activities.RefusalCode(err))
+
+	team, err := jobschema.ProfileByID("codegen-team-v1")
+	require.NoError(t, err)
+	require.Equal(t, jobschema.StateEnabled, team.State)
+	require.Equal(t, "gvisor", team.RuntimeClass)
+	require.True(t, team.CandidateCode)
+	job, err := k8s.NewWithClient(fake.NewClientset(), namespace, harnessOptions("codegen-team-v1")).CreateJob(context.Background(), sourceInput(t, "codegen-team-v1"))
+	require.NoError(t, err)
+	require.Equal(t, 1, job.Request, "the enabled team profile is created where the environment lists it")
 	dev, err := jobschema.ProfileByID("codegen-team-dev-v1")
 	require.NoError(t, err)
 	require.Equal(t, jobschema.StateDevelopment, dev.State)
