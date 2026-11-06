@@ -117,11 +117,18 @@ func newFakeProxy(t *testing.T) *fakeProxy {
 				_, _ = w.Write(rest.Bytes())
 				return
 			}
-			if f.fragment > 0 {
+			// The piece size is this request's, read once: the client returns at
+			// the done frame while this loop may still be writing, and the test
+			// then sets fragment for its next case. Re-reading the field there
+			// turned the loop into an endless empty write once it became 0, and
+			// the server's Close waited on it until the package timed out.
+			if step := f.fragment; step > 0 {
 				b := out.Bytes()
-				for i := 0; i < len(b); i += f.fragment {
-					end := min(i+f.fragment, len(b))
-					_, _ = w.Write(b[i:end])
+				for i := 0; i < len(b); i += step {
+					end := min(i+step, len(b))
+					if _, err := w.Write(b[i:end]); err != nil {
+						return // the client has gone
+					}
 					w.(http.Flusher).Flush()
 				}
 				return
