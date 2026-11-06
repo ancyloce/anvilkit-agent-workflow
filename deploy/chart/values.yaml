@@ -8,8 +8,9 @@
 
 image:
   repository: anvilkit-agent-workflow
-  # tag defaults to the chart's appVersion; digest, when set, pins the exact
-  # image (repository@sha256:...) and takes precedence over the tag.
+  # digest pins the exact image (repository@sha256:...) and is required
+  # outside development (RB-S10); the tag, defaulting to the chart's
+  # appVersion, renders only with development.enabled.
   tag: ""
   digest: ""
   pullPolicy: IfNotPresent
