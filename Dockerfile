@@ -21,7 +21,7 @@ RUN go build -trimpath -ldflags="-s -w" -o /out/anvilkit-agent-workflow ./cmd/an
 # the allowlisted ANVILKIT_WORKFLOW_* environment overrides; without
 # ANVILKIT_WORKFLOW_KUBECONFIG the launcher uses the Pod's ServiceAccount
 # identity. No token, kubeconfig or credential is baked into the image.
-FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+FROM alpine:3.24@sha256:3f4d6b32e26703c6082839234f43769d5046b3ac7c910033911d1e71d8cd630a
 COPY --from=build /out/anvilkit-agent-workflow /usr/local/bin/anvilkit-agent-workflow
 COPY config.yaml /etc/anvilkit/anvilkit-agent-workflow/config.yaml
 ENV ANVILKIT_WORKFLOW_CONFIG=/etc/anvilkit/anvilkit-agent-workflow/config.yaml
