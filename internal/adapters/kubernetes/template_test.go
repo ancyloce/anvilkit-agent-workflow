@@ -352,8 +352,10 @@ func TestFixtureTemplateUnchanged(t *testing.T) {
 	require.Nil(t, spec.NodeSelector)
 }
 
-// AwaitOwner returns as soon as the Job's own Pod exists (running or not)
-// so the launcher can register it, and never on a duplicate Pod alone.
+// AwaitOwner returns once the Job's own Pod exists and its main container runs
+// an observed image (RB-S07), so the launcher can register it with the digest
+// that runs; never on a duplicate Pod alone, nor on an owner whose image the
+// node has not reported yet.
 func TestAwaitOwnerReturnsTheJobsOwnPodWhileRunning(t *testing.T) {
 	job, _ := runningLaunch("att_1")
 	cs := fake.NewClientset(job)
@@ -384,12 +386,23 @@ func TestAwaitOwnerReturnsTheJobsOwnPodWhileRunning(t *testing.T) {
 	require.NoError(t, err)
 	select {
 	case obs := <-done:
-		require.Equal(t, "own-uid", obs.Pods[0].PodUID, "the Job's own Pod is the owner, whatever its phase")
-		require.Equal(t, "pending", obs.Pods[0].Phase)
+		t.Fatalf("the wait ended before the owner's image was observed: %+v", obs)
+	case <-time.After(1500 * time.Millisecond):
+	}
+	digest := "sha256:" + strings.Repeat("c", 64)
+	own.Status = corev1.PodStatus{Phase: corev1.PodRunning, ContainerStatuses: []corev1.ContainerStatus{{
+		Name: "fixture", ImageID: "ghcr.io/ancyloce/anvilkit-fixture@" + digest, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
+	}}}
+	_, err = cs.CoreV1().Pods(namespace).UpdateStatus(ctx, own, metav1.UpdateOptions{})
+	require.NoError(t, err)
+	select {
+	case obs := <-done:
+		require.Equal(t, "own-uid", obs.Pods[0].PodUID, "the Job's own Pod is the owner")
+		require.Equal(t, digest, obs.Pods[0].ImageDigest, "the owner is reported with the digest its main container runs")
 		require.Len(t, obs.Pods, 2)
 		require.Empty(t, obs.Reason)
 	case <-time.After(5 * time.Second):
-		t.Fatal("AwaitOwner did not return once the Job's own Pod existed")
+		t.Fatal("AwaitOwner did not return once the owner's image was observed")
 	}
 }
 

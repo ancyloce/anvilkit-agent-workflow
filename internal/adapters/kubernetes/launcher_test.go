@@ -932,3 +932,30 @@ func TestLaunchSecretCreateFailureIsClassified(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, list.Items, "no Job without its secret")
 }
+
+// RB-S07: the observation carries the repository digest of the image the main
+// container runs, read from containerStatuses[].imageID, and nothing that is
+// not one: a bare image ID is the configuration digest, not the pinned digest.
+func TestObservationReadsOnlyARepositoryDigest(t *testing.T) {
+	digest := "sha256:" + strings.Repeat("e", 64)
+	for imageID, want := range map[string]string{
+		"ghcr.io/ancyloce/anvilkit-fixture@" + digest:                   digest, // containerd
+		"docker-pullable://ghcr.io/ancyloce/anvilkit-fixture@" + digest: digest,
+		digest: "", // a bare image ID (the configuration digest)
+		"ghcr.io/ancyloce/anvilkit-fixture@sha256:abc": "",
+		"": "",
+	} {
+		job, _ := runningLaunch("att_1")
+		own := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: launch.LaunchKey + "-own", Namespace: namespace, Labels: labels("att_1"), UID: types.UID("pod-own"),
+			OwnerReferences: []metav1.OwnerReference{{APIVersion: "batch/v1", Kind: "Job", Name: launch.LaunchKey, UID: job.UID, Controller: ptr.To(true)}}},
+			Status: corev1.PodStatus{Phase: corev1.PodSucceeded, ContainerStatuses: []corev1.ContainerStatus{{Name: "fixture", ImageID: imageID,
+				State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 0, Message: "{}"}}}}}}
+		l := k8s.NewWithClient(fake.NewClientset(job, own), namespace)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		obs, err := l.ObserveJob(ctx, activities.ObserveJobInput{Launch: launch, Deadline: time.Now().Add(time.Minute)}, func() {})
+		cancel()
+		require.NoError(t, err, imageID)
+		require.Len(t, obs.Pods, 1, imageID)
+		require.Equal(t, want, obs.Pods[0].ImageDigest, "imageID %q", imageID)
+	}
+}

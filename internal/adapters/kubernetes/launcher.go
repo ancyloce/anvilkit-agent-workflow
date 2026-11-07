@@ -14,9 +14,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptrace"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -466,12 +468,14 @@ func (l *Launcher) ObserveJob(ctx context.Context, in activities.ObserveJobInput
 }
 
 // AwaitOwner polls until the Job's physical owner (its first own Pod)
-// exists, so the caller can register the real Pod UID with Control while
-// the Pod runs: a harness profile's sidecar receives its execution scope
-// only from that registration. It returns the current observation as soon
-// as the owner is reported (whatever its phase), or when the Job is
-// already terminal, or when the deadline passes; it never deletes and
-// never ends the observation on a duplicate Pod.
+// exists and its main container runs an observed image, so the caller can
+// register the real Pod UID and image digest with Control while the Pod runs:
+// a harness profile's sidecar receives its execution scope only from that
+// registration. It returns the current observation as soon as the owner is
+// reported with its image digest (RB-S07), or when the Job is already
+// terminal, or when the deadline passes (an owner without an observed image by
+// then is reported as DeadlineExceeded, never registered); it never deletes
+// and never ends the observation on a duplicate Pod.
 func (l *Launcher) AwaitOwner(ctx context.Context, in activities.ObserveJobInput, heartbeat func()) (activities.JobObservation, error) {
 	jobs := l.client.BatchV1().Jobs(l.namespace)
 	pods := l.client.CoreV1().Pods(l.namespace)
@@ -500,10 +504,13 @@ func (l *Launcher) AwaitOwner(ctx context.Context, in activities.ObserveJobInput
 		}
 		owned := false
 		for i, pod := range podsInOwnerOrder(list.Items, job.UID) {
-			if i == 0 && ownedBy(pod, job.UID) {
+			obs.Pods = append(obs.Pods, observePod(pod))
+			// RB-S07: the owner is reported once its main container runs an
+			// observed image, so its registration carries what runs. The
+			// harness sidecar answers the supervisor SCOPE_UNAVAILABLE until then.
+			if i == 0 && ownedBy(pod, job.UID) && obs.Pods[0].ImageDigest != "" {
 				owned = true
 			}
-			obs.Pods = append(obs.Pods, observePod(pod))
 		}
 		if owned || obs.Reason != "" || time.Now().After(in.Deadline) {
 			if !owned && obs.Reason == "" {
@@ -643,6 +650,7 @@ func observePod(pod corev1.Pod) activities.PodObservation {
 		if cs.Name != containerFixture && cs.Name != containerSupervisor {
 			continue
 		}
+		po.ImageDigest = imageDigestOf(cs.ImageID)
 		if cs.State.Terminated != nil {
 			code := cs.State.Terminated.ExitCode
 			po.ExitCode = &code
@@ -655,6 +663,24 @@ func observePod(pod corev1.Pod) activities.PodObservation {
 		}
 	}
 	return po
+}
+
+var repositoryDigest = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+
+// imageDigestOf is the repository digest in a container's imageID
+// ("<repository>@sha256:<hex>", with or without a "<scheme>://" prefix), the
+// digest the node pulled for the pinned reference (RB-S07). An imageID without
+// a repository digest (a bare image ID, which is the configuration digest) is
+// no evidence of the pinned digest: it yields "".
+func imageDigestOf(imageID string) string {
+	at := strings.LastIndex(imageID, "@")
+	if at < 0 {
+		return ""
+	}
+	if d := imageID[at+1:]; repositoryDigest.MatchString(d) {
+		return d
+	}
+	return ""
 }
 
 func phaseOf(pod corev1.Pod) string {
