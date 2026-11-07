@@ -127,8 +127,13 @@ type ObserveJobInput struct {
 // PodObservation is trusted backend evidence: identities and states come
 // from the Kubernetes API, never from the candidate.
 type PodObservation struct {
-	PodUID             string
-	Phase              string // pending | running | succeeded | failed | unknown
+	PodUID string
+	Phase  string // pending | running | succeeded | failed | unknown
+	// ImageDigest is the digest of the image the main container (fixture or
+	// supervisor) runs, from status.containerStatuses[].imageID; empty until
+	// that container exists or when the backend reports no repository digest
+	// (RB-S07).
+	ImageDigest        string
 	ExitCode           *int32
 	Reason             string
 	TerminationMessage string
@@ -147,6 +152,10 @@ type RegisterInstanceInput struct {
 	CommandID string
 	JobUID    string
 	PodUID    string
+	// ImageDigest is the digest the backend observed the Pod running (RB-S07);
+	// Control refuses one that differs from the launch's. Histories recorded
+	// before the observed-image-registration version carry the launched digest.
+	ImageDigest string
 }
 
 type InstanceRef struct {
