@@ -119,7 +119,7 @@ func (c *Client) PrepareLaunch(ctx context.Context, in activities.PrepareLaunchI
 func (c *Client) RegisterInstance(ctx context.Context, in activities.RegisterInstanceInput) (activities.InstanceRef, error) {
 	resp, err := c.exec.RegisterInstance(ctx, &controlv1.RegisterInstanceRequest{
 		Command: c.command(in.Attempt.TenantID, in.CommandID, in), AttemptId: in.Attempt.AttemptID, LaunchKey: in.Launch.LaunchKey,
-		Backend: c.backend, JobUid: in.JobUID, PodUid: in.PodUID, ImageDigest: in.Launch.ImageDigest,
+		Backend: c.backend, JobUid: in.JobUID, PodUid: in.PodUID, ImageDigest: in.ImageDigest,
 	})
 	if err != nil {
 		return activities.InstanceRef{}, nonRetryable(err)
