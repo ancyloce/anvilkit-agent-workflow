@@ -159,7 +159,11 @@ func runPod(t *testing.T, cs *fake.Clientset, jobUID string, request int, podUID
 			Annotations:     map[string]string{"anvilkit.io/create-request": strconv.Itoa(request)},
 			OwnerReferences: []metav1.OwnerReference{{APIVersion: "batch/v1", Kind: "Job", Name: launch.LaunchKey, UID: types.UID(jobUID), Controller: ptr.To(true)}},
 		},
-		Status: corev1.PodStatus{Phase: corev1.PodRunning},
+		// The fixture container runs the launched image (RB-S07: the observation
+		// reads the digest from imageID).
+		Status: corev1.PodStatus{Phase: corev1.PodRunning, ContainerStatuses: []corev1.ContainerStatus{{
+			Name: "fixture", ImageID: "anvilkit-dev-registry:5000/busybox@" + launch.ImageDigest, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
+		}}},
 	}
 	_, err := cs.CoreV1().Pods(testNamespace).Create(context.Background(), pod, metav1.CreateOptions{})
 	require.NoError(t, err)

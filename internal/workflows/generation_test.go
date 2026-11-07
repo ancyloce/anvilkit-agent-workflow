@@ -178,10 +178,10 @@ func generationEnvWith(t *testing.T, b workflows.Bounds, lb workflows.LifecycleB
 	})
 	exit := int32(0)
 	env.OnActivity(activities.NameAwaitJobOwner, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.ObserveJobInput) (activities.JobObservation, error) {
-		return activities.JobObservation{JobUID: "job-" + in.Launch.AttemptID, Pods: []activities.PodObservation{{PodUID: "pod-" + in.Launch.AttemptID, Phase: "running"}}}, nil
+		return activities.JobObservation{JobUID: "job-" + in.Launch.AttemptID, Pods: []activities.PodObservation{{ImageDigest: in.Launch.ImageDigest, PodUID: "pod-" + in.Launch.AttemptID, Phase: "running"}}}, nil
 	})
 	env.OnActivity(activities.NameObserveJob, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.ObserveJobInput) (activities.JobObservation, error) {
-		return activities.JobObservation{JobUID: "job-" + in.Launch.AttemptID, Pods: []activities.PodObservation{{PodUID: "pod-" + in.Launch.AttemptID, Phase: "succeeded", ExitCode: &exit}}}, nil
+		return activities.JobObservation{JobUID: "job-" + in.Launch.AttemptID, Pods: []activities.PodObservation{{ImageDigest: in.Launch.ImageDigest, PodUID: "pod-" + in.Launch.AttemptID, Phase: "succeeded", ExitCode: &exit}}}, nil
 	})
 	env.OnActivity(activities.NameRegisterInstance, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.RegisterInstanceInput) (activities.InstanceRef, error) {
 		return activities.InstanceRef{InstanceID: "inst-" + in.Attempt.AttemptID, Current: true}, nil

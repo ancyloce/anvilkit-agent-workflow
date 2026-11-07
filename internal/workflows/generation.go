@@ -736,6 +736,7 @@ func runJobStep(ctx workflow.Context, q Queues, b Bounds, spec stepSpec, state *
 	// it runs (P20: the first in-cluster harness Job of this step); the
 	// terminal observation below registers every Pod again under the same
 	// command identity, which Control answers with the same instance.
+	observed := observedImageRegistration(ctx)
 	if workflow.GetVersion(ctx, "job-owner-registration", workflow.DefaultVersion, 1) == 1 {
 		var owner activities.JobObservation
 		if err := workflow.ExecuteActivity(observeCtx, activities.NameAwaitJobOwner, activities.ObserveJobInput{Launch: launch, Deadline: deadline}).Get(ctx, &owner); err != nil {
@@ -744,10 +745,11 @@ func runJobStep(ctx workflow.Context, q Queues, b Bounds, spec stepSpec, state *
 		}
 		// Only an owner the launcher reported as such (not a terminal or
 		// expired wait, whose first Pod may be a duplicate) is registered here.
-		if owner.Reason == "" && len(owner.Pods) > 0 && owner.Pods[0].PodUID != "" {
+		if owner.Reason == "" && len(owner.Pods) > 0 && owner.Pods[0].PodUID != "" && registrable(observed, owner.Pods[0]) {
 			pod := owner.Pods[0]
 			if err := workflow.ExecuteActivity(business, activities.NameRegisterInstance, activities.RegisterInstanceInput{
 				Attempt: attempt, Launch: launch, CommandID: attempt.AttemptID + ":register:" + pod.PodUID, JobUID: owner.JobUID, PodUID: pod.PodUID,
+				ImageDigest: registrationDigest(observed, launch, pod),
 			}).Get(ctx, nil); err != nil {
 				outcome, failureCode = settle(ctx, err, "OBSERVER_FAILED")
 				return stage, attempt, current, failureCode
@@ -760,9 +762,13 @@ func runJobStep(ctx workflow.Context, q Queues, b Bounds, spec stepSpec, state *
 		return stage, attempt, current, failureCode
 	}
 	for i, pod := range observation.Pods {
+		if !registrable(observed, pod) {
+			continue // never started its main container: nothing to claim (RB-S07)
+		}
 		var inst activities.InstanceRef
 		if err := workflow.ExecuteActivity(business, activities.NameRegisterInstance, activities.RegisterInstanceInput{
 			Attempt: attempt, Launch: launch, CommandID: attempt.AttemptID + ":register:" + pod.PodUID, JobUID: observation.JobUID, PodUID: pod.PodUID,
+			ImageDigest: registrationDigest(observed, launch, pod),
 		}).Get(ctx, &inst); err != nil {
 			outcome, failureCode = settle(ctx, err, "OBSERVER_FAILED")
 			return stage, attempt, current, failureCode

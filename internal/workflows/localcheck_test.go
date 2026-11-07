@@ -3,7 +3,9 @@ package workflows_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -68,7 +70,7 @@ func TestLocalCheckCertifiedPath(t *testing.T) {
 	})).Return(launch, nil)
 	env.OnActivity(activities.NameCreateJob, mock.Anything, mock.Anything).Return(activities.JobRef{JobUID: "job-1"}, nil)
 	env.OnActivity(activities.NameObserveJob, mock.Anything, mock.Anything).Return(activities.JobObservation{
-		JobUID: "job-1", Pods: []activities.PodObservation{{PodUID: "pod-1", Phase: "succeeded", ExitCode: &exit, TerminationMessage: "{}"}},
+		JobUID: "job-1", Pods: []activities.PodObservation{{ImageDigest: launch.ImageDigest, PodUID: "pod-1", Phase: "succeeded", ExitCode: &exit, TerminationMessage: "{}"}},
 	}, nil)
 	env.OnActivity(activities.NameRegisterInstance, mock.Anything, mock.MatchedBy(func(in activities.RegisterInstanceInput) bool {
 		return in.PodUID == "pod-1" && in.CommandID == "att_1:register:pod-1"
@@ -138,7 +140,7 @@ func TestLocalCheckInvalidVerdictFailsTheAttempt(t *testing.T) {
 	env.OnActivity(activities.NameOpenAttempt, mock.Anything, mock.Anything).Return(attempt, nil)
 	env.OnActivity(activities.NamePrepareLaunch, mock.Anything, mock.Anything).Return(launch, nil)
 	env.OnActivity(activities.NameCreateJob, mock.Anything, mock.Anything).Return(activities.JobRef{JobUID: "job-1"}, nil)
-	env.OnActivity(activities.NameObserveJob, mock.Anything, mock.Anything).Return(activities.JobObservation{JobUID: "job-1", Pods: []activities.PodObservation{{PodUID: "pod-1", Phase: "failed", ExitCode: &exit}}}, nil)
+	env.OnActivity(activities.NameObserveJob, mock.Anything, mock.Anything).Return(activities.JobObservation{JobUID: "job-1", Pods: []activities.PodObservation{{ImageDigest: launch.ImageDigest, PodUID: "pod-1", Phase: "failed", ExitCode: &exit}}}, nil)
 	env.OnActivity(activities.NameRegisterInstance, mock.Anything, mock.Anything).Return(activities.InstanceRef{InstanceID: "inst-1", Current: true}, nil)
 	env.OnActivity(activities.NameObserveInstance, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity(activities.NameVerifyResult, mock.Anything, mock.Anything).Return(activities.Verdict{Verdict: "invalid", FailureCode: "CANDIDATE_TEST_FAILED", Manifest: []byte("{}"), ResultDigest: "sha256:bb"}, nil)
@@ -161,7 +163,7 @@ func certifiedRun(env *testsuite.TestWorkflowEnvironment) {
 	env.OnActivity(activities.NamePrepareLaunch, mock.Anything, mock.Anything).Return(launch, nil)
 	env.OnActivity(activities.NameCreateJob, mock.Anything, mock.Anything).Return(activities.JobRef{JobUID: "job-1"}, nil)
 	env.OnActivity(activities.NameObserveJob, mock.Anything, mock.Anything).Return(activities.JobObservation{
-		JobUID: "job-1", Pods: []activities.PodObservation{{PodUID: "pod-1", Phase: "succeeded", ExitCode: &exit, TerminationMessage: "{}"}},
+		JobUID: "job-1", Pods: []activities.PodObservation{{ImageDigest: launch.ImageDigest, PodUID: "pod-1", Phase: "succeeded", ExitCode: &exit, TerminationMessage: "{}"}},
 	}, nil)
 	env.OnActivity(activities.NameRegisterInstance, mock.Anything, mock.Anything).Return(activities.InstanceRef{InstanceID: "inst-1", Current: true}, nil)
 	env.OnActivity(activities.NameObserveInstance, mock.Anything, mock.Anything).Return(nil)
@@ -203,7 +205,7 @@ func launchLostToARestore(env *testsuite.TestWorkflowEnvironment) {
 	env.OnActivity(activities.NamePrepareLaunch, mock.Anything, mock.Anything).Return(launch, nil)
 	env.OnActivity(activities.NameCreateJob, mock.Anything, mock.Anything).Return(activities.JobRef{JobUID: "job-1"}, nil)
 	env.OnActivity(activities.NameObserveJob, mock.Anything, mock.Anything).Return(activities.JobObservation{
-		JobUID: "job-1", Pods: []activities.PodObservation{{PodUID: "pod-1", Phase: "succeeded", ExitCode: &exit, TerminationMessage: "{}"}},
+		JobUID: "job-1", Pods: []activities.PodObservation{{ImageDigest: launch.ImageDigest, PodUID: "pod-1", Phase: "succeeded", ExitCode: &exit, TerminationMessage: "{}"}},
 	}, nil)
 	env.OnActivity(activities.NameRegisterInstance, mock.Anything, mock.Anything).Return(activities.InstanceRef{}, restoredBeforeTheAttempt())
 	env.OnActivity(activities.NameDeleteJob, mock.Anything, mock.Anything).Return(activities.LaunchObservation{}, nil)
@@ -357,7 +359,7 @@ func TestLocalCheckRefusedStageAfterDeadlineSettlesWithVerdict(t *testing.T) {
 	env.OnActivity(activities.NameOpenAttempt, mock.Anything, mock.Anything).Return(attempt, nil)
 	env.OnActivity(activities.NamePrepareLaunch, mock.Anything, mock.Anything).Return(launch, nil)
 	env.OnActivity(activities.NameCreateJob, mock.Anything, mock.Anything).Return(activities.JobRef{JobUID: "job-1"}, nil)
-	env.OnActivity(activities.NameObserveJob, mock.Anything, mock.Anything).Return(activities.JobObservation{JobUID: "job-1", Reason: "DeadlineExceeded", Pods: []activities.PodObservation{{PodUID: "pod-1", Phase: "failed"}}}, nil)
+	env.OnActivity(activities.NameObserveJob, mock.Anything, mock.Anything).Return(activities.JobObservation{JobUID: "job-1", Reason: "DeadlineExceeded", Pods: []activities.PodObservation{{ImageDigest: launch.ImageDigest, PodUID: "pod-1", Phase: "failed"}}}, nil)
 	env.OnActivity(activities.NameRegisterInstance, mock.Anything, mock.Anything).Return(activities.InstanceRef{InstanceID: "inst-1", Current: true}, nil)
 	env.OnActivity(activities.NameObserveInstance, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity(activities.NameVerifyResult, mock.Anything, mock.Anything).Return(activities.Verdict{Verdict: "infrastructure_failed", FailureCode: "DEADLINE_EXCEEDED", Manifest: []byte("{}"), ResultDigest: "sha256:cc"}, nil)
@@ -397,7 +399,7 @@ func TestLocalCheckCancelDuringUnresolvedCreateCleansUpUnderTheOriginalLaunch(t 
 		return in.Launch.LaunchKey == "lc-abc" && in.SettleWindow == bounds.UnresolvedSettleWindow
 	})).Return(func(context.Context, activities.ObserveLaunchInput) (activities.LaunchObservation, error) {
 		sequence = append(sequence, "observe")
-		return activities.LaunchObservation{JobUID: "job-late", Pods: []activities.PodObservation{{PodUID: "pod-late", Phase: "running"}}, Requests: []int{1}}, nil
+		return activities.LaunchObservation{JobUID: "job-late", Pods: []activities.PodObservation{{ImageDigest: launch.ImageDigest, PodUID: "pod-late", Phase: "running"}}, Requests: []int{1}}, nil
 	})
 	env.OnActivity(activities.NameRegisterInstance, mock.Anything, mock.MatchedBy(func(in activities.RegisterInstanceInput) bool {
 		return in.CommandID == "att_1:register:pod-late" && in.JobUID == "job-late" && in.Launch.LaunchKey == "lc-abc" && in.Attempt.AttemptID == "att_1"
@@ -463,7 +465,7 @@ func TestLocalCheckUnresolvedCreateCommittingAfterTheWindowSettlesOnlyWithEviden
 		if observations < 4 { // the first round (2 attempts) and one reconciliation attempt see nothing
 			return activities.LaunchObservation{}, errors.New("job lc-abc create unresolved: neither the Job nor a Pod was observed within 1m0s, so the create is not known to have finished; cleanup stays unknown")
 		}
-		return activities.LaunchObservation{JobUID: "job-late", Pods: []activities.PodObservation{{PodUID: "pod-late", Phase: "succeeded"}}, Requests: []int{1}}, nil
+		return activities.LaunchObservation{JobUID: "job-late", Pods: []activities.PodObservation{{ImageDigest: launch.ImageDigest, PodUID: "pod-late", Phase: "succeeded"}}, Requests: []int{1}}, nil
 	})
 	env.OnActivity(activities.NameRegisterInstance, mock.Anything, mock.MatchedBy(func(in activities.RegisterInstanceInput) bool {
 		return in.CommandID == "att_1:register:pod-late" && in.JobUID == "job-late"
@@ -617,7 +619,7 @@ func TestLocalCheckUnansweredCreateRetriedUnderTheSameKeyKeepsCleanupUnknownUnti
 		return activities.JobRef{JobUID: "job-b", Request: 2}, nil // B created the Job first
 	})
 	env.OnActivity(activities.NameObserveJob, mock.Anything, mock.Anything).Return(activities.JobObservation{
-		JobUID: "job-b", Pods: []activities.PodObservation{{PodUID: "pod-b", Phase: "succeeded", ExitCode: &exit, TerminationMessage: "{}"}},
+		JobUID: "job-b", Pods: []activities.PodObservation{{ImageDigest: launch.ImageDigest, PodUID: "pod-b", Phase: "succeeded", ExitCode: &exit, TerminationMessage: "{}"}},
 	}, nil)
 	var sequence []string
 	env.OnActivity(activities.NameRegisterInstance, mock.Anything, mock.MatchedBy(func(in activities.RegisterInstanceInput) bool {
@@ -637,12 +639,12 @@ func TestLocalCheckUnansweredCreateRetriedUnderTheSameKeyKeepsCleanupUnknownUnti
 		sequence = append(sequence, "observe")
 		switch {
 		case observations == 1: // B's Job is still there: evidence for B, none for A
-			return activities.LaunchObservation{JobUID: "job-b", Pods: []activities.PodObservation{{PodUID: "pod-b", Phase: "succeeded"}}, Requests: []int{2}}, nil
+			return activities.LaunchObservation{JobUID: "job-b", Pods: []activities.PodObservation{{ImageDigest: launch.ImageDigest, PodUID: "pod-b", Phase: "succeeded"}}, Requests: []int{2}}, nil
 		case observations <= 3: // B is gone and A has not landed within the window (one round, two attempts)
 			return activities.LaunchObservation{}, errors.New("job lc-abc create unresolved: neither the Job nor a Pod was observed within 1m0s, so the create is not known to have finished; cleanup stays unknown")
 		}
 		// A committed after B's Job was deleted: the Job reappeared under the launch key.
-		return activities.LaunchObservation{JobUID: "job-a", Pods: []activities.PodObservation{{PodUID: "pod-a", Phase: "running"}}, Requests: []int{1}}, nil
+		return activities.LaunchObservation{JobUID: "job-a", Pods: []activities.PodObservation{{ImageDigest: launch.ImageDigest, PodUID: "pod-a", Phase: "running"}}, Requests: []int{1}}, nil
 	})
 	var deletesUnaccounted [][]int
 	env.OnActivity(activities.NameDeleteJob, mock.Anything, mock.MatchedBy(func(in activities.DeleteJobInput) bool {
@@ -705,7 +707,7 @@ func TestLocalCheckDeleteStopsAtTheObjectOfAnUnaccountedRequest(t *testing.T) {
 		return activities.JobRef{JobUID: "job-b", Request: 2}, nil
 	})
 	env.OnActivity(activities.NameObserveJob, mock.Anything, mock.Anything).Return(activities.JobObservation{
-		JobUID: "job-b", Pods: []activities.PodObservation{{PodUID: "pod-b", Phase: "succeeded", ExitCode: &exit, TerminationMessage: "{}"}},
+		JobUID: "job-b", Pods: []activities.PodObservation{{ImageDigest: launch.ImageDigest, PodUID: "pod-b", Phase: "succeeded", ExitCode: &exit, TerminationMessage: "{}"}},
 	}, nil)
 	var sequence []string
 	env.OnActivity(activities.NameRegisterInstance, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.RegisterInstanceInput) (activities.InstanceRef, error) {
@@ -717,7 +719,7 @@ func TestLocalCheckDeleteStopsAtTheObjectOfAnUnaccountedRequest(t *testing.T) {
 	env.OnActivity(activities.NameAcceptResult, mock.Anything, mock.Anything).Return(activities.StageRef{StageID: "stg-1"}, nil)
 	env.OnActivity(activities.NameObserveLaunch, mock.Anything, mock.Anything).Return(func(context.Context, activities.ObserveLaunchInput) (activities.LaunchObservation, error) {
 		sequence = append(sequence, "observe")
-		return activities.LaunchObservation{JobUID: "job-b", Pods: []activities.PodObservation{{PodUID: "pod-b", Phase: "succeeded"}}, Requests: []int{2}}, nil
+		return activities.LaunchObservation{JobUID: "job-b", Pods: []activities.PodObservation{{ImageDigest: launch.ImageDigest, PodUID: "pod-b", Phase: "succeeded"}}, Requests: []int{2}}, nil
 	})
 	deletes := 0
 	env.OnActivity(activities.NameDeleteJob, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.DeleteJobInput) (activities.LaunchObservation, error) {
@@ -726,7 +728,7 @@ func TestLocalCheckDeleteStopsAtTheObjectOfAnUnaccountedRequest(t *testing.T) {
 		if deletes == 1 {
 			require.Equal(t, []int{1}, in.Unaccounted)
 			// B is going; A landed under the released name: reported, not deleted.
-			return activities.LaunchObservation{JobUID: "job-a", Pods: []activities.PodObservation{{PodUID: "pod-a", Phase: "running"}}, Requests: []int{1}}, nil
+			return activities.LaunchObservation{JobUID: "job-a", Pods: []activities.PodObservation{{ImageDigest: launch.ImageDigest, PodUID: "pod-a", Phase: "running"}}, Requests: []int{1}}, nil
 		}
 		require.Empty(t, in.Unaccounted, "A is accounted for before it is stopped")
 		return activities.LaunchObservation{}, nil
@@ -765,7 +767,7 @@ func TestLocalCheckUnansweredCreateNeverSeenFailsVisiblyAtTheBound(t *testing.T)
 		return activities.JobRef{JobUID: "job-b", Request: 2}, nil
 	})
 	env.OnActivity(activities.NameObserveJob, mock.Anything, mock.Anything).Return(activities.JobObservation{
-		JobUID: "job-b", Pods: []activities.PodObservation{{PodUID: "pod-b", Phase: "succeeded", ExitCode: &exit, TerminationMessage: "{}"}},
+		JobUID: "job-b", Pods: []activities.PodObservation{{ImageDigest: launch.ImageDigest, PodUID: "pod-b", Phase: "succeeded", ExitCode: &exit, TerminationMessage: "{}"}},
 	}, nil)
 	env.OnActivity(activities.NameRegisterInstance, mock.Anything, mock.Anything).Return(activities.InstanceRef{InstanceID: "inst-b", Current: true}, nil)
 	env.OnActivity(activities.NameObserveInstance, mock.Anything, mock.Anything).Return(nil)
@@ -775,7 +777,7 @@ func TestLocalCheckUnansweredCreateNeverSeenFailsVisiblyAtTheBound(t *testing.T)
 	env.OnActivity(activities.NameObserveLaunch, mock.Anything, mock.Anything).Return(func(context.Context, activities.ObserveLaunchInput) (activities.LaunchObservation, error) {
 		observations++
 		if observations == 1 {
-			return activities.LaunchObservation{JobUID: "job-b", Pods: []activities.PodObservation{{PodUID: "pod-b", Phase: "succeeded"}}, Requests: []int{2}}, nil
+			return activities.LaunchObservation{JobUID: "job-b", Pods: []activities.PodObservation{{ImageDigest: launch.ImageDigest, PodUID: "pod-b", Phase: "succeeded"}}, Requests: []int{2}}, nil
 		}
 		return activities.LaunchObservation{}, errors.New("job lc-abc create unresolved: neither the Job nor a Pod was observed within 1m0s, so the create is not known to have finished; cleanup stays unknown")
 	})
@@ -818,7 +820,7 @@ func unansweredThenRetried(env *testsuite.TestWorkflowEnvironment, requestOneEnd
 		return activities.JobRef{JobUID: "job-b", Request: 2}, nil
 	})
 	env.OnActivity(activities.NameObserveJob, mock.Anything, mock.Anything).Return(activities.JobObservation{
-		JobUID: "job-b", Pods: []activities.PodObservation{{PodUID: "pod-b", Phase: "succeeded", ExitCode: &exit, TerminationMessage: "{}"}},
+		JobUID: "job-b", Pods: []activities.PodObservation{{ImageDigest: launch.ImageDigest, PodUID: "pod-b", Phase: "succeeded", ExitCode: &exit, TerminationMessage: "{}"}},
 	}, nil)
 	env.OnActivity(activities.NameRegisterInstance, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.RegisterInstanceInput) (activities.InstanceRef, error) {
 		*sequence = append(*sequence, "register:"+in.PodUID)
@@ -896,7 +898,7 @@ func TestLocalCheckObjectOfAnExpiredRequestIsRecordedBeforeItIsStopped(t *testin
 		started := env.Now()
 		if slices.Contains(in.Unaccounted, 1) && !started.Before(requestOneEnded.Add(bounds.CreateRequestLifetime)) {
 			sequence = append(sequence, "delete:found-1")
-			return activities.LaunchObservation{JobUID: "job-a", Pods: []activities.PodObservation{{PodUID: "pod-a", Phase: "running"}}, Requests: []int{1}}, nil
+			return activities.LaunchObservation{JobUID: "job-a", Pods: []activities.PodObservation{{ImageDigest: launch.ImageDigest, PodUID: "pod-a", Phase: "running"}}, Requests: []int{1}}, nil
 		}
 		sequence = append(sequence, "delete")
 		return activities.LaunchObservation{}, nil
@@ -935,7 +937,7 @@ func TestLocalCheckNotCreatedRequestNeedsNoCleanupEvidence(t *testing.T) {
 		return activities.JobRef{JobUID: "job-1", Request: 2}, nil
 	})
 	env.OnActivity(activities.NameObserveJob, mock.Anything, mock.Anything).Return(activities.JobObservation{
-		JobUID: "job-1", Pods: []activities.PodObservation{{PodUID: "pod-1", Phase: "succeeded", ExitCode: &exit, TerminationMessage: "{}"}},
+		JobUID: "job-1", Pods: []activities.PodObservation{{ImageDigest: launch.ImageDigest, PodUID: "pod-1", Phase: "succeeded", ExitCode: &exit, TerminationMessage: "{}"}},
 	}, nil)
 	env.OnActivity(activities.NameRegisterInstance, mock.Anything, mock.Anything).Return(activities.InstanceRef{InstanceID: "inst-1", Current: true}, nil)
 	env.OnActivity(activities.NameObserveInstance, mock.Anything, mock.Anything).Return(nil)
@@ -1008,4 +1010,90 @@ func TestLocalCheckBoundsAreFrozenWithTheRun(t *testing.T) {
 	env.AssertCalled(t, activities.NamePrepareLaunch, mock.Anything, mock.MatchedBy(func(in activities.PrepareLaunchInput) bool {
 		return in.Deadline.Sub(env.Now()) <= 45*time.Second
 	}))
+}
+
+// RB-S07: the instance is registered with the image digest the backend
+// observed running, never the launched one. Control refuses a digest that
+// differs from the launch's (STALE_EXECUTION, domain.NewInstance), so a Pod
+// that ran another image fails the attempt instead of reaching a verdict.
+func TestLocalCheckRegistersTheObservedImageAndAMismatchIsRefused(t *testing.T) {
+	var ts testsuite.WorkflowTestSuite
+	env := ts.NewTestWorkflowEnvironment()
+	register(env)
+	exit := int32(0)
+	other := "sha256:" + strings.Repeat("d", 64)
+	env.OnActivity(activities.NameOpenAttempt, mock.Anything, mock.Anything).Return(attempt, nil)
+	env.OnActivity(activities.NamePrepareLaunch, mock.Anything, mock.Anything).Return(launch, nil)
+	env.OnActivity(activities.NameCreateJob, mock.Anything, mock.Anything).Return(activities.JobRef{JobUID: "job-1"}, nil)
+	env.OnActivity(activities.NameObserveJob, mock.Anything, mock.Anything).Return(activities.JobObservation{
+		JobUID: "job-1", Pods: []activities.PodObservation{{ImageDigest: other, PodUID: "pod-1", Phase: "succeeded", ExitCode: &exit, TerminationMessage: "{}"}},
+	}, nil)
+	var mu sync.Mutex
+	var registered []string
+	var closed activities.CloseAttemptInput
+	env.OnActivity(activities.NameRegisterInstance, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.RegisterInstanceInput) (activities.InstanceRef, error) {
+		mu.Lock()
+		registered = append(registered, in.ImageDigest)
+		mu.Unlock()
+		if in.ImageDigest != in.Launch.ImageDigest { // Control's rule
+			return activities.InstanceRef{}, activities.Refused("STALE_EXECUTION", fmt.Errorf("observed image %s differs from launched %s", in.ImageDigest, in.Launch.ImageDigest))
+		}
+		return activities.InstanceRef{InstanceID: "inst-1", Current: true}, nil
+	})
+	env.OnActivity(activities.NameDeleteJob, mock.Anything, mock.Anything).Return(activities.LaunchObservation{}, nil)
+	env.OnActivity(activities.NameCloseAttempt, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.CloseAttemptInput) (activities.CloseResult, error) {
+		mu.Lock()
+		closed = in
+		mu.Unlock()
+		return activities.CloseResult{Lifecycle: "failed"}, nil
+	})
+
+	env.ExecuteWorkflow(workflows.LocalCheckWorkflowName, input)
+	require.True(t, env.IsWorkflowCompleted())
+	mu.Lock()
+	defer mu.Unlock()
+	require.Equal(t, []string{other}, registered, "the registration carries the observed digest, not the launched one")
+	require.Equal(t, "infrastructure_failed", closed.Outcome)
+	require.Equal(t, "STALE_EXECUTION", closed.FailureCode)
+	env.AssertNotCalled(t, activities.NameVerifyResult, mock.Anything, mock.Anything)
+	env.AssertNotCalled(t, activities.NameAcceptResult, mock.Anything, mock.Anything)
+}
+
+// RB-S07: a Pod whose main container never ran an observed image is not
+// registered at all (nothing is claimed about what it ran); without a current
+// instance the attempt fails as the observer's failure.
+func TestLocalCheckDoesNotRegisterAPodThatNeverRanItsImage(t *testing.T) {
+	var ts testsuite.WorkflowTestSuite
+	env := ts.NewTestWorkflowEnvironment()
+	register(env)
+	env.OnActivity(activities.NameOpenAttempt, mock.Anything, mock.Anything).Return(attempt, nil)
+	env.OnActivity(activities.NamePrepareLaunch, mock.Anything, mock.Anything).Return(launch, nil)
+	env.OnActivity(activities.NameCreateJob, mock.Anything, mock.Anything).Return(activities.JobRef{JobUID: "job-1"}, nil)
+	env.OnActivity(activities.NameObserveJob, mock.Anything, mock.Anything).Return(activities.JobObservation{
+		JobUID: "job-1", Reason: "BackoffLimitExceeded", Pods: []activities.PodObservation{{PodUID: "pod-1", Phase: "failed", Reason: "ImagePullBackOff"}},
+	}, nil)
+	var mu sync.Mutex
+	registrations := 0
+	var closed activities.CloseAttemptInput
+	env.OnActivity(activities.NameRegisterInstance, mock.Anything, mock.Anything).Return(func(context.Context, activities.RegisterInstanceInput) (activities.InstanceRef, error) {
+		mu.Lock()
+		registrations++
+		mu.Unlock()
+		return activities.InstanceRef{InstanceID: "inst-1", Current: true}, nil
+	})
+	env.OnActivity(activities.NameDeleteJob, mock.Anything, mock.Anything).Return(activities.LaunchObservation{}, nil)
+	env.OnActivity(activities.NameCloseAttempt, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.CloseAttemptInput) (activities.CloseResult, error) {
+		mu.Lock()
+		closed = in
+		mu.Unlock()
+		return activities.CloseResult{Lifecycle: "failed"}, nil
+	})
+
+	env.ExecuteWorkflow(workflows.LocalCheckWorkflowName, input)
+	require.True(t, env.IsWorkflowCompleted())
+	mu.Lock()
+	defer mu.Unlock()
+	require.Zero(t, registrations, "a Pod without an observed image is never registered")
+	require.Equal(t, "infrastructure_failed", closed.Outcome)
+	require.Equal(t, "OBSERVER_FAILED", closed.FailureCode)
 }

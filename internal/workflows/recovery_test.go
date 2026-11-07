@@ -131,7 +131,7 @@ func TestRecoveryEnumeratesCompletelyReconcilesAndReopens(t *testing.T) {
 	})
 	env.OnActivity(activities.NameObserveLaunch, mock.Anything, mock.MatchedBy(func(in activities.ObserveLaunchInput) bool {
 		return in.Launch.LaunchKey == "lc-op2" && in.Launch.LaunchID == "lch_2"
-	})).Return(activities.LaunchObservation{JobUID: "job-2", Pods: []activities.PodObservation{{PodUID: "pod-2", Phase: "succeeded"}}}, nil)
+	})).Return(activities.LaunchObservation{JobUID: "job-2", Pods: []activities.PodObservation{{ImageDigest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", PodUID: "pod-2", Phase: "succeeded"}}}, nil)
 	// Evidence first: the observation is recorded with Control before the
 	// delete, the delete stops only recorded objects, and the stop is
 	// confirmed against the recorded observation.
@@ -201,13 +201,13 @@ func TestRecoveryLaunchEvidenceBeforeDeletion(t *testing.T) {
 	// lc-late: request 1 is observed; the delete finds an object of
 	// request 2 that the run has not recorded and returns it unstopped.
 	env.OnActivity(activities.NameObserveLaunch, mock.Anything, mock.MatchedBy(func(in activities.ObserveLaunchInput) bool { return in.Launch.LaunchKey == "lc-late" })).
-		Return(activities.LaunchObservation{JobUID: "job-late-1", Pods: []activities.PodObservation{{PodUID: "pod-late-1", Phase: "failed"}}, Requests: []int{1}}, nil)
+		Return(activities.LaunchObservation{JobUID: "job-late-1", Pods: []activities.PodObservation{{ImageDigest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", PodUID: "pod-late-1", Phase: "failed"}}, Requests: []int{1}}, nil)
 	var deletes []activities.DeleteJobInput
 	env.OnActivity(activities.NameDeleteJob, mock.Anything, mock.MatchedBy(func(in activities.DeleteJobInput) bool { return in.Launch.LaunchKey == "lc-late" })).
 		Return(func(_ context.Context, in activities.DeleteJobInput) (activities.LaunchObservation, error) {
 			deletes = append(deletes, in)
 			if len(deletes) == 1 {
-				return activities.LaunchObservation{JobUID: "job-late-2", Pods: []activities.PodObservation{{PodUID: "pod-late-2", Phase: "running"}}, Requests: []int{2}}, nil
+				return activities.LaunchObservation{JobUID: "job-late-2", Pods: []activities.PodObservation{{ImageDigest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", PodUID: "pod-late-2", Phase: "running"}}, Requests: []int{2}}, nil
 			}
 			return activities.LaunchObservation{}, nil
 		})
@@ -286,7 +286,7 @@ func TestRecoveryResubmitsAPendingStopConfirmationAcrossRounds(t *testing.T) {
 		})
 		env.OnActivity(activities.NameObserveLaunch, mock.Anything, mock.Anything).Return(func(context.Context, activities.ObserveLaunchInput) (activities.LaunchObservation, error) {
 			observations.Add(1)
-			return activities.LaunchObservation{JobUID: "job-7", Pods: []activities.PodObservation{{PodUID: "pod-7", Phase: "running"}}, Requests: []int{1}}, nil
+			return activities.LaunchObservation{JobUID: "job-7", Pods: []activities.PodObservation{{ImageDigest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", PodUID: "pod-7", Phase: "running"}}, Requests: []int{1}}, nil
 		}).Maybe()
 		env.OnActivity(activities.NameDeleteJob, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.DeleteJobInput) (activities.LaunchObservation, error) {
 			deletes.Add(1)

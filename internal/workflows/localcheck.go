@@ -242,12 +242,18 @@ func LocalCheck(q Queues, b Bounds) func(ctx workflow.Context, in Input) error {
 		}
 
 		// Register every real Pod in order; the first becomes current, any
-		// duplicate is recorded but can never own the result.
+		// duplicate is recorded but can never own the result. A Pod whose
+		// image was never observed is not registered (RB-S07).
+		observed := observedImageRegistration(ctx)
 		var current activities.InstanceRef
 		for i, pod := range observation.Pods {
+			if !registrable(observed, pod) {
+				continue
+			}
 			var inst activities.InstanceRef
 			if err := workflow.ExecuteActivity(business, activities.NameRegisterInstance, activities.RegisterInstanceInput{
 				Attempt: attempt, Launch: launch, CommandID: attempt.AttemptID + ":register:" + pod.PodUID, JobUID: observation.JobUID, PodUID: pod.PodUID,
+				ImageDigest: registrationDigest(observed, launch, pod),
 			}).Get(ctx, &inst); err != nil {
 				outcome, failureCode = settle(ctx, err, "OBSERVER_FAILED")
 				return nil
@@ -524,10 +530,16 @@ func recordObservation(ctx workflow.Context, q Queues, b Bounds, attempt activit
 		TaskQueue: q.Business, StartToCloseTimeout: b.ControlActivityTimeout,
 		RetryPolicy: &temporal.RetryPolicy{InitialInterval: b.ControlRetryInitial, BackoffCoefficient: 2, MaximumInterval: b.ControlRetryMaxInterval, MaximumAttempts: b.ControlRetryMaxAttempts},
 	})
+	observed := observedImageRegistration(ctx)
 	for _, pod := range observation.Pods {
+		if !registrable(observed, pod) {
+			logger.Info("observed pod never ran its image: not registered", "launchKey", launch.LaunchKey, "podUid", pod.PodUID)
+			continue
+		}
 		var inst activities.InstanceRef
 		if err := workflow.ExecuteActivity(business, activities.NameRegisterInstance, activities.RegisterInstanceInput{
 			Attempt: attempt, Launch: launch, CommandID: attempt.AttemptID + ":register:" + pod.PodUID, JobUID: observation.JobUID, PodUID: pod.PodUID,
+			ImageDigest: registrationDigest(observed, launch, pod),
 		}).Get(ctx, &inst); err != nil {
 			logger.Error("observed pod not registered with Control", "launchKey", launch.LaunchKey, "podUid", pod.PodUID, "error", err)
 			continue
@@ -766,4 +778,27 @@ func settle(ctx workflow.Context, err error, code string) (string, string) {
 		code = refused
 	}
 	return "infrastructure_failed", code
+}
+
+// observedImageRegistration is the version gate of RB-S07: from version 1 a
+// Pod is registered with the image digest the backend observed it running,
+// and a Pod without one (its main container never started) is not registered.
+// Histories recorded before keep registering every Pod with the launched digest.
+func observedImageRegistration(ctx workflow.Context) bool {
+	return workflow.GetVersion(ctx, "observed-image-registration", workflow.DefaultVersion, 1) == 1
+}
+
+// registrable says whether a Pod is registered with Control.
+func registrable(observed bool, pod activities.PodObservation) bool {
+	return !observed || pod.ImageDigest != ""
+}
+
+// registrationDigest is the digest a Pod is registered with: the observed one,
+// which Control compares with the launch's, or, under histories recorded
+// before RB-S07, the launched one.
+func registrationDigest(observed bool, launch activities.LaunchRef, pod activities.PodObservation) string {
+	if observed {
+		return pod.ImageDigest
+	}
+	return launch.ImageDigest
 }

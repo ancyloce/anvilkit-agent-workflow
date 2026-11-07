@@ -230,11 +230,11 @@ func (s *recorder) activities() map[string]any {
 		},
 		"AwaitJobOwner": func(_ context.Context, raw json.RawMessage) (activities.JobObservation, error) {
 			in := decode(raw)
-			return activities.JobObservation{JobUID: "job-" + in.Launch.AttemptID, Pods: []activities.PodObservation{{PodUID: "pod-" + in.Launch.AttemptID, Phase: "running"}}}, nil
+			return activities.JobObservation{JobUID: "job-" + in.Launch.AttemptID, Pods: []activities.PodObservation{observedPod("pod-"+in.Launch.AttemptID, "running", nil)}}, nil
 		},
 		"ObserveJob": func(_ context.Context, raw json.RawMessage) (activities.JobObservation, error) {
 			in := decode(raw)
-			return activities.JobObservation{JobUID: "job-" + in.Launch.AttemptID, Pods: []activities.PodObservation{{PodUID: "pod-" + in.Launch.AttemptID, Phase: "succeeded", ExitCode: &exit}}}, nil
+			return activities.JobObservation{JobUID: "job-" + in.Launch.AttemptID, Pods: []activities.PodObservation{observedPod("pod-"+in.Launch.AttemptID, "succeeded", &exit)}}, nil
 		},
 		"RegisterInstance": func(_ context.Context, raw json.RawMessage) (activities.InstanceRef, error) {
 			in := decode(raw)
@@ -362,4 +362,15 @@ func (s *recorder) activities() map[string]any {
 			return activities.RecoveryStatus{Phase: "restricted", Unsettled: 1}, nil
 		},
 	}
+}
+
+// observedPod is one Pod observation running the stub launch's image
+// ("sha256:img"). It is built from JSON so this file still compiles against
+// Workflow code before RB-S07, whose PodObservation has no ImageDigest (the
+// member is then ignored).
+func observedPod(uid, phase string, exit *int32) activities.PodObservation {
+	var p activities.PodObservation
+	raw, _ := json.Marshal(map[string]any{"PodUID": uid, "Phase": phase, "ExitCode": exit, "ImageDigest": "sha256:img"})
+	_ = json.Unmarshal(raw, &p)
+	return p
 }
