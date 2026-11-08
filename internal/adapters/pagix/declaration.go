@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -15,7 +16,14 @@ import (
 // §2, P2.2): the integration owner records the upstream's actual API
 // version, the method and path of every port operation, the auth issuer
 // and audience, the idempotency and conditional-write headers and the body
-// bound. Nothing here is invented by this service: an operation the
+// bound, and, per DD-06 §2 (RB-A02), each operation's request and response
+// schema, conflict, rejection and not-sent statuses and idempotency scope
+// and retention, the receipt signatures and digests, pagination, rate and
+// time bounds and the maximum exposure. A capability counts as proven only
+// when the declaration lists it under verified with its evidence; every
+// other one is UNVERIFIED (Unverified), and the adapter treats it as
+// unproven: a declared not-sent status classifies an answer as proven
+// not-sent only when verified. Nothing here is invented by this service: an operation the
 // declaration omits is not supported and its port call refuses (a query
 // without upstream support leaves the original UNKNOWN for controlled
 // reconciliation, never a resend). The request and response bodies are the
@@ -35,13 +43,86 @@ type Declaration struct {
 	ConditionHeader   string               `json:"conditionHeader"`
 	MaxBodyBytes      int64                `json:"maxBodyBytes"`
 	Operations        map[string]Operation `json:"operations"`
+	// Receipts: how the upstream signs and digests a publication or
+	// activation receipt (the scheme names as the upstream states them).
+	Receipts *Receipts `json:"receipts,omitempty"`
+	// Pagination: the upstream's paging scheme for listing reads.
+	Pagination string `json:"pagination,omitempty"`
+	// Rate: the upstream's declared request rate and per-request time bound.
+	Rate *Rate `json:"rate,omitempty"`
+	// MaxExposure: what one mutation can commit at most, as the upstream
+	// states it (amount and unit).
+	MaxExposure string `json:"maxExposure,omitempty"`
+	// Verified lists the declaration-wide capabilities proven (Capabilities),
+	// Evidence where the proof is recorded.
+	Verified []string `json:"verified,omitempty"`
+	Evidence string   `json:"evidence,omitempty"`
 }
 
 // Operation is one declared HTTP exchange.
 type Operation struct {
 	Method string `json:"method"`
 	Path   string `json:"path"`
+	// RequestSchema and ResponseSchema name the upstream's schemas of the
+	// exchange (a JSON Pointer into its OpenAPI document).
+	RequestSchema  string `json:"requestSchema,omitempty"`
+	ResponseSchema string `json:"responseSchema,omitempty"`
+	// ConflictStatuses answer a conditional-write conflict (409 and 412 when
+	// none are declared); RejectionStatuses an explicit business rejection;
+	// NotSentStatuses an answer the upstream gives only when it did not act.
+	ConflictStatuses  []int `json:"conflictStatuses,omitempty"`
+	RejectionStatuses []int `json:"rejectionStatuses,omitempty"`
+	NotSentStatuses   []int `json:"notSentStatuses,omitempty"`
+	// Idempotency: the scope and retention of the idempotency key.
+	Idempotency *Idempotency `json:"idempotency,omitempty"`
+	// Verified lists this operation's proven capabilities
+	// (OperationCapabilities), Evidence where the proof is recorded.
+	Verified []string `json:"verified,omitempty"`
+	Evidence string   `json:"evidence,omitempty"`
 }
+
+// Idempotency is an operation's idempotency-key semantics.
+type Idempotency struct {
+	Scope            string `json:"scope"`
+	RetentionSeconds int64  `json:"retentionSeconds"`
+}
+
+// Receipts is the receipt signature and digest scheme.
+type Receipts struct {
+	Signature string `json:"signature"`
+	Digest    string `json:"digest"`
+}
+
+// Rate is the upstream's declared request rate and time bound.
+type Rate struct {
+	RequestsPerMinute int `json:"requestsPerMinute"`
+	TimeoutSeconds    int `json:"timeoutSeconds"`
+}
+
+// The capabilities a declaration can prove (DD-06 §2): per operation, and
+// declaration-wide. A capability is verified only with its record present
+// and evidence named; one successful example is not a duplicate,
+// concurrency or recovery proof.
+const (
+	CapSchema        = "schema"
+	CapConflict      = "conflict-statuses"
+	CapRejection     = "rejection-statuses"
+	CapNotSent       = "not-sent"
+	CapIdempotency   = "idempotency"
+	CapQueryIdentity = "query-by-identity"
+	CapAuth          = "auth"
+	CapReceipts      = "receipts"
+	CapPagination    = "pagination"
+	CapRate          = "rate"
+	CapExposure      = "exposure"
+)
+
+// OperationCapabilities and Capabilities are the provable capabilities in
+// a stable order.
+var (
+	OperationCapabilities = []string{CapSchema, CapConflict, CapRejection, CapNotSent, CapIdempotency, CapQueryIdentity}
+	Capabilities          = []string{CapAuth, CapReceipts, CapPagination, CapRate, CapExposure}
+)
 
 // The port operations a declaration may name.
 const (
@@ -139,11 +220,139 @@ func ParseDeclaration(raw []byte) (*Declaration, error) {
 			}
 		}
 	}
+	for name, op := range d.Operations {
+		if known[name] {
+			problems = append(problems, op.problems(name)...)
+		}
+	}
+	problems = append(problems, d.problems()...)
 	if len(problems) > 0 {
 		sort.Strings(problems)
 		return nil, fmt.Errorf("pagix declaration: %s", strings.Join(problems, "; "))
 	}
 	return &d, nil
+}
+
+// recorded reports whether the operation records what capability claims.
+func (o Operation) recorded(capability string) bool {
+	switch capability {
+	case CapSchema:
+		return o.RequestSchema != "" || o.ResponseSchema != ""
+	case CapConflict:
+		return len(o.ConflictStatuses) > 0
+	case CapRejection:
+		return len(o.RejectionStatuses) > 0
+	case CapNotSent:
+		return len(o.NotSentStatuses) > 0
+	case CapIdempotency:
+		return o.Idempotency != nil
+	case CapQueryIdentity:
+		return true
+	}
+	return false
+}
+
+// verifies reports whether the operation proves capability.
+func (o Operation) verifies(capability string) bool {
+	return slices.Contains(o.Verified, capability) && o.recorded(capability) && o.Evidence != ""
+}
+
+func (o Operation) problems(name string) []string {
+	var out []string
+	seen := map[int]string{}
+	for class, statuses := range map[string][]int{"conflictStatuses": o.ConflictStatuses, "rejectionStatuses": o.RejectionStatuses, "notSentStatuses": o.NotSentStatuses} {
+		for _, s := range statuses {
+			switch {
+			case s < 400 || s > 599:
+				out = append(out, fmt.Sprintf("%s: %s names %d, not a 4xx or 5xx status", name, class, s))
+			case class != "notSentStatuses" && s >= 500:
+				out = append(out, fmt.Sprintf("%s: %s names %d, not a 4xx status", name, class, s))
+			case seen[s] != "":
+				out = append(out, fmt.Sprintf("%s: status %d is in both %s and %s", name, s, seen[s], class))
+			}
+			if seen[s] == "" {
+				seen[s] = class
+			}
+		}
+	}
+	if i := o.Idempotency; i != nil && (i.Scope == "" || i.RetentionSeconds <= 0) {
+		out = append(out, name+": idempotency needs its scope and a positive retentionSeconds")
+	}
+	for _, c := range o.Verified {
+		switch {
+		case !slices.Contains(OperationCapabilities, c):
+			out = append(out, fmt.Sprintf("%s: verified names unknown capability %q", name, c))
+		case !o.recorded(c):
+			out = append(out, fmt.Sprintf("%s: verified %s without its record", name, c))
+		}
+	}
+	if len(o.Verified) > 0 && o.Evidence == "" {
+		out = append(out, name+": verified capabilities need their evidence")
+	}
+	return out
+}
+
+func (d *Declaration) recorded(capability string) bool {
+	switch capability {
+	case CapAuth:
+		return d.Auth.Issuer != "" && d.Auth.Audience != ""
+	case CapReceipts:
+		return d.Receipts != nil
+	case CapPagination:
+		return d.Pagination != ""
+	case CapRate:
+		return d.Rate != nil
+	case CapExposure:
+		return d.MaxExposure != ""
+	}
+	return false
+}
+
+func (d *Declaration) problems() []string {
+	var out []string
+	if r := d.Receipts; r != nil && (r.Signature == "" || r.Digest == "") {
+		out = append(out, "receipts need their signature and digest scheme")
+	}
+	if r := d.Rate; r != nil && (r.RequestsPerMinute <= 0 || r.TimeoutSeconds <= 0) {
+		out = append(out, "rate needs a positive requestsPerMinute and timeoutSeconds")
+	}
+	for _, c := range d.Verified {
+		switch {
+		case !slices.Contains(Capabilities, c):
+			out = append(out, fmt.Sprintf("verified names unknown capability %q", c))
+		case !d.recorded(c):
+			out = append(out, fmt.Sprintf("verified %s without its record", c))
+		}
+	}
+	if len(d.Verified) > 0 && d.Evidence == "" {
+		out = append(out, "verified capabilities need their evidence")
+	}
+	return out
+}
+
+// Unverified names every capability the declaration does not prove: the
+// declaration-wide ones, then each declared operation's ("<operation>:
+// <capability>"), in a stable order. An empty list is a fully proven
+// declaration.
+func (d *Declaration) Unverified() []string {
+	var out []string
+	for _, c := range Capabilities {
+		if !(slices.Contains(d.Verified, c) && d.recorded(c) && d.Evidence != "") {
+			out = append(out, c)
+		}
+	}
+	for _, name := range Operations {
+		op, ok := d.Operations[name]
+		if !ok {
+			continue
+		}
+		for _, c := range OperationCapabilities {
+			if !op.verifies(c) {
+				out = append(out, name+": "+c)
+			}
+		}
+	}
+	return out
 }
 
 // Missing names the operations the declaration does not support.

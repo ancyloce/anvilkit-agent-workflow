@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -96,6 +97,84 @@ func NewClient(decl *Declaration, o ClientOptions) (*Client, error) {
 // record of (404 on a query operation).
 var errNoRecord = errors.New("no record")
 
+// Class is what a failed exchange says about its effect (DD-06 §2): invalid
+// input, current denial, revision conflict, explicit business rejection,
+// capacity failure, proven not-sent, or sent-but-unknown.
+type Class string
+
+const (
+	ClassInvalid   Class = "invalid"
+	ClassDenied    Class = "denied"
+	ClassConflict  Class = "conflict"
+	ClassRejection Class = "rejection"
+	ClassCapacity  Class = "capacity"
+	ClassNotSent   Class = "not-sent"
+	ClassUnknown   Class = "unknown"
+)
+
+// ExchangeError is a failed exchange with its class. Status is the
+// upstream's answer, 0 when none arrived. Proven not-sent is only a request
+// that never left this process or a status the declaration verifies as
+// not-sent; an HTTP 500, a timeout or a lost connection is unknown. The
+// class informs reconciliation and reporting: the release Activities still
+// record every failed send UNKNOWN and never resend it (a replacement needs
+// trusted not-sent evidence through Control, RB-S02).
+type ExchangeError struct {
+	Op     string
+	Status int
+	Class  Class
+	Err    error
+}
+
+func (e *ExchangeError) Error() string {
+	return fmt.Sprintf("pagix %s [class %s]: %v", e.Op, e.Class, e.Err)
+}
+
+func (e *ExchangeError) Unwrap() error { return e.Err }
+
+// ClassOf is the class of a failed exchange: unknown for any error that
+// carries none, since nothing proves it was not sent; empty for nil.
+func ClassOf(err error) Class {
+	if err == nil {
+		return ""
+	}
+	var e *ExchangeError
+	if errors.As(err, &e) {
+		return e.Class
+	}
+	return ClassUnknown
+}
+
+func failed(op string, status int, class Class, err error) *ExchangeError {
+	return &ExchangeError{Op: op, Status: status, Class: class, Err: err}
+}
+
+// classify reads an answered status: a declared not-sent status counts only
+// when the declaration verifies it, declared conflict and rejection statuses
+// before the generic ones.
+func (c *Client) classify(op string, status int) Class {
+	o := c.decl.Operations[op]
+	conflicts := o.ConflictStatuses
+	if len(conflicts) == 0 {
+		conflicts = []int{http.StatusConflict, http.StatusPreconditionFailed}
+	}
+	switch {
+	case slices.Contains(o.NotSentStatuses, status) && o.verifies(CapNotSent):
+		return ClassNotSent
+	case slices.Contains(conflicts, status):
+		return ClassConflict
+	case slices.Contains(o.RejectionStatuses, status):
+		return ClassRejection
+	case status == http.StatusBadRequest, status == http.StatusUnprocessableEntity, status == http.StatusNotFound:
+		return ClassInvalid
+	case status == http.StatusUnauthorized, status == http.StatusForbidden:
+		return ClassDenied
+	case status == http.StatusTooManyRequests, status == http.StatusServiceUnavailable:
+		return ClassCapacity
+	}
+	return ClassUnknown
+}
+
 // queryOps are the reads whose 404 means "no record" rather than an error.
 var queryOps = map[string]bool{
 	OpLeaseQuery: true, OpSourceQueryReg: true, OpSourceQuerySave: true, OpRevisionDigest: true,
@@ -105,24 +184,38 @@ var queryOps = map[string]bool{
 // exchange sends one declared request and decodes a 2xx (or, where the
 // operation answers a conflict as a result, a 409) body into out.
 func (c *Client) exchange(ctx context.Context, op string, vars map[string]string, idempotencyKey, condition string, in, out any, conflictIsResult bool) error {
+	// Until c.http.Do the request has not left this process: proven not-sent.
 	method, target, err := c.decl.target(c.base, op, vars)
 	if err != nil {
-		return activities.Refused("DEPENDENCY_UNAVAILABLE", err)
+		return activities.Refused("DEPENDENCY_UNAVAILABLE", failed(op, 0, ClassNotSent, err))
 	}
 	var body io.Reader
 	if in != nil {
 		raw, err := json.Marshal(in)
 		if err != nil {
-			return activities.Refused("INVALID_ARGUMENT", err)
+			return activities.Refused("INVALID_ARGUMENT", failed(op, 0, ClassNotSent, err))
 		}
 		if int64(len(raw)) > c.decl.MaxBodyBytes {
-			return activities.Refused("INVALID_ARGUMENT", fmt.Errorf("%s request exceeds the declared body bound", op))
+			return activities.Refused("INVALID_ARGUMENT", failed(op, 0, ClassNotSent, errors.New("the request exceeds the declared body bound")))
 		}
 		body = bytes.NewReader(raw)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, target, body)
 	if err != nil {
-		return activities.Refused("INVALID_ARGUMENT", err)
+		return activities.Refused("INVALID_ARGUMENT", failed(op, 0, ClassNotSent, err))
+	}
+	// A written request is never sent again by the transport (RB-A02):
+	// net/http replays a request that carries an Idempotency-Key header and a
+	// re-readable body when a reused connection drops before the answer, a
+	// second physical send that the upstream's unverified idempotency may not
+	// absorb. Without GetBody the lost answer is an error instead: unknown,
+	// queried under the original identity. Only GET, a safe read, stays
+	// replayable.
+	if method != http.MethodGet {
+		req.GetBody = nil
+		if req.Body == nil {
+			req.Body = io.NopCloser(bytes.NewReader(nil))
+		}
 	}
 	req.Header.Set("Accept", "application/json")
 	if in != nil {
@@ -137,7 +230,7 @@ func (c *Client) exchange(ctx context.Context, op string, vars map[string]string
 	if c.token != "" {
 		tok, err := os.ReadFile(c.token)
 		if err != nil {
-			return errors.New("pagix: token file unreadable")
+			return failed(op, 0, ClassNotSent, errors.New("token file unreadable"))
 		}
 		req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(string(tok)))
 	}
@@ -145,42 +238,51 @@ func (c *Client) exchange(ctx context.Context, op string, vars map[string]string
 	if err != nil {
 		// Not proof that nothing happened (DD-06 §2): the caller queries the
 		// original identity.
-		return fmt.Errorf("pagix %s: no answer: %w", op, err)
+		return failed(op, 0, ClassUnknown, fmt.Errorf("no answer: %w", err))
 	}
 	defer resp.Body.Close()
+	s := resp.StatusCode
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, c.decl.MaxBodyBytes+1))
 	if err != nil {
-		return fmt.Errorf("pagix %s: answer unreadable: %w", op, err)
+		return failed(op, s, ClassUnknown, fmt.Errorf("answer unreadable: %w", err))
 	}
 	if int64(len(raw)) > c.decl.MaxBodyBytes {
-		return fmt.Errorf("pagix %s: answer exceeds the declared body bound", op)
+		return failed(op, s, ClassUnknown, errors.New("answer exceeds the declared body bound"))
 	}
-	switch s := resp.StatusCode; {
-	case s >= 200 && s < 300, s == http.StatusConflict && conflictIsResult:
+	if s >= 200 && s < 300 || s == http.StatusConflict && conflictIsResult {
 		if out == nil {
 			return nil
 		}
 		dec := json.NewDecoder(bytes.NewReader(raw))
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(out); err != nil {
-			return fmt.Errorf("pagix %s: answer is not the port contract: %w", op, err)
+			return failed(op, s, ClassUnknown, fmt.Errorf("answer is not the port contract: %w", err))
 		}
 		return nil
-	case s == http.StatusNotFound && queryOps[op]:
-		return errNoRecord
-	case s == http.StatusBadRequest, s == http.StatusUnprocessableEntity:
-		return activities.Refused("INVALID_ARGUMENT", fmt.Errorf("pagix %s refused the request (%d)", op, s))
-	case s == http.StatusUnauthorized, s == http.StatusForbidden:
-		return activities.Refused("FORBIDDEN", fmt.Errorf("pagix %s denied the caller (%d)", op, s))
-	case s == http.StatusNotFound:
-		return activities.Refused("NOT_FOUND", fmt.Errorf("pagix %s: not found", op))
-	case s == http.StatusConflict, s == http.StatusPreconditionFailed:
-		return activities.Refused("REVISION_CONFLICT", fmt.Errorf("pagix %s: conflict (%d)", op, s))
-	case s >= 300 && s < 400:
-		return activities.Refused("DEPENDENCY_UNAVAILABLE", fmt.Errorf("pagix %s answered a redirect (%d), never followed", op, s))
-	default:
-		return fmt.Errorf("pagix %s answered %d", op, s)
 	}
+	if s == http.StatusNotFound && queryOps[op] {
+		return errNoRecord
+	}
+	// The public codes and Temporal's retry stay what each status had before
+	// the classes (RB-A02); a declared status refines only the class.
+	class := c.classify(op, s)
+	switch {
+	case class == ClassConflict:
+		return activities.Refused("REVISION_CONFLICT", failed(op, s, class, fmt.Errorf("conflict (%d)", s)))
+	case class == ClassRejection:
+		return activities.Refused("EFFECT_DENIED", failed(op, s, class, fmt.Errorf("rejected by the upstream (%d)", s)))
+	case s == http.StatusNotFound:
+		return activities.Refused("NOT_FOUND", failed(op, s, class, errors.New("not found")))
+	case class == ClassInvalid:
+		return activities.Refused("INVALID_ARGUMENT", failed(op, s, class, fmt.Errorf("refused the request (%d)", s)))
+	case class == ClassDenied:
+		return activities.Refused("FORBIDDEN", failed(op, s, class, fmt.Errorf("denied the caller (%d)", s)))
+	case s >= 300 && s < 400:
+		return activities.Refused("DEPENDENCY_UNAVAILABLE", failed(op, s, class, fmt.Errorf("answered a redirect (%d), never followed", s)))
+	}
+	// Capacity, a verified not-sent answer and every other status stay
+	// retryable: a query is asked again, a send is recorded UNKNOWN.
+	return failed(op, s, class, fmt.Errorf("answered %d", s))
 }
 
 // query is an original-identity query: known false when the upstream has
