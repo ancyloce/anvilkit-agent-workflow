@@ -211,6 +211,9 @@ func newLifecyclePorts(lc fx.Lifecycle, cfg config.Config, ids *identities, doub
 		if missing := decl.Missing(); len(missing) > 0 {
 			log.Warn("the Pagix declaration omits operations; their port calls are refused", "apiVersion", decl.APIVersion, "missing", missing)
 		}
+		if unverified := decl.Unverified(); len(unverified) > 0 {
+			log.Warn("the Pagix declaration leaves capabilities UNVERIFIED (DD-06 §2): no answer of theirs counts as proven", "apiVersion", decl.APIVersion, "unverified", len(unverified))
+		}
 		log.Info("Pagix ports through the declared adapter", "apiVersion", decl.APIVersion, "baseUrl", p.BaseURL)
 	}
 	if k := cfg.Lifecycle.Knowledge; k.Address != "" {
@@ -227,10 +230,19 @@ func newLifecyclePorts(lc fx.Lifecycle, cfg config.Config, ids *identities, doub
 		log.Info("brief content digests from Knowledge", "address", k.Address)
 	}
 	if double.Double == nil && cfg.Lifecycle.Pagix.DeclarationFile == "" {
+		// RB-A02: outside development a worker without its Pagix ports would
+		// accept generations and releases that all fail at their first lease
+		// or source call; it refuses to start instead.
+		if !cfg.Development.Enabled {
+			return lifecyclePorts{}, errNoPagixPorts
+		}
 		log.Warn("no Pagix port configured: the lease, source and release calls answer DEPENDENCY_UNAVAILABLE (ENV-07)")
 	}
 	return out, nil
 }
+
+// errNoPagixPorts refuses a worker without its Pagix ports outside development.
+var errNoPagixPorts = errors.New("no Pagix port is placed: outside development the Workflow needs lifecycle.pagix.declaration_file (ENV-07); the lease, source and release ports would refuse every call")
 
 // knowledgeMode follows the process identity: mtls with the workload
 // certificate, plaintext only on the development foundation.
