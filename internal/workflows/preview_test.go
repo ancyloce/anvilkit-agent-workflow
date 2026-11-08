@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/sdk/activity"
+	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 	"go.temporal.io/sdk/workflow"
 
@@ -31,14 +32,19 @@ type previewScript struct {
 	current string
 	// identity: the identity Control resolved for the lineage, if any.
 	identity *activities.ComponentIdentity
+	// profiles: what the certification binds (the development pair when
+	// zero); profilesErr refuses the read.
+	profiles    activities.PreviewProfiles
+	profilesErr error
 }
 
 type previewRecord struct {
 	settled
-	mu2     sync.Mutex
-	records []activities.PreviewRecordInput
-	saves   []activities.SaveSourceInput
-	creates []activities.CreateJobInput
+	mu2      sync.Mutex
+	records  []activities.PreviewRecordInput
+	saves    []activities.SaveSourceInput
+	creates  []activities.CreateJobInput
+	evidence []activities.PreviewCertificationInput
 }
 
 func previewEnv(t *testing.T, script previewScript) (*testsuite.TestWorkflowEnvironment, *previewRecord) {
@@ -52,6 +58,7 @@ func previewEnv(t *testing.T, script previewScript) (*testsuite.TestWorkflowEnvi
 	for name, fn := range map[string]any{
 		activities.NameSettleOperation: a.SettleOperation, activities.NameGetPreviewSource: a.GetPreviewSource, activities.NameRecordPreview: a.RecordPreview,
 		activities.NameSaveSource: a.SaveSource, activities.NameCurrentSourceRevision: a.CurrentSourceRevision, activities.NameGetAcceptedStage: a.GetAcceptedStage,
+		activities.NameCertifiedPreviewProfiles: a.CertifiedPreviewProfiles,
 	} {
 		env.RegisterActivityWithOptions(fn, activity.RegisterOptions{Name: name})
 	}
@@ -78,6 +85,15 @@ func previewEnv(t *testing.T, script previewScript) (*testsuite.TestWorkflowEnvi
 		return script.save, script.saveErr
 	})
 	env.OnActivity(activities.NameCurrentSourceRevision, mock.Anything, "sha256:lineage").Return(script.current, nil)
+	env.OnActivity(activities.NameCertifiedPreviewProfiles, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.PreviewCertificationInput) (activities.PreviewProfiles, error) {
+		r.mu2.Lock()
+		r.evidence = append(r.evidence, in)
+		r.mu2.Unlock()
+		if script.profiles == (activities.PreviewProfiles{}) {
+			return activities.PreviewProfiles{BuildProfileID: "build-support-dev-v1", HostProfileID: "host-abi-dev-v1"}, script.profilesErr
+		}
+		return script.profiles, script.profilesErr
+	})
 	env.OnActivity(activities.NameOpenAttempt, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.OpenAttemptInput) (activities.AttemptRef, error) {
 		return activities.AttemptRef{AttemptID: "att_" + in.CommandID, TenantID: in.TenantID, ProfileID: in.ProfileID, Deadline: env.Now().Add(time.Hour), ExecutionEpoch: "1"}, nil
 	})
@@ -167,7 +183,7 @@ func TestPreviewBuild(t *testing.T) {
 
 	t.Run("a build that finishes after a newer save is stale, never current", func(t *testing.T) {
 		env, r := previewEnv(t, previewScript{save: activities.SaveSourceResult{EffectID: "eff_1", State: "saved", Revision: "4"},
-			stage: certified("", moduleA), current: "6"})
+			stage: certified("", moduleA, evidence), current: "6"})
 		env.ExecuteWorkflow(workflows.PreviewWorkflowName, previewInput)
 		require.NoError(t, env.GetWorkflowError())
 		require.Equal(t, []string{"saving", "building", "stale"}, r.states())
@@ -194,5 +210,48 @@ func TestPreviewBuild(t *testing.T) {
 		require.Equal(t, "failed", r.states()[len(r.states())-1])
 		require.Empty(t, r.creates)
 		require.Equal(t, "failed", r.last().Outcome)
+	})
+
+	// RB-A03a: the built preview names the profiles the validator certified
+	// the build under, never fixed ids; the earlier transitions name none
+	// (the Activity records the environment's configured ones).
+	t.Run("the ready preview records the profiles its certification binds", func(t *testing.T) {
+		env, r := previewEnv(t, previewScript{save: activities.SaveSourceResult{EffectID: "eff_1", State: "saved", Revision: "4"},
+			stage: certified("", moduleA, cssA, evidence), current: "4",
+			profiles: activities.PreviewProfiles{BuildProfileID: "build-support-2026-11", HostProfileID: "host-abi-studio-2026-11"}})
+		env.ExecuteWorkflow(workflows.PreviewWorkflowName, previewInput)
+		require.NoError(t, env.GetWorkflowError())
+		require.Equal(t, []string{"saving", "building", "ready"}, r.states())
+		require.Equal(t, []activities.PreviewCertificationInput{{OperationID: "op_PRV", TenantID: "tenant_a", Evidence: evidence}}, r.evidence, "the certification of the build is read")
+		ready := r.records[2]
+		require.Equal(t, "build-support-2026-11", ready.BuildProfileID, "the profile the validator built under")
+		require.Equal(t, "host-abi-studio-2026-11", ready.HostProfileID)
+		for _, rec := range r.records[:2] {
+			require.Empty(t, rec.BuildProfileID, "before the certification the configured profile is recorded by the Activity")
+			require.Empty(t, rec.HostProfileID)
+		}
+	})
+
+	t.Run("a build certified under another profile than the environment's is not its preview", func(t *testing.T) {
+		env, r := previewEnv(t, previewScript{save: activities.SaveSourceResult{EffectID: "eff_1", State: "saved", Revision: "4"},
+			stage: certified("", moduleA, cssA, evidence), current: "4",
+			profilesErr: temporal.NewNonRetryableApplicationError("built under another profile", "CERTIFICATION_MISMATCH", nil)})
+		env.ExecuteWorkflow(workflows.PreviewWorkflowName, previewInput)
+		require.NoError(t, env.GetWorkflowError())
+		require.Equal(t, []string{"saving", "building", "failed"}, r.states())
+		require.Equal(t, "CERTIFICATION_MISMATCH", r.records[2].FailureCode)
+		require.Equal(t, "4", r.records[2].SourceRevision)
+		require.Equal(t, "failed", r.last().Outcome)
+		require.Equal(t, "CERTIFICATION_MISMATCH", r.last().FailureCode)
+	})
+
+	t.Run("a certified build without its evidence is not a preview", func(t *testing.T) {
+		env, r := previewEnv(t, previewScript{save: activities.SaveSourceResult{EffectID: "eff_1", State: "saved", Revision: "4"},
+			stage: certified("", moduleA, cssA), current: "4"})
+		env.ExecuteWorkflow(workflows.PreviewWorkflowName, previewInput)
+		require.NoError(t, env.GetWorkflowError())
+		require.Equal(t, []string{"saving", "building", "failed"}, r.states())
+		require.Equal(t, "CERTIFICATION_MISSING", r.records[2].FailureCode)
+		require.Empty(t, r.evidence, "nothing to read")
 	})
 }

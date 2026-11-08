@@ -9,17 +9,20 @@ import (
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/activities"
 )
 
-// The profiles the preview records: the validator Job of
-// lifecycle.preview.build_profile builds the saved revision under the
-// DEVELOPMENT_ONLY build-support profile for the host ABI it exercises
-// (jobs/validator/profiles). The RecordPreview Activity replaces the host
-// profile with the environment's lifecycle.host_abi_profile (ENV-08) when
-// the worker places one.
+// The profiles the preview records (RB-A03a): the validator Job of
+// lifecycle.preview.build_profile builds the saved revision under its
+// build-support profile for the host ABI it exercises (jobs/validator/
+// profiles). Until the build is certified a transition names no profile and
+// the RecordPreview Activity records the environment's configured ones
+// (lifecycle.build_support_profile, lifecycle.host_abi_profile); a built
+// preview records the profiles its certification binds, which must be the
+// configured ones (previewCertifiedProfiles).
 const (
-	previewStepID         = "preview-build"
-	previewBuildProfileID = "build-support-dev-v1"
-	previewHostProfileID  = "host-abi-dev-v1"
-	previewSaveEffect     = 1
+	previewStepID     = "preview-build"
+	previewSaveEffect = 1
+	// previewCertifiedProfiles marks runs that read the profiles from the
+	// certification; earlier runs recorded fixed development profile ids.
+	previewCertifiedProfiles = "preview-certified-profiles"
 )
 
 // PreviewBuild is the PreviewBuildWorkflow (P20, DD-04 §5): it saves the
@@ -72,7 +75,6 @@ func PreviewBuild(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Cont
 		revision := uint64(0)
 		record := func(r activities.PreviewRecordInput) bool {
 			r.OperationID, r.TenantID, r.ExpectedRevision, r.SourceDigest = operationID, tenantID, revision, src.Source.Digest
-			r.BuildProfileID, r.HostProfileID = previewBuildProfileID, previewHostProfileID
 			disconnected, _ := workflow.NewDisconnectedContext(ctx)
 			var next uint64
 			if err := workflow.ExecuteActivity(controlOptions(disconnected, q, bounds), activities.NameRecordPreview, r).Get(disconnected, &next); err != nil {
@@ -172,6 +174,24 @@ func PreviewBuild(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Cont
 				styles = append(styles, a)
 			}
 		}
+		// The profiles the validator certified the build under are the ones
+		// the built preview records; a build certified under another
+		// profile than the environment's is not its preview.
+		var profiles activities.PreviewProfiles
+		if workflow.GetVersion(ctx, previewCertifiedProfiles, workflow.DefaultVersion, 1) == 1 {
+			evidence := stageArtifact(&stage, "evidence")
+			if evidence == nil {
+				fail("CERTIFICATION_MISSING")
+				return nil
+			}
+			if err := workflow.ExecuteActivity(readOptions(ctx, q, bounds), activities.NameCertifiedPreviewProfiles, activities.PreviewCertificationInput{
+				OperationID: operationID, TenantID: tenantID, Evidence: *evidence,
+			}).Get(ctx, &profiles); err != nil {
+				_, code := settleOutcome(ctx, err, "CERTIFICATION_MISSING")
+				fail(code)
+				return nil
+			}
+		}
 
 		// 3. Ready, unless a newer revision of the lineage was saved while
 		// this one built.
@@ -181,7 +201,8 @@ func PreviewBuild(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Cont
 			fail(code)
 			return nil
 		}
-		final := activities.PreviewRecordInput{State: "ready", SourceRevision: saved.Revision, Module: module, Styles: styles}
+		final := activities.PreviewRecordInput{State: "ready", SourceRevision: saved.Revision, Module: module, Styles: styles,
+			BuildProfileID: profiles.BuildProfileID, HostProfileID: profiles.HostProfileID}
 		phase = "preview_ready"
 		if current != saved.Revision {
 			final.State, final.CurrentRevision, phase = "stale", current, "preview_stale"
