@@ -348,7 +348,7 @@ func Module() fx.Option {
 				return &activities.LifecycleActivities{
 					Preparation: ctl, Generation: ctl, Artifacts: artifactadapter.New(ctl.Conn(), cfg.Temporal.WorkerIdentity, cfg.Lifecycle.Artifacts.TransferWindow),
 					Knowledge: ports.knowledge, Model: m, Lease: ports.lease, Source: ports.source, Preview: ctl, Release: ctl, ReleasePort: ports.release, MaxInputBytes: cfg.Lifecycle.Preparation.MaxInputBytes,
-					HostAbiProfile: cfg.Lifecycle.HostAbiProfile,
+					HostAbiProfile: cfg.Lifecycle.HostAbiProfile, BuildSupportProfile: cfg.Lifecycle.BuildSupportProfile,
 				}
 			},
 			newWorkers,
@@ -380,7 +380,7 @@ func RegisterLifecycle(business, control worker.Worker, acts *activities.Lifecyc
 		activities.NameGetAnswer: acts.GetAnswer, activities.NameFreezeReferences: acts.FreezeReferences, activities.NameFreezeBrief: acts.FreezeBrief,
 		activities.NameGetGeneration: acts.GetGeneration, activities.NameRequestExecutionPermit: acts.RequestExecutionPermit, activities.NameRecordFunding: acts.RecordFunding,
 		activities.NameCheckSourceScope: acts.CheckSourceScope, activities.NameGetAcceptedStage: acts.GetAcceptedStage, activities.NameBriefIdentity: acts.BriefIdentity,
-		activities.NameGetPreviewSource: acts.GetPreviewSource, activities.NameCurrentSourceRevision: acts.CurrentSourceRevision,
+		activities.NameGetPreviewSource: acts.GetPreviewSource, activities.NameCurrentSourceRevision: acts.CurrentSourceRevision, activities.NameCertifiedPreviewProfiles: acts.CertifiedPreviewProfiles,
 		activities.NameGetReleaseBinding: acts.GetReleaseBinding, activities.NameBuildReleaseSubj: acts.BuildReleaseSubject,
 		activities.NameReviewDecision: acts.ReviewDecision, activities.NameCatalogRevision: acts.CatalogRevision,
 	} {
