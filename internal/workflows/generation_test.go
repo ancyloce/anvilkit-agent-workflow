@@ -41,6 +41,7 @@ type genScript struct {
 	validator        map[uint64]activities.AcceptedStage
 	scope            activities.ScopeDecision
 	lease            map[string]activities.LeaseResult // "acquire", "renew:<occ>", "query", "release"
+	leaseErr         map[string]bool                   // a mutation ("acquire", "renew", "release") whose answer is lost
 	candidate        activities.CandidateRef
 	definition       string
 	leaseState       activities.LeaseRecord
@@ -61,6 +62,8 @@ type genRecord struct {
 	creates   []activities.CreateJobInput
 	renewals  []uint64
 	registers []activities.RegisterCandidateInput
+	// leaseSends is every lease port call by kind, attempts included.
+	leaseSends []string
 }
 
 func (r *genRecord) add(f func()) {
@@ -135,6 +138,10 @@ func generationEnvWith(t *testing.T, b workflows.Bounds, lb workflows.LifecycleB
 	})
 	leaseAnswer := func(kind string) func(_ context.Context, in activities.LeaseInput) (activities.LeaseResult, error) {
 		return func(_ context.Context, in activities.LeaseInput) (activities.LeaseResult, error) {
+			r.add(func() { r.leaseSends = append(r.leaseSends, kind+":"+itoa(in.Occurrence)) })
+			if script.leaseErr[kind] {
+				return activities.LeaseResult{}, errors.New("pagix lease [class unknown]: no answer: connection reset by peer")
+			}
 			if kind == "renew" {
 				r.add(func() { r.renewals = append(r.renewals, in.Occurrence) })
 				if res, ok := script.lease["renew:"+itoa(in.Occurrence)]; ok {
@@ -642,6 +649,7 @@ func TestGenerationSettlementContinuesAsNew(t *testing.T) {
 	require.NotNil(t, next.Settle)
 	require.Equal(t, workflows.SettleCarry{CommandID: "op_GEN:settle", Outcome: "succeeded", Phase: "candidate_ready", Interval: time.Minute}, *next.Settle)
 	require.Len(t, r.settles, 21, "the poll bound, then the continuation")
+	require.Equal(t, "released", r.leases[len(r.leases)-1].State, "RB-A32: the lease is released before the rollover, so no lease is carried")
 
 	// The continued run settles under the same command once Control resolves.
 	env2, r2 := generationEnvWith(t, b, lifecycleBounds, genScript{})
@@ -656,6 +664,7 @@ func TestGenerationSettlementContinuesAsNew(t *testing.T) {
 	}
 	require.Empty(t, r2.opens, "the settle-only run starts nothing")
 	require.Empty(t, r2.permits)
+	require.Empty(t, r2.leaseSends, "RB-A32: nor does it touch a lease; the carry needs no definition, repair counter or lease reference")
 }
 
 // TestGenerationFundingThroughAControlOutage is P1.6 AC7: a 45 s Control

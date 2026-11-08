@@ -452,6 +452,22 @@ func leaseOptions(ctx workflow.Context, q Queues, b Bounds, lb LifecycleBounds) 
 	})
 }
 
+// leaseMutationOptions are the lease port's mutations (acquire, renew,
+// release): one attempt (DD-01 §5, RB-A20). A retried attempt would send the
+// same mutation again, and the upstream's idempotency is UNVERIFIED (DD-06
+// §2); a lost answer is UNKNOWN instead, and the caller queries the
+// original occurrence under leaseOptions (a safe read, retried).
+func leaseMutationOptions(ctx workflow.Context, q Queues, b Bounds, lb LifecycleBounds) workflow.Context {
+	return workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+		TaskQueue: q.Control, StartToCloseTimeout: lb.LeaseCallTimeout,
+		RetryPolicy: &temporal.RetryPolicy{InitialInterval: b.ControlRetryInitial, MaximumAttempts: 1},
+	})
+}
+
+// leaseAcquireQueries marks runs whose failed acquisition is resolved by a
+// query of the original occurrence (RB-A20); earlier runs gave up.
+const leaseAcquireQueries = "lease-acquire-queries"
+
 // recordLease reports a confirmed lease fact to Control under the
 // occurrence; unknown results are never reported.
 func recordLease(ctx workflow.Context, q Queues, b Bounds, operationID, tenantID string, occurrence uint64, res activities.LeaseResult, stateName string) (activities.LeaseRecord, error) {
@@ -474,8 +490,13 @@ func acquireLease(ctx workflow.Context, q Queues, b Bounds, lb LifecycleBounds, 
 		return ""
 	}
 	var res activities.LeaseResult
-	if err := workflow.ExecuteActivity(leaseOptions(ctx, q, b, lb), activities.NameAcquireLease, leaseInput(operationID, tenantID, view, state, lb)).Get(ctx, &res); err != nil {
-		return "LEASE_UNAVAILABLE"
+	if err := workflow.ExecuteActivity(leaseMutationOptions(ctx, q, b, lb), activities.NameAcquireLease, leaseInput(operationID, tenantID, view, state, lb)).Get(ctx, &res); err != nil {
+		// RB-A20: the one acquisition may have happened; a run before the
+		// marker gave up here, a later one asks about the original occurrence.
+		if workflow.GetVersion(ctx, leaseAcquireQueries, workflow.DefaultVersion, 1) == workflow.DefaultVersion {
+			return "LEASE_UNAVAILABLE"
+		}
+		res = activities.LeaseResult{State: "unknown", Reason: "ACQUIRE_FAILED"}
 	}
 	if res.State == "unknown" {
 		var queried activities.LeaseResult
@@ -530,7 +551,7 @@ func superviseLease(ctx workflow.Context, q Queues, b Bounds, lb LifecycleBounds
 		state.occurrence++
 		in := leaseInput(operationID, tenantID, view, state, lb)
 		var res activities.LeaseResult
-		if err := workflow.ExecuteActivity(leaseOptions(ctx, q, b, lb), activities.NameRenewLease, in).Get(ctx, &res); err != nil {
+		if err := workflow.ExecuteActivity(leaseMutationOptions(ctx, q, b, lb), activities.NameRenewLease, in).Get(ctx, &res); err != nil {
 			if temporal.IsCanceledError(err) || ctx.Err() != nil {
 				return
 			}
@@ -579,7 +600,7 @@ func releaseLease(ctx workflow.Context, q Queues, b Bounds, lb LifecycleBounds, 
 	state.occurrence++
 	in := leaseInput(operationID, tenantID, view, state, lb)
 	var res activities.LeaseResult
-	if err := workflow.ExecuteActivity(leaseOptions(ctx, q, b, lb), activities.NameReleaseLease, in).Get(ctx, &res); err != nil {
+	if err := workflow.ExecuteActivity(leaseMutationOptions(ctx, q, b, lb), activities.NameReleaseLease, in).Get(ctx, &res); err != nil {
 		res.State = "unknown"
 	}
 	p := newPoller(ctx, b, 0)
