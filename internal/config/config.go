@@ -362,6 +362,10 @@ type Lifecycle struct {
 	// (P2.2, ENV-08): host-abi-dev-v1 serves development only; a real
 	// environment names the profile generated from its host declaration.
 	HostAbiProfile string `koanf:"host_abi_profile"`
+	// BuildSupportProfile is the validator build-support profile previews
+	// are built under (RB-A03a): build-support-dev-v1 serves development
+	// only; a real environment names its qualified profile (RB-A03b).
+	BuildSupportProfile string `koanf:"build_support_profile"`
 	// Pagix (P2.2) places the declaration-driven adapter of the lease,
 	// source, review, publication and activation ports: the ENV-07 adapter
 	// declaration file, the upstream base URL (https outside development,
@@ -436,6 +440,7 @@ var defaults = map[string]any{
 	"lifecycle.release.validator_profile":            "validator-source-v1",
 	"lifecycle.pagix.timeout":                        "30s",
 	"lifecycle.host_abi_profile":                     "host-abi-dev-v1",
+	"lifecycle.build_support_profile":                "build-support-dev-v1",
 	"lifecycle.pagix.identity":                       "mtls",
 	"lifecycle.pagix.server_name":                    "",
 	"lifecycle.knowledge.server_name":                "anvilkit-agent-knowledge",
@@ -811,7 +816,10 @@ func (c Config) validate() error {
 	return errors.Join(errs...)
 }
 
-var hostAbiPattern = regexp.MustCompile(`^host-abi-[a-z0-9][a-z0-9.-]{0,62}$`)
+var (
+	hostAbiPattern      = regexp.MustCompile(`^host-abi-[a-z0-9][a-z0-9.-]{0,62}$`)
+	buildSupportPattern = regexp.MustCompile(`^build-support-[a-z0-9][a-z0-9.-]{0,62}$`)
+)
 
 // validateLifecyclePorts checks the Pagix and Knowledge placements (P2.2):
 // the filesystem double only under development.enabled and never beside a
@@ -828,6 +836,12 @@ func (c Config) validateLifecyclePorts() []error {
 		errs = append(errs, fmt.Errorf("lifecycle.host_abi_profile %q is not a host-abi-<revision> profile id", l.HostAbiProfile))
 	case l.HostAbiProfile == "host-abi-dev-v1" && !c.Development.Enabled:
 		errs = append(errs, errors.New("lifecycle.host_abi_profile host-abi-dev-v1 is DEVELOPMENT_ONLY: a real environment names the profile of its Studio host declaration (ENV-08)"))
+	}
+	switch {
+	case !buildSupportPattern.MatchString(l.BuildSupportProfile):
+		errs = append(errs, fmt.Errorf("lifecycle.build_support_profile %q is not a build-support-<revision> profile id", l.BuildSupportProfile))
+	case l.BuildSupportProfile == "build-support-dev-v1" && !c.Development.Enabled:
+		errs = append(errs, errors.New("lifecycle.build_support_profile build-support-dev-v1 is DEVELOPMENT_ONLY: a real environment names its qualified build-support profile"))
 	}
 	if l.PagixDoubleDir != "" && l.Pagix.DeclarationFile != "" {
 		errs = append(errs, errors.New("lifecycle.pagix_double_dir and lifecycle.pagix.declaration_file are exclusive"))

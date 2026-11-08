@@ -21,7 +21,7 @@ func write(t *testing.T, body string) string {
 
 // destinations are the release destinations a non-development environment
 // names (P2.2 AC6: the .invalid placeholders serve development only).
-const destinations = "lifecycle:\n  host_abi_profile: host-abi-studio-2026-10\n  release:\n    npm_registry: https://registry.npm.example/\n    browser_origin: https://components.example\n"
+const destinations = "lifecycle:\n  host_abi_profile: host-abi-studio-2026-10\n  build_support_profile: build-support-studio-2026-10\n  release:\n    npm_registry: https://registry.npm.example/\n    browser_origin: https://components.example\n"
 
 const minimal = "temporal:\n  address: 127.0.0.1:27233\n  tls:\n    ca_file: /etc/anvilkit/temporal-ca/ca.crt\ncontrol:\n  address: 127.0.0.1:9101\n" + destinations
 
@@ -175,6 +175,7 @@ func TestLifecyclePortsOutsideDevelopment(t *testing.T) {
 	_, err := config.LoadFrom(write(t, strings.Replace(minimal, destinations, "", 1)), env)
 	require.ErrorContains(t, err, "is a DEVELOPMENT_ONLY placeholder")
 	require.ErrorContains(t, err, "lifecycle.host_abi_profile host-abi-dev-v1 is DEVELOPMENT_ONLY")
+	require.ErrorContains(t, err, "lifecycle.build_support_profile build-support-dev-v1 is DEVELOPMENT_ONLY")
 	_, err = config.LoadFrom(write(t, minimal), append(env, "ANVILKIT_WORKFLOW_PAGIX_DOUBLE_DIR=/tmp/pagix"))
 	require.ErrorContains(t, err, "lifecycle.pagix_double_dir is the DEVELOPMENT_ONLY Pagix/Knowledge double: it requires development.enabled: true")
 	_, err = config.LoadFrom(write(t, minimal), append(env, "ANVILKIT_WORKFLOW_PAGIX_DECLARATION_FILE=/etc/anvilkit/pagix/declaration.yaml"))
