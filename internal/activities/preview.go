@@ -2,6 +2,7 @@ package activities
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -10,13 +11,15 @@ import (
 // source, save it conditionally through the source authority under an
 // effect identity (a conflict names the current revision; a lost answer is
 // asked about the original identity, never saved again), record the
-// preview projection in Control, and read the lineage's current revision
-// to mark a finished build stale.
+// preview projection in Control, read the profiles the build was certified
+// under, and read the lineage's current revision to mark a finished build
+// stale.
 const (
-	NameGetPreviewSource      = "GetPreviewSource"
-	NameRecordPreview         = "RecordPreview"
-	NameSaveSource            = "SaveSource"
-	NameCurrentSourceRevision = "CurrentSourceRevision"
+	NameGetPreviewSource         = "GetPreviewSource"
+	NameRecordPreview            = "RecordPreview"
+	NameSaveSource               = "SaveSource"
+	NameCurrentSourceRevision    = "CurrentSourceRevision"
+	NameCertifiedPreviewProfiles = "CertifiedPreviewProfiles"
 )
 
 // PreviewSource is the preview_build operation's binding.
@@ -83,11 +86,64 @@ func (a *LifecycleActivities) GetPreviewSource(ctx context.Context, tenantID, op
 	return a.Preview.GetPreviewSource(ctx, tenantID, operationID)
 }
 
+// RecordPreview records one transition. A transition that names no
+// profiles (every one before the build is certified) records the
+// environment's configured build-support and host ABI profiles, the ones
+// the build runs under; a built preview names the profiles its
+// certification binds (CertifiedPreviewProfiles).
 func (a *LifecycleActivities) RecordPreview(ctx context.Context, in PreviewRecordInput) (uint64, error) {
-	if a.HostAbiProfile != "" {
+	if in.BuildProfileID == "" {
+		in.BuildProfileID = a.BuildSupportProfile
+	}
+	if in.HostProfileID == "" {
 		in.HostProfileID = a.HostAbiProfile
 	}
 	return a.Preview.RecordPreview(ctx, in)
+}
+
+// PreviewCertificationInput names the evidence of a certified preview
+// build.
+type PreviewCertificationInput struct {
+	OperationID string
+	TenantID    string
+	Evidence    StageArtifact
+}
+
+// PreviewProfiles are the build-support and host ABI profiles a preview
+// was certified under.
+type PreviewProfiles struct {
+	BuildProfileID string
+	HostProfileID  string
+}
+
+// CertifiedPreviewProfiles reads the certification of a preview build
+// (read from Control's store, bytes verified) and answers the build-support
+// and host ABI profiles it binds: the ones the validator actually built
+// under, which the ready preview records. A certification made under
+// another profile than this environment configures is CERTIFICATION_MISMATCH,
+// never recorded as this environment's preview.
+func (a *LifecycleActivities) CertifiedPreviewProfiles(ctx context.Context, in PreviewCertificationInput) (PreviewProfiles, error) {
+	raw, _, err := a.Artifacts.Read(ctx, in.TenantID, in.OperationID, in.Evidence.TransferID, in.Evidence.Handle, maxCertificationBytes)
+	if err != nil {
+		return PreviewProfiles{}, err
+	}
+	var doc certificationDoc
+	if err := json.Unmarshal(raw, &doc); err != nil || doc.Certification == nil {
+		return PreviewProfiles{}, refusedf("CERTIFICATION_MISSING", "the preview evidence holds no certification")
+	}
+	c := doc.Certification
+	b := c.Bindings
+	switch {
+	case doc.Verdict != "certified" || c.Verdict != "certified" || !c.Complete:
+		return PreviewProfiles{}, refusedf("CERTIFICATION_MISSING", "the preview evidence is not a complete certification")
+	case b.BuildProfileID == "" || b.HostAbi == "":
+		return PreviewProfiles{}, refusedf("CERTIFICATION_MISSING", "the preview certification names no build-support or host ABI profile")
+	case a.BuildSupportProfile != "" && b.BuildProfileID != a.BuildSupportProfile:
+		return PreviewProfiles{}, refusedf("CERTIFICATION_MISMATCH", "the preview was built under build-support profile %q, this environment configures %q", b.BuildProfileID, a.BuildSupportProfile)
+	case a.HostAbiProfile != "" && b.HostAbi != a.HostAbiProfile:
+		return PreviewProfiles{}, refusedf("CERTIFICATION_MISMATCH", "the preview was built under host ABI %q, this environment serves %q", b.HostAbi, a.HostAbiProfile)
+	}
+	return PreviewProfiles{BuildProfileID: b.BuildProfileID, HostProfileID: b.HostAbi}, nil
 }
 
 func (a *LifecycleActivities) CurrentSourceRevision(ctx context.Context, lineage string) (string, error) {

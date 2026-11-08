@@ -40,6 +40,11 @@ type LifecycleActivities struct {
 	// (P2.2, ENV-08): previews record it, and a certification made under
 	// another host ABI is never released here. Empty binds nothing.
 	HostAbiProfile string
+	// BuildSupportProfile is the validator build-support profile this
+	// environment builds previews under (RB-A03a): previews record it, and
+	// a preview certified under another one is refused. Empty binds
+	// nothing.
+	BuildSupportProfile string
 }
 
 // Analysis tools: the reviewed structured outputs of the requirements
