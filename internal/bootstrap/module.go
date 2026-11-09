@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/client"
@@ -95,6 +96,9 @@ type workers struct {
 	log        *slog.Logger
 	// closers close the Temporal and Control clients after the drain.
 	closers []func() error
+	// metrics record the stop's drain and abandonment (RB-A25); nil in
+	// tests that do not read them.
+	metrics *lifecycleMetrics
 	// promote, when set (DEVELOPMENT_ONLY), makes this build the worker
 	// deployment's current version once its pollers registered (P1.7).
 	promote func(context.Context) error
@@ -474,8 +478,9 @@ func (w *workers) fatal(q *queueWorker, err error) {
 	q.stop()
 }
 
-func newWorkers(cfg config.Config, c client.Client, acts *activities.Activities, lacts *activities.LifecycleActivities, log *slog.Logger, h *health, sd fx.Shutdowner) *workers {
+func newWorkers(cfg config.Config, c client.Client, acts *activities.Activities, lacts *activities.LifecycleActivities, log *slog.Logger, h *health, sd fx.Shutdowner, t *telemetry) *workers {
 	w := newLifecycle(cfg.ShutdownTimeout, h, sd, log)
+	w.metrics = newLifecycleMetrics(t.registry)
 	w.business = &queueWorker{name: cfg.Temporal.TaskQueue}
 	w.control = &queueWorker{name: cfg.Temporal.ControlTaskQueue}
 	identity := cfg.Temporal.WorkerIdentity + "@" + cfg.Temporal.BuildID
@@ -615,6 +620,7 @@ func (w *workers) stop(ctx context.Context) error {
 		case <-closeCtx.Done():
 		}
 	}
+	w.metrics.stopped(time.Since(started), abandoned)
 	var errs []error
 	for _, closeClient := range w.closers {
 		if err := closeClient(); err != nil {
@@ -649,4 +655,36 @@ func run(lc fx.Lifecycle, cfg config.Config, w *workers, c client.Client, ctl *c
 		},
 		OnStop: w.stop,
 	})
+}
+
+// lifecycleMetrics are the DD-09 §6 signals of this process (RB-A25), named
+// as Knowledge and MCP name theirs: the active configuration generation
+// (one per process; a rejected candidate never starts), the last stop's
+// drain time and whether it had to abandon in-flight Activities (the
+// Workflow's forced stop: their contexts are canceled and Temporal retries
+// them). The health listener serving /metrics closes last, so a scrape
+// during the close can still read them.
+type lifecycleMetrics struct {
+	drain, forced prometheus.Gauge
+}
+
+func newLifecycleMetrics(reg prometheus.Registerer) *lifecycleMetrics {
+	generation := prometheus.NewGauge(prometheus.GaugeOpts{Name: "anvilkit_workflow_config_generation", Help: "Number of the active configuration generation (one per process: a changed input takes effect through a rolling restart)."})
+	m := &lifecycleMetrics{
+		drain:  prometheus.NewGauge(prometheus.GaugeOpts{Name: "anvilkit_workflow_shutdown_drain_seconds", Help: "Seconds the last shutdown spent draining both task queues before the clients closed."}),
+		forced: prometheus.NewGauge(prometheus.GaugeOpts{Name: "anvilkit_workflow_shutdown_forced", Help: "1 when the last shutdown abandoned in-flight Activities at the drain bound or the stop deadline."}),
+	}
+	generation.Set(1)
+	reg.MustRegister(generation, m.drain, m.forced)
+	return m
+}
+
+func (m *lifecycleMetrics) stopped(drain time.Duration, forced bool) {
+	if m == nil {
+		return
+	}
+	m.drain.Set(drain.Seconds())
+	if forced {
+		m.forced.Set(1)
+	}
 }
