@@ -24,7 +24,8 @@ func TestCloseWaitsForResolvedObligationsUnderOriginalIdentity(t *testing.T) {
 		return activities.CloseResult{Lifecycle: "canceled"}, nil
 	}, activity.RegisterOptions{Name: activities.NameCloseAttempt})
 	env.ExecuteWorkflow(func(ctx workflow.Context) error {
-		return closeAttempt(ctx, Queues{Control: "control"}, Bounds{ControlActivityTimeout: time.Second, ControlRetryInitial: time.Second, ControlRetryMaxInterval: time.Second, ReconcileInitialInterval: time.Second}, activities.AttemptRef{AttemptID: "att_original"}, "cmd_original", "canceled", "complete", "")
+		// A close from a fresh backoff that waits on Control's obligations.
+		return closeAttemptFrom(ctx, Queues{Control: "control"}, Bounds{ControlActivityTimeout: time.Second, ControlRetryInitial: time.Second, ControlRetryMaxInterval: time.Second, ReconcileInitialInterval: time.Second}, activities.AttemptRef{AttemptID: "att_original"}, "cmd_original", "canceled", "complete", "", 0, true)
 	})
 	require.NoError(t, env.GetWorkflowError())
 	require.Len(t, calls, 2)

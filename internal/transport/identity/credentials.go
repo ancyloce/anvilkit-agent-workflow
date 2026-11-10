@@ -1,158 +1,23 @@
+// Package identity is the workload identity of the outbound internal
+// clients (P0.1, security.md SEC-01): rotating TLS 1.3 gRPC client
+// credentials and the HTTP transport of the Model Proxy client, loaded from
+// mounted certificate files, verifying each server against the current CA
+// bundle and its reviewed server name. A workload certificate identifies a
+// service; it never establishes a user, tenant, role or approver. The
+// Workflow worker serves no internal gRPC, so it holds no server
+// credentials or caller authorization; the tests' peer servers use the
+// fixture credentials of identitytest.
 package identity
 
 import (
 	"context"
-	"crypto/sha256"
 	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	"net"
 	"net/http"
-	"sync"
 
 	"google.golang.org/grpc/credentials"
 )
-
-// PeerInfo is the AuthInfo of an mTLS connection: the standard TLSInfo
-// plus the parsed workload identity (or why there is none) and the root
-// that verified the peer's chain.
-type PeerInfo struct {
-	credentials.TLSInfo
-	Principal Principal
-	// Err is why the verified certificate carries no workload identity.
-	Err  error
-	Root *x509.Certificate
-}
-
-// AuthType reports the transport security type ("tls").
-func (p PeerInfo) AuthType() string { return "tls" }
-
-// connTracker remembers every accepted server connection by the root that
-// verified its peer, so a reload that retires a root closes exactly those
-// connections (the clients reconnect under the current trust).
-type connTracker struct {
-	mu    sync.Mutex
-	conns map[[32]byte]map[net.Conn]struct{}
-}
-
-func (t *connTracker) add(root *x509.Certificate, c net.Conn) {
-	fp := sha256.Sum256(root.Raw)
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.conns == nil {
-		t.conns = map[[32]byte]map[net.Conn]struct{}{}
-	}
-	if t.conns[fp] == nil {
-		t.conns[fp] = map[net.Conn]struct{}{}
-	}
-	t.conns[fp][c] = struct{}{}
-}
-
-func (t *connTracker) remove(root *x509.Certificate, c net.Conn) {
-	fp := sha256.Sum256(root.Raw)
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if set := t.conns[fp]; set != nil {
-		delete(set, c)
-		if len(set) == 0 {
-			delete(t.conns, fp)
-		}
-	}
-}
-
-// closeRetired closes the connections whose root is no longer trusted.
-func (t *connTracker) closeRetired(current *Material) int {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	n := 0
-	for fp, set := range t.conns {
-		if _, ok := current.Roots[fp]; ok {
-			continue
-		}
-		for c := range set {
-			_ = c.Close()
-			n++
-		}
-		delete(t.conns, fp)
-	}
-	return n
-}
-
-// trackedConn removes itself from the tracker when closed.
-type trackedConn struct {
-	net.Conn
-	root    *x509.Certificate
-	tracker *connTracker
-	once    sync.Once
-}
-
-func (c *trackedConn) Close() error {
-	c.once.Do(func() { c.tracker.remove(c.root, c.Conn) })
-	return c.Conn.Close()
-}
-
-// serverCreds is a credentials.TransportCredentials whose every handshake
-// uses the Reloader's current material: TLS 1.3 only, client certificates
-// required and verified against the current CA bundle, no session tickets
-// (a resumed session would skip the current trust).
-type serverCreds struct {
-	reloader *Reloader
-	tracker  *connTracker
-}
-
-// NewServerCredentials returns rotating server credentials. Retiring a CA
-// from the bundle closes the connections it had verified.
-func NewServerCredentials(r *Reloader) credentials.TransportCredentials {
-	s := &serverCreds{reloader: r, tracker: &connTracker{}}
-	r.OnChange(func(_, current *Material) {
-		if n := s.tracker.closeRetired(current); n > 0 {
-			r.log.Info("closed connections of retired trust", "connections", n)
-		}
-	})
-	return s
-}
-
-func (s *serverCreds) config() *tls.Config {
-	m := s.reloader.Current()
-	return &tls.Config{
-		Certificates:           []tls.Certificate{m.Certificate},
-		ClientCAs:              m.Pool,
-		ClientAuth:             tls.RequireAndVerifyClientCert,
-		MinVersion:             tls.VersionTLS13,
-		SessionTicketsDisabled: true,
-	}
-}
-
-func (s *serverCreds) ServerHandshake(raw net.Conn) (net.Conn, credentials.AuthInfo, error) {
-	conn, info, err := credentials.NewTLS(s.config()).ServerHandshake(raw)
-	if err != nil {
-		return nil, nil, err
-	}
-	tlsInfo, ok := info.(credentials.TLSInfo)
-	if !ok || len(tlsInfo.State.VerifiedChains) == 0 || len(tlsInfo.State.VerifiedChains[0]) == 0 {
-		_ = conn.Close()
-		return nil, nil, errors.New("identity: peer chain not verified")
-	}
-	chain := tlsInfo.State.VerifiedChains[0]
-	root := chain[len(chain)-1]
-	peer := PeerInfo{TLSInfo: tlsInfo, Root: root}
-	peer.Principal, peer.Err = PeerPrincipal(chain[0])
-	tracked := &trackedConn{Conn: conn, root: root, tracker: s.tracker}
-	s.tracker.add(root, conn)
-	return tracked, peer, nil
-}
-
-func (s *serverCreds) ClientHandshake(context.Context, string, net.Conn) (net.Conn, credentials.AuthInfo, error) {
-	return nil, nil, errors.New("identity: server credentials cannot dial")
-}
-
-func (s *serverCreds) Info() credentials.ProtocolInfo {
-	return credentials.ProtocolInfo{SecurityProtocol: "tls", SecurityVersion: "1.3", ServerName: ""}
-}
-
-func (s *serverCreds) Clone() credentials.TransportCredentials { return s }
-
-func (s *serverCreds) OverrideServerName(string) error { return nil }
 
 // clientCreds dials with the Reloader's current certificate and CA bundle
 // and verifies the server through standard hostname verification against

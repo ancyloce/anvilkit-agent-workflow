@@ -591,12 +591,6 @@ func reconcileCleanup(ctx workflow.Context, q Queues, b Bounds, attempt activiti
 	}
 }
 
-// closeAttempt is closeAttemptFrom from a fresh backoff, waiting on
-// Control's obligations. No Workflow calls it; settlement_wait_test.go does.
-func closeAttempt(ctx workflow.Context, q Queues, b Bounds, attempt activities.AttemptRef, commandID, outcome, cleanup, failureCode string) error {
-	return closeAttemptFrom(ctx, q, b, attempt, commandID, outcome, cleanup, failureCode, 0, true)
-}
-
 // closeIntentFirst guards the P1.6 order of a multi-step run's last close:
 // a close that ends the run's work (any outcome but completed) does not
 // wait on Control's obligations; the settlement that follows at once
