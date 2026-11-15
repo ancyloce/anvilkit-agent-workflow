@@ -62,16 +62,16 @@ func TestRequirementsEditableFieldsFollowPuckFields(t *testing.T) {
 		{"name":"heading","type":"text","default":"Plans"},
 		{"name":"intro","type":"richtext"},
 		{"name":"note","type":"textarea","default":"Billed monthly"},
-		{"name":"seats","type":"number","default":"5"},
+		{"name":"seats","type":"number","default":5},
 		{"name":"variant","type":"select","default":"pro","options":[{"label":"Basic","value":"basic"},{"label":"Pro","value":"pro"}]},
-		{"name":"scalePrice","type":"radio","options":[{"label":"Yes","value":true},{"label":"No","value":false}]},
-		{"name":"columns","type":"radio","options":[{"label":"Two","value":2},{"label":"Three","value":3.0}]},
-		{"name":"perks","type":"checkbox","options":[{"label":"Support","value":"support"}]},
-		{"name":"plans","type":"array","arrayFields":{"name":{"type":"text"},"features":{"type":"array","arrayFields":{"label":{"type":"text"}}}}},
-		{"name":"cta","type":"object","objectFields":{"label":{"type":"text"},"tone":{"type":"select","options":[{"label":"Bold","value":"bold"}]}}},
-		{"name":"featured","type":"external"},
-		{"name":"accent","type":"custom"},
-		{"name":"content","type":"slot"}
+		{"name":"scalePrice","type":"radio","default":false,"options":[{"label":"Yes","value":true},{"label":"No","value":false}]},
+		{"name":"columns","type":"radio","default":3,"options":[{"label":"Two","value":2},{"label":"Three","value":3.0}]},
+		{"name":"perks","type":"checkbox","default":["support"],"options":[{"label":"Support","value":"support"},{"label":"Setup","value":"setup"}]},
+		{"name":"plans","type":"array","default":[{"name":"Pro","features":[{"label":"SSO"}]}],"arrayFields":{"name":{"type":"text"},"features":{"type":"array","arrayFields":{"label":{"type":"text"}}}}},
+		{"name":"cta","type":"object","default":{"label":"Buy","tone":"bold"},"objectFields":{"label":{"type":"text"},"tone":{"type":"select","options":[{"label":"Bold","value":"bold"}]}}},
+		{"name":"featured","type":"external","default":null},
+		{"name":"accent","type":"custom","default":{"hue":210}},
+		{"name":"content","type":"slot","default":[]}
 	]`
 	var sent activities.ModelCallInput
 	out := analyze(t, fields, &sent)
@@ -89,6 +89,9 @@ func TestRequirementsEditableFieldsFollowPuckFields(t *testing.T) {
 	// Option values keep their JSON type and spelling (a number stays as written).
 	require.Contains(t, string(out.Requirements), `{"label":"Three","value":3.0}`)
 	require.Contains(t, string(out.Requirements), `{"label":"Yes","value":true}`)
+	// DEC-060: a default is a JSON value of its field's type, kept as written.
+	require.Contains(t, string(out.Requirements), `"name":"seats","type":"number","default":5`)
+	require.Contains(t, string(out.Requirements), `"default":[{"name":"Pro","features":[{"label":"SSO"}]}]`)
 
 	// The call names the analysis tool by the canonical digest of exactly the
 	// schema the Model Proxy routes declare.
@@ -101,7 +104,7 @@ func TestRequirementsEditableFieldsFollowPuckFields(t *testing.T) {
 // route that declares submit_requirements in the same release
 // (services/agent/model-proxy/config.yaml and the placements' Model Proxy
 // configuration, the Compose one among them).
-const requirementsSchemaDigest = "sha256:2654b0dbedfec32cc3df828de8b8b4d4d119b93d01cc7d0d279d2bd525aee1cc"
+const requirementsSchemaDigest = "sha256:62b9cc07b2eb8bc8cba5470dd748e88f5ef1ed75571d8d92d657924e2a8ca662"
 
 func TestRequirementsRefuseFieldsPuckDoesNotDefine(t *testing.T) {
 	cases := map[string]string{
@@ -124,6 +127,21 @@ func TestRequirementsRefuseFieldsPuckDoesNotDefine(t *testing.T) {
 		"nesting three levels deep":                               `[{"name":"a","type":"array","arrayFields":{"b":{"type":"array","arrayFields":{"c":{"type":"array","arrayFields":{"d":{"type":"text"}}}}}}}]`,
 		"a field parameter Puck has but the brief does not carry": `[{"name":"title","type":"text","placeholder":"Title"}]`,
 		"a default over 2000 characters":                          `[{"name":"title","type":"text","default":"` + strings.Repeat("x", 2001) + `"}]`,
+		// DEC-060: the default is a JSON value of the field's type.
+		"a number default spelled as a string":     `[{"name":"seats","type":"number","default":"5"}]`,
+		"a text default that is a number":          `[{"name":"title","type":"text","default":5}]`,
+		"a richtext default that is an object":     `[{"name":"intro","type":"richtext","default":{"p":"x"}}]`,
+		"a null default of a text field":           `[{"name":"title","type":"text","default":null}]`,
+		"a select default outside its options":     `[{"name":"variant","type":"select","default":"gold","options":[{"label":"Pro","value":"pro"}]}]`,
+		"a radio default of another JSON type":     `[{"name":"open","type":"radio","default":"true","options":[{"label":"Yes","value":true}]}]`,
+		"a checkbox default that is one value":     `[{"name":"perks","type":"checkbox","default":"support","options":[{"label":"Support","value":"support"}]}]`,
+		"a checkbox default with a repeated value": `[{"name":"perks","type":"checkbox","default":["support","support"],"options":[{"label":"Support","value":"support"}]}]`,
+		"an array default that is not a list":      `[{"name":"plans","type":"array","default":{"name":"Pro"},"arrayFields":{"name":{"type":"text"}}}]`,
+		"an array item naming no sub-field":        `[{"name":"plans","type":"array","default":[{"title":"Pro"}],"arrayFields":{"name":{"type":"text"}}}]`,
+		"an array item with a mistyped member":     `[{"name":"plans","type":"array","default":[{"price":"12"}],"arrayFields":{"price":{"type":"number"}}}]`,
+		"an object default with a mistyped member": `[{"name":"cta","type":"object","default":{"tone":"loud"},"objectFields":{"tone":{"type":"select","options":[{"label":"Bold","value":"bold"}]}}}]`,
+		"a slot default with content":              `[{"name":"content","type":"slot","default":[{"type":"Hero"}]}]`,
+		"a non-string default over 2000 bytes":     `[{"name":"accent","type":"custom","default":["` + strings.Repeat("x", 2000) + `"]}]`,
 	}
 	seventeen := make([]string, 17)
 	for i := range seventeen {
