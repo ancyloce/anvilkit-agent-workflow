@@ -214,6 +214,7 @@ func Preparation(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Conte
 		var brief activities.BriefRef
 		if err := workflow.ExecuteActivity(business, activities.NameFreezeBrief, activities.FreezeBriefInput{
 			OperationID: operationID, TenantID: tenantID, CommandID: operationID + ":brief", Requirements: requirements, Prompt: prep.Prompt, Answers: answers, SourceRevisions: sources, Frozen: frozen,
+			Base: prep.Base,
 		}).Get(ctx, &brief); err != nil {
 			outcome, failureCode = settleOutcome(ctx, err, "BRIEF_REFUSED")
 			return nil
@@ -277,6 +278,7 @@ func analyzeRound(ctx workflow.Context, q Queues, b Bounds, lb LifecycleBounds, 
 			OperationID: operationID, TenantID: tenantID, AttemptID: attempt.AttemptID, ExecutionEpoch: epoch,
 			CallID: fmt.Sprintf("%s:analysis:r%d:c%d", operationID, round, call), RouteID: lb.AnalysisRouteID, Round: round, Prompt: prep.Prompt, Answers: answers,
 			MaxQuestions: prep.MaxQuestions, MustConclude: mustConclude, MaxOutputTokens: lb.AnalysisMaxOutputTokens, MaxExposure: lb.AnalysisMaxExposure, Deadline: deadline,
+			Base: prep.Base,
 		}).Get(ctx, &analysis); err != nil {
 			closeOutcome, closeCode = settleOutcome(ctx, err, "OBSERVER_FAILED")
 			return roundResult{}, err

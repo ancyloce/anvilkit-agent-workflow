@@ -63,6 +63,8 @@ type settled struct {
 	settles     []activities.SettleOperationInput
 	closes      []activities.CloseAttemptInput
 	calls       []activities.AnalyzeRequirementsInput
+	// frozenBase is the base of the last brief freeze asked.
+	frozenBase *activities.PreparationBase
 }
 
 func (s *settled) record(env *testsuite.TestWorkflowEnvironment) {
@@ -120,6 +122,9 @@ func preparationEnv(t *testing.T, analyze func(in activities.AnalyzeRequirements
 	})
 	env.OnActivity(activities.NameFreezeReferences, mock.Anything, mock.Anything).Return(activities.FrozenReferences{BrandDigests: []activities.ContentDigest{{SourceID: "brand_1", Revision: "3", Digest: "sha256:bb"}}}, nil)
 	env.OnActivity(activities.NameFreezeBrief, mock.Anything, mock.MatchedBy(func(in activities.FreezeBriefInput) bool {
+		s.mu.Lock()
+		s.frozenBase = in.Base
+		s.mu.Unlock()
 		return in.CommandID == "op_PREP:brief" && string(in.Requirements) == string(reqs) && len(in.Frozen.BrandDigests) == 1
 	})).Return(activities.BriefRef{BriefID: "brf_1"}, nil)
 	return env, s
@@ -139,6 +144,30 @@ func TestPreparationSkipsQuestionsWhenSufficient(t *testing.T) {
 	require.Equal(t, "brief_frozen", s.last().Phase)
 	require.Len(t, s.closes, 1, "the analysis attempt is closed before the brief")
 	require.Equal(t, "completed", s.closes[0].Outcome)
+	require.Nil(t, s.calls[0].Base, "a new component has no base")
+	require.Nil(t, s.frozenBase)
+}
+
+// DEC-063: the base Control accepted with the Preparation reaches the
+// analysis call, which reads its brief, and the freeze, which keeps its
+// identity; a Preparation of a new component passes none.
+func TestPreparationOfAChangeCarriesItsBase(t *testing.T) {
+	base := &activities.PreparationBase{OperationID: "op_base", Revision: "4",
+		Identity: activities.ComponentIdentity{ComponentID: "cmp_hero", PuckType: "Hero", PackageName: "@acme/hero"},
+		Brief:    activities.ArtifactBinding{TransferID: "xfer_base_brief", Digest: "sha256:cc", Handle: "h_base_brief"}}
+	original := prepView
+	prepView.Base = base
+	t.Cleanup(func() { prepView = original })
+	env, s := preparationEnv(t, func(in activities.AnalyzeRequirementsInput) (activities.Analysis, error) {
+		return activities.Analysis{CallID: in.CallID, State: "succeeded", Requirements: reqs}, nil
+	})
+	env.ExecuteWorkflow(workflows.PreparationWorkflowName, prepInput)
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+	require.Equal(t, "brief_frozen", s.last().Phase)
+	require.Len(t, s.calls, 1)
+	require.Equal(t, base, s.calls[0].Base)
+	require.Equal(t, base, s.frozenBase)
 }
 
 func TestPreparationRoundAnsweredByUpdate(t *testing.T) {
