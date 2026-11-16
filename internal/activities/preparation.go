@@ -87,6 +87,22 @@ type PreparationView struct {
 	MaxRounds       uint64
 	MaxQuestions    uint64
 	Wait            time.Duration
+	// Base is set when the Preparation analyzes a change to a delivered
+	// component (DEC-063); nil for a new component.
+	Base *PreparationBase
+}
+
+// PreparationBase is the base a Preparation names, as Control accepted it:
+// the generation or refinement whose registered source the change starts
+// from, the identity that operation's brief allocates (the lineage's) and
+// the brief itself. The analysis reads the brief's requirements as data,
+// and the brief frozen here keeps the identity and declares the base
+// brief's version with the patch number raised by one.
+type PreparationBase struct {
+	OperationID string
+	Revision    string
+	Identity    ComponentIdentity
+	Brief       ArtifactBinding
 }
 
 // AnalysisAnswer is one accepted answer the analysis reads (by transfer).
@@ -116,6 +132,10 @@ type AnalyzeRequirementsInput struct {
 	MaxOutputTokens int
 	MaxExposure     Money
 	Deadline        time.Time
+	// Base makes the call the analysis of a change (DEC-063): the base
+	// brief's requirements are read and given as data, and the submitted
+	// requirements must keep the base's component and package names.
+	Base *PreparationBase
 }
 
 // Analysis is the structured outcome of one call: either the requirements
@@ -190,6 +210,9 @@ type FreezeBriefInput struct {
 	Answers         []AnalysisAnswer
 	SourceRevisions []SourceReference
 	Frozen          FrozenReferences
+	// Base makes the brief a refinement's (DEC-063): it keeps the base's
+	// identity and declares the base brief's version, patch raised by one.
+	Base *PreparationBase
 }
 
 type SettleOperationInput struct {
