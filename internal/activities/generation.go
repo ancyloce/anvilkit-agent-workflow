@@ -36,14 +36,16 @@ type GetGenerationInput struct {
 type GenerationView struct {
 	ProfileID     string
 	SubjectDigest string
-	// SourceRevision is the revision the operation's subject names: the
-	// candidate's own for a Generation that names one, the base's for a
-	// refinement (the revision its registration expects the lineage to hold).
+	// SourceRevision is the candidate's own revision when the subject names
+	// one; a refinement names none (its base revision is BaseRevision).
 	SourceRevision string
 	// Base is a refinement's base source, which Control resolved from the
-	// source operation and revision the subject names and bound at
-	// acceptance; nil for a Generation. The first coding round starts from it.
+	// refinement base the subject names and bound at acceptance; nil for a
+	// Generation. The first coding round starts from it. BaseRevision is
+	// the base's revision: the run starts only while the lineage still
+	// holds it, and the candidate registration expects it (DEC-064).
 	Base                 *StageArtifact
+	BaseRevision         string
 	ActorID              string
 	Brief                BriefRef
 	SourceRevisions      []SourceReference

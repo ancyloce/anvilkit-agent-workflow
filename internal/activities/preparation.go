@@ -101,8 +101,11 @@ type PreparationView struct {
 type PreparationBase struct {
 	OperationID string
 	Revision    string
-	Identity    ComponentIdentity
-	Brief       ArtifactBinding
+	// Lineage is the base operation's component source lineage: the
+	// analysis starts only while it still holds Revision (DEC-064).
+	Lineage  string
+	Identity ComponentIdentity
+	Brief    ArtifactBinding
 }
 
 // AnalysisAnswer is one accepted answer the analysis reads (by transfer).
