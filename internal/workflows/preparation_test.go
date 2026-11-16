@@ -37,7 +37,7 @@ func registerLifecycle(env *testsuite.TestWorkflowEnvironment, lb workflows.Life
 	for name, fn := range map[string]any{
 		activities.NameGetPreparation: a.GetPreparation, activities.NameAnalyzeRequirements: a.AnalyzeRequirements, activities.NameRecordQuestionSet: a.RecordQuestionSet,
 		activities.NameGetAnswer: a.GetAnswer, activities.NameFreezeReferences: a.FreezeReferences, activities.NameFreezeBrief: a.FreezeBrief,
-		activities.NameSettleOperation: a.SettleOperation, activities.NameRecordFunding: a.RecordFunding,
+		activities.NameSettleOperation: a.SettleOperation, activities.NameRecordFunding: a.RecordFunding, activities.NameCurrentSourceRevision: a.CurrentSourceRevision,
 		activities.NameGetGeneration: a.GetGeneration, activities.NameRequestExecutionPermit: a.RequestExecutionPermit, activities.NameCheckSourceScope: a.CheckSourceScope,
 		activities.NameAcquireLease: a.AcquireLease, activities.NameRenewLease: a.RenewLease, activities.NameQueryLease: a.QueryLease, activities.NameReleaseLease: a.ReleaseLease,
 		activities.NameRecordLease: a.RecordLease, activities.NameGetAcceptedStage: a.GetAcceptedStage, activities.NameRegisterCandidate: a.RegisterCandidate,
@@ -150,24 +150,39 @@ func TestPreparationSkipsQuestionsWhenSufficient(t *testing.T) {
 
 // DEC-063: the base Control accepted with the Preparation reaches the
 // analysis call, which reads its brief, and the freeze, which keeps its
-// identity; a Preparation of a new component passes none.
+// identity; a Preparation of a new component passes none. DEC-064: the
+// analysis starts only while the base's lineage still holds its revision.
 func TestPreparationOfAChangeCarriesItsBase(t *testing.T) {
-	base := &activities.PreparationBase{OperationID: "op_base", Revision: "4",
+	base := &activities.PreparationBase{OperationID: "op_base", Revision: "4", Lineage: "sha256:lineage",
 		Identity: activities.ComponentIdentity{ComponentID: "cmp_hero", PuckType: "Hero", PackageName: "@acme/hero"},
 		Brief:    activities.ArtifactBinding{TransferID: "xfer_base_brief", Digest: "sha256:cc", Handle: "h_base_brief"}}
 	original := prepView
 	prepView.Base = base
 	t.Cleanup(func() { prepView = original })
-	env, s := preparationEnv(t, func(in activities.AnalyzeRequirementsInput) (activities.Analysis, error) {
-		return activities.Analysis{CallID: in.CallID, State: "succeeded", Requirements: reqs}, nil
-	})
-	env.ExecuteWorkflow(workflows.PreparationWorkflowName, prepInput)
-	require.True(t, env.IsWorkflowCompleted())
-	require.NoError(t, env.GetWorkflowError())
+	run := func(current string) *settled {
+		env, s := preparationEnv(t, func(in activities.AnalyzeRequirementsInput) (activities.Analysis, error) {
+			return activities.Analysis{CallID: in.CallID, State: "succeeded", Requirements: reqs}, nil
+		})
+		env.OnActivity(activities.NameCurrentSourceRevision, mock.Anything, "sha256:lineage").Return(current, nil)
+		env.ExecuteWorkflow(workflows.PreparationWorkflowName, prepInput)
+		require.True(t, env.IsWorkflowCompleted())
+		require.NoError(t, env.GetWorkflowError())
+		return s
+	}
+	s := run("4")
 	require.Equal(t, "brief_frozen", s.last().Phase)
 	require.Len(t, s.calls, 1)
 	require.Equal(t, base, s.calls[0].Base)
 	require.Equal(t, base, s.frozenBase)
+
+	// The lineage moved since the base was named: nothing is funded,
+	// analyzed or frozen.
+	s = run("5")
+	require.Equal(t, "failed", s.last().Outcome)
+	require.Equal(t, workflows.BaseStale, s.last().FailureCode)
+	require.Equal(t, "base_stale", s.last().Phase)
+	require.Empty(t, s.calls, "no analysis call is paid for a stale base")
+	require.Nil(t, s.frozenBase)
 }
 
 func TestPreparationRoundAnsweredByUpdate(t *testing.T) {

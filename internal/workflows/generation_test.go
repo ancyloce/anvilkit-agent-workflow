@@ -51,9 +51,13 @@ type genScript struct {
 	fundingOutage time.Duration
 	fundingErr    error
 	// base and baseRevision make the run a refinement (DEC-062): the base
-	// source Control bound and the base revision its subject names.
-	base         *activities.StageArtifact
-	baseRevision string
+	// source Control bound and the revision of the base its subject names.
+	// currentRevision is what the source authority answers for the lineage
+	// (the base's when empty); currentErr fails that read (DEC-064).
+	base            *activities.StageArtifact
+	baseRevision    string
+	currentRevision string
+	currentErr      error
 }
 
 // genRecord is what a run issued.
@@ -68,6 +72,8 @@ type genRecord struct {
 	registers []activities.RegisterCandidateInput
 	// identities is every brief-identity request.
 	identities []activities.BriefIdentityInput
+	// currentReads is every read of a lineage's current revision.
+	currentReads []string
 	// leaseSends is every lease port call by kind, attempts included.
 	leaseSends []string
 }
@@ -102,7 +108,7 @@ func generationEnvWith(t *testing.T, b workflows.Bounds, lb workflows.LifecycleB
 		activities.NameGetGeneration: a.GetGeneration, activities.NameRequestExecutionPermit: a.RequestExecutionPermit, activities.NameCheckSourceScope: a.CheckSourceScope,
 		activities.NameAcquireLease: a.AcquireLease, activities.NameRenewLease: a.RenewLease, activities.NameQueryLease: a.QueryLease, activities.NameReleaseLease: a.ReleaseLease,
 		activities.NameRecordLease: a.RecordLease, activities.NameGetAcceptedStage: a.GetAcceptedStage, activities.NameRegisterCandidate: a.RegisterCandidate,
-		activities.NameBriefIdentity: a.BriefIdentity,
+		activities.NameBriefIdentity: a.BriefIdentity, activities.NameCurrentSourceRevision: a.CurrentSourceRevision,
 	} {
 		env.RegisterActivityWithOptions(fn, activity.RegisterOptions{Name: name})
 	}
@@ -120,8 +126,18 @@ func generationEnvWith(t *testing.T, b workflows.Bounds, lb workflows.LifecycleB
 	env.OnActivity(activities.NameGetGeneration, mock.Anything, mock.Anything).Return(activities.GenerationView{
 		SubjectDigest: "sha256:subject", Brief: brief, QueueDeadline: env.Now().Add(2 * time.Hour), DefinitionActivation: definition, MaxRepairs: 1,
 		CodegenProfileID: "codegen-team-dev-v1", ValidatorProfileID: "validator-source-v1", Lease: script.leaseState,
-		Base: script.base, SourceRevision: script.baseRevision,
+		Base: script.base, BaseRevision: script.baseRevision,
 	}, nil)
+	env.OnActivity(activities.NameCurrentSourceRevision, mock.Anything, mock.Anything).Return(func(_ context.Context, lineage string) (string, error) {
+		r.add(func() { r.currentReads = append(r.currentReads, lineage) })
+		if script.currentErr != nil {
+			return "", script.currentErr
+		}
+		if script.currentRevision != "" {
+			return script.currentRevision, nil
+		}
+		return script.baseRevision, nil
+	})
 	permits := append([]bool(nil), script.permits...)
 	env.OnActivity(activities.NameRequestExecutionPermit, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.RequestExecutionPermitInput) (activities.PermitAnswer, error) {
 		r.add(func() { r.permits = append(r.permits, in.CommandID) })
@@ -371,6 +387,47 @@ func TestRefinementStartsFromItsBaseSource(t *testing.T) {
 	require.Len(t, r.registers, 1)
 	require.Equal(t, "7", r.registers[0].SourceRevision, "the registration expects the lineage at the base revision")
 	require.Equal(t, "source:sha256:subject", r.registers[0].Subject, "the candidate is registered on the base's lineage")
+	require.Equal(t, []string{"sha256:subject"}, r.currentReads, "the lineage's current revision is read once, before the paid work")
+}
+
+// DEC-064: a refinement whose base is no longer the revision its lineage
+// holds ends before funding, the lease and the first Job; a failed read of
+// the source authority ends it the same way under its own code. A
+// Generation never reads the lineage's revision.
+func TestRefinementOfAStaleBaseEndsBeforeThePaidWork(t *testing.T) {
+	base := &activities.StageArtifact{Class: "source", Digest: "sha256:base", Handle: "h_base"}
+	for name, c := range map[string]struct {
+		script genScript
+		code   string
+		phase  string
+	}{
+		"the lineage moved": {genScript{scope: activities.ScopeDecision{Allowed: true}, base: base, baseRevision: "7", currentRevision: "8"}, workflows.BaseStale, "base_stale"},
+		"the source authority does not answer": {genScript{scope: activities.ScopeDecision{Allowed: true}, base: base, baseRevision: "7",
+			currentErr: activities.Refused("DEPENDENCY_UNAVAILABLE", errors.New("no source port"))}, "DEPENDENCY_UNAVAILABLE", ""},
+	} {
+		env, r := generationEnv(t, lifecycleBounds, c.script)
+		env.ExecuteWorkflow(workflows.GenerationWorkflowName, genInput)
+		require.True(t, env.IsWorkflowCompleted(), name)
+		require.NoError(t, env.GetWorkflowError(), name)
+		require.Equal(t, "failed", r.last().Outcome, name)
+		require.Equal(t, c.code, r.last().FailureCode, name)
+		require.Equal(t, c.phase, r.last().Phase, name)
+		require.Empty(t, r.fundings, name+": nothing is funded")
+		require.Empty(t, r.leases, name+": no lease is taken")
+		require.Empty(t, r.creates, name+": no Job is created")
+		require.Empty(t, r.registers, name)
+	}
+
+	env, r := generationEnv(t, lifecycleBounds, genScript{
+		scope:     activities.ScopeDecision{Allowed: true},
+		codegen:   map[uint64]activities.AcceptedStage{0: certified("c0", sourceA, stageA)},
+		validator: map[uint64]activities.AcceptedStage{0: certified("v0", evidence)},
+		candidate: activities.CandidateRef{EffectID: "eff_1", State: "succeeded", CandidateID: "cand_1"},
+	})
+	env.ExecuteWorkflow(workflows.GenerationWorkflowName, genInput)
+	require.NoError(t, env.GetWorkflowError())
+	require.Equal(t, "succeeded", r.last().Outcome)
+	require.Empty(t, r.currentReads, "a Generation has no base to check")
 }
 
 func TestGenerationRepairBoundNeverResets(t *testing.T) {

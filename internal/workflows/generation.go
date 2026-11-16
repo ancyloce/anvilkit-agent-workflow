@@ -185,6 +185,17 @@ func Generation(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Contex
 			outcome, failureCode, phase = "failed", firstNonEmpty(scope.ReasonCode, "SCOPE_REJECTED"), "scope_rejected"
 			return nil
 		}
+		// A refinement starts only from the revision its lineage holds now
+		// (DEC-064): a base that moved since the change was prepared is
+		// refused here, before funding and the first Job, and not only by
+		// the registration's expected revision after the paid work. The
+		// registration still carries that expectation: this read is no lock.
+		if view.Base != nil {
+			if o, code, p := checkBase(ctx, business, view.SubjectDigest, view.BaseRevision); o != "" {
+				outcome, failureCode, phase = o, code, p
+				return nil
+			}
+		}
 		if err := workflow.ExecuteActivity(business, activities.NameRecordFunding, activities.RecordFundingInput{OperationID: operationID, TenantID: tenantID, CommandID: operationID + ":funding"}).Get(ctx, nil); err != nil {
 			outcome, failureCode = fundingOutcome(ctx, err)
 			return nil
@@ -194,14 +205,8 @@ func Generation(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Contex
 		var component *activities.ComponentIdentity
 		if workflow.GetVersion(ctx, "launch-component-identity", workflow.DefaultVersion, 1) == 1 {
 			var id activities.ComponentIdentity
-			// A refinement's subject names its base's revision, not the
-			// candidate's: the candidate's is the one its brief froze (DEC-062).
-			candidateRevision := view.SourceRevision
-			if view.Base != nil {
-				candidateRevision = ""
-			}
 			if err := workflow.ExecuteActivity(business, activities.NameBriefIdentity, activities.BriefIdentityInput{
-				TenantID: tenantID, OperationID: operationID, Brief: view.Brief, SourceRevision: candidateRevision,
+				TenantID: tenantID, OperationID: operationID, Brief: view.Brief, SourceRevision: view.SourceRevision,
 			}).Get(ctx, &id); err != nil {
 				outcome, failureCode = settleOutcome(ctx, err, "BRIEF_INVALID")
 				return nil
@@ -361,9 +366,15 @@ func Generation(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Contex
 			registrationDeadline = *state.lease.ExpiresAt
 		}
 		state.inflight++
+		// The revision the registration expects the lineage to hold: a
+		// refinement's base revision, else the one the subject names.
+		expectedRevision := view.SourceRevision
+		if view.Base != nil {
+			expectedRevision = view.BaseRevision
+		}
 		regErr := workflow.ExecuteActivity(controlOptions(workCtx, q, bounds), activities.NameRegisterCandidate, activities.RegisterCandidateInput{
 			OperationID: operationID, TenantID: tenantID, AttemptID: registration.AttemptID, ExecutionEpoch: epoch,
-			CommandID: operationID + ":candidate:" + strconv.Itoa(candidateEffect), Occurrence: candidateEffect, Subject: "source:" + view.SubjectDigest, SourceRevision: view.SourceRevision,
+			CommandID: operationID + ":candidate:" + strconv.Itoa(candidateEffect), Occurrence: candidateEffect, Subject: "source:" + view.SubjectDigest, SourceRevision: expectedRevision,
 			Source: *source, Certification: derefArtifact(cert), Lease: state.lease, Deadline: registrationDeadline,
 		}).Get(ctx, &candidate)
 		state.inflight--
@@ -388,6 +399,28 @@ func Generation(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Contex
 		}
 		return nil
 	}
+}
+
+// BaseStale is the failure code of a refinement, or of the preparation of
+// its change, whose base is no longer the revision its lineage holds.
+const BaseStale = "BASE_STALE"
+
+// checkBase reads the lineage's current revision from the source authority
+// before any paid step of the caller (DEC-064). It answers an empty outcome
+// when the lineage still holds the base's revision; otherwise the outcome,
+// failure code and phase the run settles with: BaseStale when the lineage
+// moved, or the classification of a read that failed or was canceled.
+func checkBase(ctx workflow.Context, options workflow.Context, lineage, baseRevision string) (outcome, failureCode, phase string) {
+	var current string
+	if err := workflow.ExecuteActivity(options, activities.NameCurrentSourceRevision, lineage).Get(ctx, &current); err != nil {
+		outcome, failureCode = settleOutcome(ctx, err, "SOURCE_UNAVAILABLE")
+		return outcome, failureCode, ""
+	}
+	if current != baseRevision {
+		workflow.GetLogger(ctx).Info("the base is no longer the lineage's current revision", "baseRevision", baseRevision, "currentRevision", current)
+		return "failed", BaseStale, "base_stale"
+	}
+	return "", "", ""
 }
 
 // awaitPermit asks for the execution permit until granted; the wait is a

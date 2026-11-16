@@ -128,6 +128,16 @@ func Preparation(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Conte
 			prep.MaxQuestions = 3
 		}
 
+		// The analysis of a change starts only from the revision the base's
+		// lineage holds now (DEC-064): a stale base is refused before the
+		// funding and the first paid call.
+		if prep.Base != nil {
+			if o, code, p := checkBase(ctx, business, prep.Base.Lineage, prep.Base.Revision); o != "" {
+				outcome, failureCode, phase = o, code, p
+				return nil
+			}
+		}
+
 		// Funding once under the operation identity (the analysis allowance).
 		if err := workflow.ExecuteActivity(business, activities.NameRecordFunding, activities.RecordFundingInput{OperationID: operationID, TenantID: tenantID, CommandID: operationID + ":funding"}).Get(ctx, nil); err != nil {
 			outcome, failureCode = fundingOutcome(ctx, err)
