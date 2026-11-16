@@ -100,10 +100,10 @@ func (c *Client) GetPreparation(ctx context.Context, in activities.GetPreparatio
 	return view, nil
 }
 
-// preparationBase resolves the base a Preparation's subject names
-// (DEC-063), nil when it names none: the base operation's brief, which
-// Control checked at acceptance to allocate the lineage's identity, and
-// that identity.
+// preparationBase resolves the refinement base a Preparation's subject
+// names (DEC-063), nil when it names none: the base operation's lineage and
+// brief, which Control checked at acceptance to allocate the lineage's
+// identity, and that identity.
 func (c *Client) preparationBase(ctx context.Context, in activities.GetPreparationInput) (*activities.PreparationBase, error) {
 	ops := controlv1.NewOperationServiceClient(c.conn)
 	scope := &controlv1.Scope{TenantId: in.TenantID, ActorId: c.worker}
@@ -111,17 +111,17 @@ func (c *Client) preparationBase(ctx context.Context, in activities.GetPreparati
 	if err != nil {
 		return nil, nonRetryable(err)
 	}
-	subject := prep.GetOperation().GetSubject()
-	if subject.GetSourceOperationId() == "" {
+	named := prep.GetOperation().GetSubject().GetRefinementBase()
+	if named == nil {
 		return nil, nil
 	}
-	base, err := ops.GetOperation(ctx, &controlv1.GetOperationRequest{Scope: scope, OperationId: subject.GetSourceOperationId()})
+	base, err := ops.GetOperation(ctx, &controlv1.GetOperationRequest{Scope: scope, OperationId: named.GetSourceOperationId()})
 	if err != nil {
 		return nil, nonRetryable(err)
 	}
 	briefID := base.GetOperation().GetSubject().GetBriefId()
 	if briefID == "" {
-		return nil, activities.Refused("BRIEF_INVALID", fmt.Errorf("base operation %s binds no brief", subject.GetSourceOperationId()))
+		return nil, activities.Refused("BRIEF_INVALID", fmt.Errorf("base operation %s binds no brief", named.GetSourceOperationId()))
 	}
 	resp, err := c.preparation().GetBrief(ctx, &controlv1.GetBriefRequest{TenantId: in.TenantID, BriefId: briefID})
 	if err != nil {
@@ -129,11 +129,11 @@ func (c *Client) preparationBase(ctx context.Context, in activities.GetPreparati
 	}
 	identity := fromComponentIdentity(resp.GetBrief().GetComponent())
 	if identity == nil {
-		return nil, activities.Refused("BRIEF_INVALID", fmt.Errorf("the brief of base operation %s allocates no identity", subject.GetSourceOperationId()))
+		return nil, activities.Refused("BRIEF_INVALID", fmt.Errorf("the brief of base operation %s allocates no identity", named.GetSourceOperationId()))
 	}
 	return &activities.PreparationBase{
-		OperationID: subject.GetSourceOperationId(), Revision: subject.GetSourceRevision(), Identity: *identity,
-		Brief: fromBinding(resp.GetBrief().GetBrief(), resp.GetBrief().GetHandle()),
+		OperationID: named.GetSourceOperationId(), Revision: named.GetSourceRevision(), Lineage: base.GetOperation().GetSubject().GetSubjectDigest(),
+		Identity: *identity, Brief: fromBinding(resp.GetBrief().GetBrief(), resp.GetBrief().GetHandle()),
 	}, nil
 }
 
@@ -225,10 +225,18 @@ func (c *Client) GetGeneration(ctx context.Context, in activities.GetGenerationI
 		t := g.GetActiveDeadline().AsTime()
 		view.ActiveDeadline = &t
 	}
-	if handle := g.GetSubject().GetSourceHandle(); handle != "" {
+	base, handle := g.GetSubject().GetRefinementBase(), g.GetSubject().GetSourceHandle()
+	if (base == nil) != (handle == "") {
+		// Fail closed: a refinement without its bound source would
+		// generate from an empty directory, and a bound source no base
+		// names is no input of a Generation.
+		return activities.GenerationView{}, activities.Refused("INVALID_ARGUMENT", fmt.Errorf("operation %s names a refinement base and a bound base source together or not at all", in.OperationID))
+	}
+	if base != nil {
 		// A refinement's base (DEC-062): the digest and size come from
 		// Control's record of the artifact it bound, which it relates to
 		// this operation; the Job's sidecar verifies the bytes against them.
+		view.BaseRevision = base.GetSourceRevision()
 		read, err := controlv1.NewArtifactServiceClient(c.conn).ReadArtifact(ctx, &controlv1.ReadArtifactRequest{Handle: handle, OperationId: in.OperationID, TenantId: in.TenantID})
 		if err != nil {
 			return activities.GenerationView{}, nonRetryable(err)
