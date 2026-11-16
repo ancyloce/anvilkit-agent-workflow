@@ -76,3 +76,73 @@ func TestGetGenerationResolvesARefinementsBase(t *testing.T) {
 	require.Equal(t, "tenant_a", artifacts.got[0].GetTenantId())
 	require.Empty(t, artifacts.got[0].GetInstanceId(), "the Workflow reads the record, not as a Job instance")
 }
+
+// preparationStub answers GetPreparation with an empty intake and GetBrief
+// with the scripted briefs.
+type preparationStub struct {
+	controlv1.UnimplementedPreparationServiceServer
+	briefs map[string]*controlv1.Brief
+}
+
+func (s *preparationStub) GetPreparation(context.Context, *controlv1.GetPreparationRequest) (*controlv1.GetPreparationResponse, error) {
+	return &controlv1.GetPreparationResponse{Preparation: &controlv1.Preparation{MaxRounds: "2", MaxQuestions: "3", WaitSeconds: "60"}}, nil
+}
+
+func (s *preparationStub) GetBrief(_ context.Context, in *controlv1.GetBriefRequest) (*controlv1.GetBriefResponse, error) {
+	return &controlv1.GetBriefResponse{Brief: s.briefs[in.GetBriefId()]}, nil
+}
+
+// operationStub answers GetOperation with the scripted subjects.
+type operationStub struct {
+	controlv1.UnimplementedOperationServiceServer
+	subjects map[string]*controlv1.OperationSubject
+}
+
+func (s *operationStub) GetOperation(_ context.Context, in *controlv1.GetOperationRequest) (*controlv1.GetOperationResponse, error) {
+	return &controlv1.GetOperationResponse{Operation: &controlv1.OperationView{OperationId: in.GetOperationId(), Subject: s.subjects[in.GetOperationId()]}}, nil
+}
+
+// DEC-063: a Preparation's view carries the base its subject names: the
+// base operation's brief and the identity that brief allocates. A
+// Preparation of a new component carries none.
+func TestGetPreparationResolvesItsBase(t *testing.T) {
+	preparations, operations := &preparationStub{briefs: map[string]*controlv1.Brief{}}, &operationStub{subjects: map[string]*controlv1.OperationSubject{}}
+	listener := bufconn.Listen(1 << 20)
+	server := grpc.NewServer()
+	controlv1.RegisterPreparationServiceServer(server, preparations)
+	controlv1.RegisterOperationServiceServer(server, operations)
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(server.Stop)
+	conn, err := grpc.NewClient("passthrough:///control", grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return listener.DialContext(ctx) }))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+	c := &Client{conn: conn, worker: "anvilkit-agent-workflow"}
+	in := activities.GetPreparationInput{TenantID: "tenant_a", OperationID: "op_prep"}
+
+	operations.subjects["op_prep"] = &controlv1.OperationSubject{ProfileId: "preparation-v1", SubjectDigest: "sha256:prompt"}
+	view, err := c.GetPreparation(context.Background(), in)
+	require.NoError(t, err)
+	require.Nil(t, view.Base)
+	require.Equal(t, uint64(2), view.MaxRounds)
+
+	base, revision, brief := "op_base", "4", "brf_base"
+	operations.subjects["op_prep"] = &controlv1.OperationSubject{ProfileId: "preparation-v1", SubjectDigest: "sha256:prompt", SourceOperationId: &base, SourceRevision: &revision}
+	operations.subjects["op_base"] = &controlv1.OperationSubject{ProfileId: "generation-v1", SubjectDigest: "sha256:lineage", BriefId: &brief}
+	preparations.briefs["brf_base"] = &controlv1.Brief{
+		BriefId: "brf_base", Brief: &controlv1.ArtifactBinding{TransferId: "xfer_brief", Digest: "sha256:brief"}, Handle: "hdl_brief",
+		Component: &controlv1.ComponentIdentity{ComponentId: "cmp_hero", PuckType: "Hero", PackageName: "@acme/hero"},
+	}
+	view, err = c.GetPreparation(context.Background(), in)
+	require.NoError(t, err)
+	require.Equal(t, &activities.PreparationBase{
+		OperationID: "op_base", Revision: "4",
+		Identity: activities.ComponentIdentity{ComponentID: "cmp_hero", PuckType: "Hero", PackageName: "@acme/hero"},
+		Brief:    activities.ArtifactBinding{TransferID: "xfer_brief", Digest: "sha256:brief", Handle: "hdl_brief"},
+	}, view.Base)
+
+	// A base whose brief allocates no identity (frozen before P0.8) is refused.
+	preparations.briefs["brf_base"].Component = nil
+	_, err = c.GetPreparation(context.Background(), in)
+	require.Equal(t, "BRIEF_INVALID", activities.RefusalCode(err))
+}

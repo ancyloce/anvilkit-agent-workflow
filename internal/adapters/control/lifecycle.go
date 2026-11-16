@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -93,7 +94,47 @@ func (c *Client) GetPreparation(ctx context.Context, in activities.GetPreparatio
 		b := fromBrief(p.GetBrief())
 		view.Brief = &b
 	}
+	if view.Base, err = c.preparationBase(ctx, in); err != nil {
+		return activities.PreparationView{}, err
+	}
 	return view, nil
+}
+
+// preparationBase resolves the base a Preparation's subject names
+// (DEC-063), nil when it names none: the base operation's brief, which
+// Control checked at acceptance to allocate the lineage's identity, and
+// that identity.
+func (c *Client) preparationBase(ctx context.Context, in activities.GetPreparationInput) (*activities.PreparationBase, error) {
+	ops := controlv1.NewOperationServiceClient(c.conn)
+	scope := &controlv1.Scope{TenantId: in.TenantID, ActorId: c.worker}
+	prep, err := ops.GetOperation(ctx, &controlv1.GetOperationRequest{Scope: scope, OperationId: in.OperationID})
+	if err != nil {
+		return nil, nonRetryable(err)
+	}
+	subject := prep.GetOperation().GetSubject()
+	if subject.GetSourceOperationId() == "" {
+		return nil, nil
+	}
+	base, err := ops.GetOperation(ctx, &controlv1.GetOperationRequest{Scope: scope, OperationId: subject.GetSourceOperationId()})
+	if err != nil {
+		return nil, nonRetryable(err)
+	}
+	briefID := base.GetOperation().GetSubject().GetBriefId()
+	if briefID == "" {
+		return nil, activities.Refused("BRIEF_INVALID", fmt.Errorf("base operation %s binds no brief", subject.GetSourceOperationId()))
+	}
+	resp, err := c.preparation().GetBrief(ctx, &controlv1.GetBriefRequest{TenantId: in.TenantID, BriefId: briefID})
+	if err != nil {
+		return nil, nonRetryable(err)
+	}
+	identity := fromComponentIdentity(resp.GetBrief().GetComponent())
+	if identity == nil {
+		return nil, activities.Refused("BRIEF_INVALID", fmt.Errorf("the brief of base operation %s allocates no identity", subject.GetSourceOperationId()))
+	}
+	return &activities.PreparationBase{
+		OperationID: subject.GetSourceOperationId(), Revision: subject.GetSourceRevision(), Identity: *identity,
+		Brief: fromBinding(resp.GetBrief().GetBrief(), resp.GetBrief().GetHandle()),
+	}, nil
 }
 
 func (c *Client) RecordQuestionSet(ctx context.Context, in activities.RecordQuestionSetInput) (activities.QuestionSetRef, error) {
