@@ -55,7 +55,9 @@ func (s *generationState) nextOrdinal(stepID string, visit uint64) uint64 {
 // reported to Control before authored execution), the codegen Job, the
 // independent validator Job, bounded repair on accepted repairable
 // findings only, candidate registration under an effect identity, then
-// candidate_ready. The protected lease supervisor renews on durable timers
+// candidate_ready. A refinement (DEC-062) runs the same lifecycle on its
+// base's lineage: its first coding round binds the base source Control
+// resolved. The protected lease supervisor renews on durable timers
 // with short Activities under stable occurrence ids: only a confirmed
 // renewal moves the known expiry, an unknown one never does, and a
 // confirmed loss or the passing of the known expiry fences new sends for
@@ -192,8 +194,14 @@ func Generation(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Contex
 		var component *activities.ComponentIdentity
 		if workflow.GetVersion(ctx, "launch-component-identity", workflow.DefaultVersion, 1) == 1 {
 			var id activities.ComponentIdentity
+			// A refinement's subject names its base's revision, not the
+			// candidate's: the candidate's is the one its brief froze (DEC-062).
+			candidateRevision := view.SourceRevision
+			if view.Base != nil {
+				candidateRevision = ""
+			}
 			if err := workflow.ExecuteActivity(business, activities.NameBriefIdentity, activities.BriefIdentityInput{
-				TenantID: tenantID, OperationID: operationID, Brief: view.Brief, SourceRevision: view.SourceRevision,
+				TenantID: tenantID, OperationID: operationID, Brief: view.Brief, SourceRevision: candidateRevision,
 			}).Get(ctx, &id); err != nil {
 				outcome, failureCode = settleOutcome(ctx, err, "BRIEF_INVALID")
 				return nil
@@ -230,8 +238,14 @@ func Generation(q Queues, b Bounds, lb LifecycleBounds) func(ctx workflow.Contex
 			}
 			codegenProfile, validatorProfile, maxRepairs := lbounds.definition(state.definition, view)
 			inputs := []activities.LaunchInput{{Name: "brief", Digest: view.Brief.Brief.Digest, Handle: view.Brief.Brief.Handle}}
-			if prior != nil {
+			switch {
+			case prior != nil:
 				inputs = append(inputs, stageInputs(prior, "stage", "source")...)
+			case view.Base != nil:
+				// A refinement's first round starts from the base source
+				// (DEC-062): the input named source without a prior stage. A
+				// repair round continues from the prior round's source instead.
+				inputs = append(inputs, activities.LaunchInput{Name: "source", Digest: view.Base.Digest, Handle: view.Base.Handle})
 			}
 			if findings != nil {
 				inputs = append(inputs, stageInputs(findings, "evidence")...)

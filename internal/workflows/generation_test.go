@@ -50,6 +50,10 @@ type genScript struct {
 	// when set, is the answer of every RecordFunding call (P1.6 AC7).
 	fundingOutage time.Duration
 	fundingErr    error
+	// base and baseRevision make the run a refinement (DEC-062): the base
+	// source Control bound and the base revision its subject names.
+	base         *activities.StageArtifact
+	baseRevision string
 }
 
 // genRecord is what a run issued.
@@ -62,6 +66,8 @@ type genRecord struct {
 	creates   []activities.CreateJobInput
 	renewals  []uint64
 	registers []activities.RegisterCandidateInput
+	// identities is every brief-identity request.
+	identities []activities.BriefIdentityInput
 	// leaseSends is every lease port call by kind, attempts included.
 	leaseSends []string
 }
@@ -100,8 +106,11 @@ func generationEnvWith(t *testing.T, b workflows.Bounds, lb workflows.LifecycleB
 	} {
 		env.RegisterActivityWithOptions(fn, activity.RegisterOptions{Name: name})
 	}
-	env.OnActivity(activities.NameBriefIdentity, mock.Anything, mock.Anything).Return(briefIdentity, nil)
 	r := &genRecord{}
+	env.OnActivity(activities.NameBriefIdentity, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.BriefIdentityInput) (activities.ComponentIdentity, error) {
+		r.add(func() { r.identities = append(r.identities, in) })
+		return briefIdentity, nil
+	})
 	r.record(env)
 	started := env.Now()
 	definition := script.definition
@@ -111,6 +120,7 @@ func generationEnvWith(t *testing.T, b workflows.Bounds, lb workflows.LifecycleB
 	env.OnActivity(activities.NameGetGeneration, mock.Anything, mock.Anything).Return(activities.GenerationView{
 		SubjectDigest: "sha256:subject", Brief: brief, QueueDeadline: env.Now().Add(2 * time.Hour), DefinitionActivation: definition, MaxRepairs: 1,
 		CodegenProfileID: "codegen-team-dev-v1", ValidatorProfileID: "validator-source-v1", Lease: script.leaseState,
+		Base: script.base, SourceRevision: script.baseRevision,
 	}, nil)
 	permits := append([]bool(nil), script.permits...)
 	env.OnActivity(activities.NameRequestExecutionPermit, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.RequestExecutionPermitInput) (activities.PermitAnswer, error) {
@@ -327,6 +337,40 @@ func TestGenerationBoundedRepairOnAcceptedRepairableFindings(t *testing.T) {
 		return out
 	}
 	require.Equal(t, []string{"brief=h_brief", "stage=h_stg1", "source=h_src1", "evidence=h_ev1"}, names(r.creates[2].Inputs), "the repair round receives the prior accepted stage and the validator's findings by handle")
+}
+
+// DEC-062: a refinement runs the Generation lifecycle from its base. The
+// first coding round binds the base source Control resolved, a repair
+// round continues from the prior round's source, the candidate keeps the
+// revision its brief froze, and the registration expects the base revision.
+func TestRefinementStartsFromItsBaseSource(t *testing.T) {
+	repairable := activities.AcceptedStage{Found: true, StageID: "stg_v0", Verdict: "repairable", FailureCode: "CANDIDATE_TEST_FAILED", ExecutionEpoch: "1", Artifacts: []activities.StageArtifact{evidence}}
+	env, r := generationEnv(t, lifecycleBounds, genScript{
+		scope:     activities.ScopeDecision{Allowed: true},
+		codegen:   map[uint64]activities.AcceptedStage{0: certified("c0", sourceA, stageA), 1: certified("c1", sourceA, stageA)},
+		validator: map[uint64]activities.AcceptedStage{0: repairable, 1: certified("v1", evidence)},
+		candidate: activities.CandidateRef{EffectID: "eff_1", State: "succeeded", CandidateID: "cand_1"},
+		base:      &activities.StageArtifact{Class: "source", Digest: "sha256:base", Handle: "h_base"}, baseRevision: "7",
+	})
+	env.ExecuteWorkflow(workflows.GenerationWorkflowName, genInput)
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+	require.Equal(t, "succeeded", r.last().Outcome)
+	require.Equal(t, "candidate_ready", r.last().Phase)
+	require.Len(t, r.creates, 4, "codegen, validate, one repair round, validate")
+	require.Equal(t, []activities.LaunchInput{{Name: "brief", Digest: "sha256:b1", Handle: "h_brief"}, {Name: "source", Digest: "sha256:base", Handle: "h_base"}},
+		r.creates[0].Inputs, "the first coding round starts from the base source")
+	require.Equal(t, []activities.LaunchInput{{Name: "source", Digest: "sha256:s1", Handle: "h_src1"}}, r.creates[1].Inputs, "the validator certifies the refined source, not the base")
+	var repair []string
+	for _, i := range r.creates[2].Inputs {
+		repair = append(repair, i.Name+"="+i.Handle)
+	}
+	require.Equal(t, []string{"brief=h_brief", "stage=h_stg1", "source=h_src1", "evidence=h_ev1"}, repair, "a repair round continues from the prior round, not from the base")
+	require.Len(t, r.identities, 1)
+	require.Empty(t, r.identities[0].SourceRevision, "the base revision is not the candidate's: the brief's revision stands")
+	require.Len(t, r.registers, 1)
+	require.Equal(t, "7", r.registers[0].SourceRevision, "the registration expects the lineage at the base revision")
+	require.Equal(t, "source:sha256:subject", r.registers[0].Subject, "the candidate is registered on the base's lineage")
 }
 
 func TestGenerationRepairBoundNeverResets(t *testing.T) {

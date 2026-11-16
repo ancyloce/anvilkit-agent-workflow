@@ -184,6 +184,18 @@ func (c *Client) GetGeneration(ctx context.Context, in activities.GetGenerationI
 		t := g.GetActiveDeadline().AsTime()
 		view.ActiveDeadline = &t
 	}
+	if handle := g.GetSubject().GetSourceHandle(); handle != "" {
+		// A refinement's base (DEC-062): the digest and size come from
+		// Control's record of the artifact it bound, which it relates to
+		// this operation; the Job's sidecar verifies the bytes against them.
+		read, err := controlv1.NewArtifactServiceClient(c.conn).ReadArtifact(ctx, &controlv1.ReadArtifactRequest{Handle: handle, OperationId: in.OperationID, TenantId: in.TenantID})
+		if err != nil {
+			return activities.GenerationView{}, nonRetryable(err)
+		}
+		t := read.GetTransfer()
+		view.Base = &activities.StageArtifact{Handle: t.GetHandle(), Class: "source", Digest: t.GetExpectedDigest(), SizeBytes: t.GetExpectedSize(),
+			TransferID: t.GetTransferId(), ObjectVersion: t.GetObjectVersion()}
+	}
 	return view, nil
 }
 

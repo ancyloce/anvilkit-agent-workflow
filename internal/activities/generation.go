@@ -31,11 +31,19 @@ type GetGenerationInput struct {
 	TenantID    string
 }
 
-// GenerationView is Control's admission record of a Generation.
+// GenerationView is Control's admission record of a Generation or of a
+// refinement, which runs the same lifecycle from a base (DEC-062).
 type GenerationView struct {
-	ProfileID            string
-	SubjectDigest        string
-	SourceRevision       string
+	ProfileID     string
+	SubjectDigest string
+	// SourceRevision is the revision the operation's subject names: the
+	// candidate's own for a Generation that names one, the base's for a
+	// refinement (the revision its registration expects the lineage to hold).
+	SourceRevision string
+	// Base is a refinement's base source, which Control resolved from the
+	// source operation and revision the subject names and bound at
+	// acceptance; nil for a Generation. The first coding round starts from it.
+	Base                 *StageArtifact
 	ActorID              string
 	Brief                BriefRef
 	SourceRevisions      []SourceReference
