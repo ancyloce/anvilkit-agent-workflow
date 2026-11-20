@@ -59,6 +59,12 @@ type LifecycleBounds struct {
 	AnalysisMaxExposure     activities.Money
 	AnalysisCallTimeout     time.Duration
 	ContentRepairAllowance  int
+	// Chat (DEC-068): the chat route and the bounds of a turn's single
+	// reply call.
+	ChatRouteID         string
+	ChatMaxOutputTokens int
+	ChatMaxExposure     activities.Money
+	ChatCallTimeout     time.Duration
 	// Generation: the permit poll interval, the lease TTL asked of the
 	// port, the renewal lead before the known expiry, the StartToClose
 	// bound of one lease call and the definition activations this worker
