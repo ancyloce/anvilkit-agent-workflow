@@ -189,3 +189,28 @@ func TestLifecyclePortsOutsideDevelopment(t *testing.T) {
 	require.NoError(t, err, "the double serves development")
 	require.Equal(t, "/tmp/pagix", c.Lifecycle.PagixDoubleDir)
 }
+
+// TestChatBounds (DEC-068): the chat turn's reply call defaults to the
+// tool-less chat route, 4096 output tokens, 0.10 USD per call and 110 s
+// inside the chat profile's 120 s attempt window, and each bound is checked.
+func TestChatBounds(t *testing.T) {
+	c, err := config.LoadFrom(write(t, minimal), env)
+	require.NoError(t, err)
+	require.Equal(t, "controlled-chat-v1", c.Lifecycle.Chat.RouteID)
+	require.Equal(t, 4096, c.Lifecycle.Chat.MaxOutputTokens)
+	require.Equal(t, "USD", c.Lifecycle.Chat.MaxExposureCurrency)
+	require.Equal(t, "100000", c.Lifecycle.Chat.MaxExposureAmount)
+	require.Equal(t, 110*time.Second, c.Lifecycle.Chat.CallTimeout)
+	chat := func(body string) string {
+		return strings.Replace(minimal, "lifecycle:\n", "lifecycle:\n  chat:\n"+body, 1)
+	}
+	for body, want := range map[string]string{
+		"    route_id: \"\"\n":               "lifecycle.chat.route_id is required",
+		"    max_output_tokens: 0\n":         "lifecycle.chat.max_output_tokens 0 outside",
+		"    max_exposure_amount: \"1.5\"\n": "lifecycle.chat.max_exposure_currency/amount",
+		"    call_timeout: 5s\n":             "lifecycle.chat.call_timeout",
+	} {
+		_, err := config.LoadFrom(write(t, chat(body)), env)
+		require.ErrorContains(t, err, want, body)
+	}
+}

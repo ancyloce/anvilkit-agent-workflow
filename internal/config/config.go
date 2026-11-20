@@ -336,6 +336,14 @@ type Lifecycle struct {
 		ContentRepairAllowance int           `koanf:"content_repair_allowance"`
 		MaxInputBytes          int64         `koanf:"max_input_bytes"`
 	} `koanf:"preparation"`
+	// Chat bounds the chat turn's single reply call (DEC-068).
+	Chat struct {
+		RouteID             string        `koanf:"route_id"`
+		MaxOutputTokens     int           `koanf:"max_output_tokens"`
+		MaxExposureCurrency string        `koanf:"max_exposure_currency"`
+		MaxExposureAmount   string        `koanf:"max_exposure_amount"`
+		CallTimeout         time.Duration `koanf:"call_timeout"`
+	} `koanf:"chat"`
 	Generation struct {
 		PermitPollInterval time.Duration `koanf:"permit_poll_interval"`
 		LeaseTTL           time.Duration `koanf:"lease_ttl"`
@@ -430,6 +438,11 @@ var defaults = map[string]any{
 	"lifecycle.preparation.call_timeout":             "5m",
 	"lifecycle.preparation.content_repair_allowance": 1,
 	"lifecycle.preparation.max_input_bytes":          262144,
+	"lifecycle.chat.route_id":                        "controlled-chat-v1",
+	"lifecycle.chat.max_output_tokens":               4096,
+	"lifecycle.chat.max_exposure_currency":           "USD",
+	"lifecycle.chat.max_exposure_amount":             "100000",
+	"lifecycle.chat.call_timeout":                    "110s",
 	"lifecycle.generation.permit_poll_interval":      "30s",
 	"lifecycle.generation.lease_ttl":                 "10m",
 	"lifecycle.generation.lease_renew_lead":          "3m",
@@ -749,6 +762,15 @@ func (c Config) validate() error {
 	if lp.MaxInputBytes < 1024 || lp.MaxInputBytes > 16<<20 {
 		errs = append(errs, fmt.Errorf("lifecycle.preparation.max_input_bytes %d outside [1024, 16777216]", lp.MaxInputBytes))
 	}
+	lc := c.Lifecycle.Chat
+	req("lifecycle.chat.route_id", lc.RouteID)
+	if lc.MaxOutputTokens < 1 || lc.MaxOutputTokens > 1<<20 {
+		errs = append(errs, fmt.Errorf("lifecycle.chat.max_output_tokens %d outside [1, 1048576]", lc.MaxOutputTokens))
+	}
+	if !moneyPattern.MatchString(lc.MaxExposureAmount) || !currencyPattern.MatchString(lc.MaxExposureCurrency) {
+		errs = append(errs, errors.New("lifecycle.chat.max_exposure_currency/amount must be a currency and a canonical scale-6 amount"))
+	}
+	within("lifecycle.chat.call_timeout", lc.CallTimeout, 10*time.Second, 10*time.Minute)
 	within("lifecycle.generation.permit_poll_interval", lg.PermitPollInterval, time.Second, time.Hour)
 	within("lifecycle.generation.lease_ttl", lg.LeaseTTL, 30*time.Second, 24*time.Hour)
 	within("lifecycle.generation.lease_renew_lead", lg.LeaseRenewLead, 5*time.Second, 12*time.Hour)

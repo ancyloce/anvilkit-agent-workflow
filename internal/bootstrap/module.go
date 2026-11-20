@@ -125,6 +125,8 @@ func Lifecycle(l config.Lifecycle) workflows.LifecycleBounds {
 		AnalysisRouteID: l.Preparation.RouteID, AnalysisMaxOutputTokens: l.Preparation.MaxOutputTokens,
 		AnalysisMaxExposure: activities.Money{Currency: l.Preparation.MaxExposureCurrency, Amount: l.Preparation.MaxExposureAmount},
 		AnalysisCallTimeout: l.Preparation.CallTimeout, ContentRepairAllowance: l.Preparation.ContentRepairAllowance,
+		ChatRouteID: l.Chat.RouteID, ChatMaxOutputTokens: l.Chat.MaxOutputTokens,
+		ChatMaxExposure: activities.Money{Currency: l.Chat.MaxExposureCurrency, Amount: l.Chat.MaxExposureAmount}, ChatCallTimeout: l.Chat.CallTimeout,
 		PermitPollInterval: l.Generation.PermitPollInterval, LeaseTTL: l.Generation.LeaseTTL, LeaseRenewLead: l.Generation.LeaseRenewLead, LeaseCallTimeout: l.Generation.LeaseCallTimeout,
 		PreviewBuildProfile:     l.Preview.BuildProfile,
 		ReleaseValidatorProfile: l.Release.ValidatorProfile,
@@ -363,7 +365,7 @@ func Module() fx.Option {
 			func(cfg config.Config, ctl *controladapter.Client, m activities.ModelCaller, ports lifecyclePorts) *activities.LifecycleActivities {
 				return &activities.LifecycleActivities{
 					Preparation: ctl, Generation: ctl, Artifacts: artifactadapter.New(ctl.Conn(), cfg.Temporal.WorkerIdentity, cfg.Lifecycle.Artifacts.TransferWindow),
-					Knowledge: ports.knowledge, Model: m, Lease: ports.lease, Source: ports.source, Preview: ctl, Release: ctl, ReleasePort: ports.release, MaxInputBytes: cfg.Lifecycle.Preparation.MaxInputBytes,
+					Knowledge: ports.knowledge, Model: m, Lease: ports.lease, Source: ports.source, Preview: ctl, Release: ctl, ReleasePort: ports.release, Conversations: ctl, MaxInputBytes: cfg.Lifecycle.Preparation.MaxInputBytes,
 					HostAbiProfile: cfg.Lifecycle.HostAbiProfile, BuildSupportProfile: cfg.Lifecycle.BuildSupportProfile,
 				}
 			},
@@ -381,7 +383,8 @@ func Register(business, control worker.Worker, acts *activities.Activities, q wo
 }
 
 // RegisterLifecycle registers the lifecycle business workflows
-// (Preparation, Generation, PreviewBuild, Release) and their Activities:
+// (Preparation, Generation, PreviewBuild, Release, ChatTurn) and their
+// Activities (the chat reply among the business ones):
 // the reads and ordinary commands on the business queue; the settlement,
 // the lease calls, the effects (candidate registration, source save,
 // review, publication, activation) and the preview and release records on
@@ -391,6 +394,7 @@ func RegisterLifecycle(business, control worker.Worker, acts *activities.Lifecyc
 	business.RegisterWorkflowWithOptions(workflows.Generation(q, b, lb), workflow.RegisterOptions{Name: workflows.GenerationWorkflowName})
 	business.RegisterWorkflowWithOptions(workflows.PreviewBuild(q, b, lb), workflow.RegisterOptions{Name: workflows.PreviewWorkflowName})
 	business.RegisterWorkflowWithOptions(workflows.Release(q, b, lb), workflow.RegisterOptions{Name: workflows.ReleaseWorkflowName})
+	business.RegisterWorkflowWithOptions(workflows.ChatTurn(q, b, lb), workflow.RegisterOptions{Name: workflows.ChatTurnWorkflowName})
 	for name, fn := range map[string]any{
 		activities.NameGetPreparation: acts.GetPreparation, activities.NameAnalyzeRequirements: acts.AnalyzeRequirements, activities.NameRecordQuestionSet: acts.RecordQuestionSet,
 		activities.NameGetAnswer: acts.GetAnswer, activities.NameFreezeReferences: acts.FreezeReferences, activities.NameFreezeBrief: acts.FreezeBrief,
@@ -399,6 +403,7 @@ func RegisterLifecycle(business, control worker.Worker, acts *activities.Lifecyc
 		activities.NameGetPreviewSource: acts.GetPreviewSource, activities.NameCurrentSourceRevision: acts.CurrentSourceRevision, activities.NameCertifiedPreviewProfiles: acts.CertifiedPreviewProfiles,
 		activities.NameGetReleaseBinding: acts.GetReleaseBinding, activities.NameBuildReleaseSubj: acts.BuildReleaseSubject,
 		activities.NameReviewDecision: acts.ReviewDecision, activities.NameCatalogRevision: acts.CatalogRevision,
+		activities.NameChatReply: acts.ChatReply,
 	} {
 		business.RegisterActivityWithOptions(fn, activity.RegisterOptions{Name: name})
 	}
