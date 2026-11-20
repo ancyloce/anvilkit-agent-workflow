@@ -93,6 +93,9 @@ type ModelToolCall struct {
 // tool calls of the frames, the usage when the Proxy had it, and the
 // Proxy's error code otherwise. An unknown state is a business outcome to
 // reconcile under the original call id, never a reason to call again.
+// Fenced reports the Proxy's content fence at reclaim (DEC-068 Q4): the
+// original sender can append no frame and no result any more. After a stream
+// that ended without its final frame, Text is the prefix it delivered.
 type ModelCallResult struct {
 	CallID          string
 	DispatchID      string
@@ -103,6 +106,7 @@ type ModelCallResult struct {
 	NativeReference string
 	ErrorCode       string
 	Frames          int
+	Fenced          bool
 }
 
 // ModelCaller is the port to the Model Proxy transport.

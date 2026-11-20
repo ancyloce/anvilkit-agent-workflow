@@ -37,6 +37,9 @@ type LifecycleActivities struct {
 	// and the release side of Pagix (P21).
 	Release     ReleaseControl
 	ReleasePort ReleasePort
+	// Conversations is Control's reply-writer port of the chat turn
+	// (DEC-068).
+	Conversations ConversationControl
 	// MaxInputBytes bounds one prompt or answer the analysis reads.
 	MaxInputBytes int64
 	// HostAbiProfile is the Studio host ABI profile this environment serves
