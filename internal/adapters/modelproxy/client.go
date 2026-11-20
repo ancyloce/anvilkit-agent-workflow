@@ -316,7 +316,9 @@ func (c *Client) refusal(status int, body io.Reader) error {
 // CallModel opens the call and consumes its frames. A frame outside the
 // contract, out of sequence, over the frame bound or for another call ends
 // the Activity with a refusal (the call is queried, never repeated); a
-// stream that ends without its final frame is retried as a reentry.
+// stream that ends without its final frame is retried as a reentry. A call
+// that ends without its final frame answers the text delivered so far with
+// its error (the chat reply seals that prefix on a stop).
 func (c *Client) CallModel(ctx context.Context, in activities.ModelCallInput, heartbeat func()) (activities.ModelCallResult, error) {
 	req, err := requestOf(in)
 	if err != nil {
@@ -417,12 +419,14 @@ func (c *Client) CallModel(ctx context.Context, in activities.ModelCallInput, he
 			continue // keepalive comments and id-only blocks carry no frame
 		}
 		if err := handle(ev.Data); err != nil {
+			out.Text = text.String()
 			return out, err
 		}
 		if final {
 			break
 		}
 	}
+	out.Text = text.String()
 	if !final {
 		if readErr != nil {
 			// The stream ended without its final frame: the call is not over or
@@ -431,10 +435,10 @@ func (c *Client) CallModel(ctx context.Context, in activities.ModelCallInput, he
 		}
 		return out, fmt.Errorf("model proxy stream ended after %d frames without a final frame", out.Frames)
 	}
-	out.Text = text.String()
-	// The record carries the dispatch identity the frames do not.
+	// The record carries the dispatch identity and the fence the frames do
+	// not.
 	if rec, err := c.GetModelCall(ctx, in.CallID); err == nil {
-		out.DispatchID, out.NativeReference = rec.DispatchID, rec.NativeReference
+		out.DispatchID, out.NativeReference, out.Fenced = rec.DispatchID, rec.NativeReference, rec.Fenced
 		if out.ErrorCode == "" {
 			out.ErrorCode = rec.ErrorCode
 		}
@@ -450,7 +454,7 @@ func usageOf(u *modelproxyapi.Usage) *activities.ModelUsage {
 }
 
 func resultOf(m *modelproxyapi.ModelCall) activities.ModelCallResult {
-	out := activities.ModelCallResult{CallID: m.CallId, DispatchID: m.DispatchId, State: string(m.State), Usage: usageOf(m.Usage)}
+	out := activities.ModelCallResult{CallID: m.CallId, DispatchID: m.DispatchId, State: string(m.State), Usage: usageOf(m.Usage), Fenced: m.FencedAt != nil}
 	if m.NativeReference != nil {
 		out.NativeReference = *m.NativeReference
 	}

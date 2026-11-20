@@ -319,10 +319,15 @@ func TestCallModelRefusesFramesOutsideTheContract(t *testing.T) {
 		require.NotContains(t, err.Error(), "read_brief", "%s: the refusal names members and reasons, not values", name)
 	}
 	f.frames = []string{`{"callId":"c","sequence":"0","type":"admitted"}`, `{"callId":"c","sequence":"1","type":"text","text":"partial"}`}
-	_, err = c.CallModel(t.Context(), input("c"), func() {})
+	out, err := c.CallModel(t.Context(), input("c"), func() {})
 	require.Error(t, err)
 	require.Empty(t, activities.RefusalCode(err), "a stream without its final frame is retryable: the same call id reenters")
 	require.ErrorContains(t, err, "without a final frame")
+	require.Equal(t, "partial", out.Text, "the delivered prefix comes with the error (DEC-068: a stop seals it)")
+	f.frames = []string{`{"callId":"c","sequence":"0","type":"admitted"}`, `{"callId":"c","sequence":"1","type":"text","text":"part"}`, `{"callId":"c","sequence":"3","type":"done","outcome":"succeeded"}`}
+	out, err = c.CallModel(t.Context(), input("c"), func() {})
+	require.Equal(t, "INVALID_ARGUMENT", activities.RefusalCode(err))
+	require.Equal(t, "part", out.Text, "a refused frame keeps the prefix before it")
 }
 
 func TestQueryAndCancelReadTheRecordStrictly(t *testing.T) {
@@ -354,6 +359,12 @@ func TestQueryAndCancelReadTheRecordStrictly(t *testing.T) {
 		require.Equal(t, "INVALID_ARGUMENT", activities.RefusalCode(err), "cancel: %s", name)
 	}
 	require.Equal(t, int32(0), f.posts.Load(), "queries and cancels never open a call")
+
+	// DEC-068 Q4: a reclaim on a fencing route carries fencedAt.
+	f.record = `{"callId":"c","routeId":"r","state":"unknown","dispatchId":"d","errorCode":"SENDER_LOST","fencedAt":"2026-09-14T12:02:30Z","createdAt":"2026-09-14T12:00:00Z","updatedAt":"2026-09-14T12:02:30Z"}`
+	fenced, err := c.GetModelCall(t.Context(), "c")
+	require.NoError(t, err)
+	require.Equal(t, activities.ModelCallResult{CallID: "c", DispatchID: "d", State: "unknown", ErrorCode: "SENDER_LOST", Fenced: true}, fenced)
 }
 
 func TestAnswersAreReadWithinTheirBounds(t *testing.T) {
