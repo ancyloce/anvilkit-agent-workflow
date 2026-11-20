@@ -140,6 +140,16 @@ lifecycle:
     call_timeout: 5m
     content_repair_allowance: 1
     max_input_bytes: 262144
+  # The chat turn's reply call (DEC-068): the tool-less chat route, its
+  # output bound and per-call exposure, and the call's bound inside the chat
+  # profile's 120 s attempt window. Control's profiles.chat_turn.enabled
+  # decides whether turns run at all.
+  chat:
+    route_id: controlled-chat-v1
+    max_output_tokens: 4096
+    max_exposure_currency: USD
+    max_exposure_amount: "100000"
+    call_timeout: 110s
   generation:
     permit_poll_interval: 30s
     lease_ttl: 10m

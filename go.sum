@@ -37,6 +37,8 @@ github.com/ancyloce/anvilkit-agent-contracts/go v0.1.49 h1:Mr97ny1A3GtDPgQh3pETT
 github.com/ancyloce/anvilkit-agent-contracts/go v0.1.49/go.mod h1:GpREiampo5pSy0+IsLQcbA+DVi6jwpweI3ojWuv/gs4=
 github.com/ancyloce/anvilkit-agent-contracts/go v0.1.50 h1:L3ptK3LbBmq26wXoMKgD+TWfCac+9iPKyIN75uBnG2M=
 github.com/ancyloce/anvilkit-agent-contracts/go v0.1.50/go.mod h1:GpREiampo5pSy0+IsLQcbA+DVi6jwpweI3ojWuv/gs4=
+github.com/ancyloce/anvilkit-agent-contracts/go v0.1.51 h1:CsqDtnM2O/KnukbQKqOz4gzqN8e2jUgGvkxzVHWC86s=
+github.com/ancyloce/anvilkit-agent-contracts/go v0.1.51/go.mod h1:GpREiampo5pSy0+IsLQcbA+DVi6jwpweI3ojWuv/gs4=
 github.com/apapsch/go-jsonmerge/v2 v2.0.0 h1:axGnT1gRIfimI7gJifB699GoE/oq+F2MU7Dml6nw9rQ=
 github.com/apapsch/go-jsonmerge/v2 v2.0.0/go.mod h1:lvDnEdqiQrp0O42VQGgmlKpxL1AP2+08jFMw88y4klk=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
