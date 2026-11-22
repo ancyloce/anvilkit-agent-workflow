@@ -70,6 +70,9 @@ type TurnRef struct {
 	ContentStatus string
 	SenderStatus  string
 	FailureCode   string
+	// AssistantMessageID names the reply's message once any text is stored
+	// or committed (D4a).
+	AssistantMessageID string
 }
 
 // Open reports whether the turn still holds its conversation's reply slot.
@@ -85,6 +88,11 @@ type TurnClaim struct {
 	Turn        TurnRef
 	WriterEpoch uint64
 	Existing    bool
+	// D4a: the last committed provider sequence of the reply's original
+	// stream (nil before any batch) and that stream; a reentry resumes after
+	// it.
+	LastProviderSeq  *uint64
+	OriginalStreamID string
 }
 
 type GetTurnContextInput struct {
@@ -112,6 +120,11 @@ type RecordReplyOutcomeInput struct {
 	WriterEpoch uint64
 	CallID      string
 	Reply       ReplyRecord
+	// FromBatches (D4a): the sealed text is the committed batches; Reply's
+	// text classifies the outcome and is not sent. BatchesDigest is that
+	// text's digest when it is known and not empty.
+	FromBatches   bool
+	BatchesDigest string
 }
 
 // ReplyRecord is the outcome the chat Activity records (Control's
@@ -132,6 +145,9 @@ type ConversationControl interface {
 	ClaimReplyWriter(ctx context.Context, in ClaimReplyWriterInput) (TurnClaim, error)
 	GetTurnContext(ctx context.Context, in GetTurnContextInput) (TurnContext, error)
 	RecordReplyOutcome(ctx context.Context, in RecordReplyOutcomeInput) (TurnRef, error)
+	// AppendReplyBatch commits one batch of the reply's original frames
+	// (D4a); ErrBatchesUnavailable when Control has no such method.
+	AppendReplyBatch(ctx context.Context, in AppendReplyBatchInput) (BatchReceipt, error)
 }
 
 // ChatReplyInput carries the identities and the frozen bounds of the turn's
@@ -209,13 +225,25 @@ func (a *LifecycleActivities) ChatReplyAs(ctx context.Context, in ChatReplyInput
 		// outcome stands.
 		return ChatReplyResult{TurnID: claim.Turn.TurnID, TurnState: claim.Turn.State, FailureCode: claim.Turn.FailureCode, SenderStatus: claim.Turn.SenderStatus, Existing: true}, nil
 	}
+	// batches is what Control holds of the reply's text (D4a): from the claim
+	// until the call streamed, then from the batch sink.
+	batches := claimedBatches(claim)
 	record := func(rec ReplyRecord, callState string) (ChatReplyResult, error) {
 		rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), recordAllowance)
 		defer cancel()
-		turn, err := a.Conversations.RecordReplyOutcome(rctx, RecordReplyOutcomeInput{
+		ri := RecordReplyOutcomeInput{
 			Binding: b, CommandID: fmt.Sprintf("%s:reply:outcome:%d", in.OperationID, claim.WriterEpoch),
-			TurnID: claim.Turn.TurnID, WriterEpoch: claim.WriterEpoch, CallID: ReplyCallID(in.OperationID), Reply: rec,
-		})
+			TurnID: claim.Turn.TurnID, WriterEpoch: claim.WriterEpoch, CallID: ReplyCallID(in.OperationID),
+		}
+		if batches.MayHaveBatches {
+			rec = fromBatches(rec, batches)
+			ri.FromBatches = true
+			if batches.TextKnown && batches.Text != "" {
+				ri.BatchesDigest = TextDigest(batches.Text)
+			}
+		}
+		ri.Reply = rec
+		turn, err := a.Conversations.RecordReplyOutcome(rctx, ri)
 		if err != nil {
 			return ChatReplyResult{}, err
 		}
@@ -237,10 +265,30 @@ func (a *LifecycleActivities) ChatReplyAs(ctx context.Context, in ChatReplyInput
 	for _, m := range tc.Messages {
 		messages = append(messages, ModelMessage{Role: m.Role, Content: m.Text})
 	}
+	// D4a: the frames are committed in batches while they stream; a seal
+	// (a stop) detaches, and the send meters to its end.
+	sink := newReplyBatcher(a.Conversations, AppendReplyBatchInput{Binding: b, TurnID: claim.Turn.TurnID, WriterEpoch: claim.WriterEpoch, CallID: callID}, in.OperationID, claim)
+	go sink.run(ctx)
 	res, callErr := a.Model.CallModel(ctx, ModelCallInput{
 		CallID: callID, TenantID: in.TenantID, OperationID: in.OperationID, AttemptID: in.AttemptID, ExecutionEpoch: in.ExecutionEpoch,
 		RouteID: in.RouteID, Messages: messages, MaxOutputTokens: in.MaxOutputTokens, MaxExposure: in.MaxExposure, Deadline: in.Deadline,
+		Frames: sink.Frame,
 	}, heartbeat)
+	batches = sink.Close()
+	switch {
+	case batches.Fatal != nil:
+		return ChatReplyResult{}, batches.Fatal
+	case batches.Sealed:
+		// Sealed by the stop with exactly the committed text (DEC-070 Q3).
+		t := batches.Turn
+		return ChatReplyResult{TurnID: t.TurnID, TurnState: t.State, FailureCode: t.FailureCode, SenderStatus: t.SenderStatus, CallState: res.State, Existing: true}, nil
+	case batches.Lost != nil && !stopped(ctx):
+		// A retry re-enters the call and resumes after Control's watermark.
+		return ChatReplyResult{}, batches.Lost
+	}
+	if batches.MayHaveBatches && batches.TextKnown {
+		res.Text = batches.Text
+	}
 	if callErr == nil {
 		return record(ReplyOf(res), res.State)
 	}

@@ -2,6 +2,7 @@ package activities
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"go.temporal.io/sdk/activity"
@@ -64,7 +65,35 @@ type ModelCallInput struct {
 	Deadline         time.Time
 	SupersedesCallID string
 	EvidenceRef      string
+	// Frames, when set, asks the Proxy for the frames' stream identity and
+	// receives every frame as it arrives, before the call's result (D4a,
+	// design 0001 §8.2; the chat reply's batch sink). In-process only: the
+	// input is also an Activity payload (CallModel), which never carries it.
+	Frames FrameSink `json:"-"`
 }
+
+// ReplyFrame is one frame of a call as a frame sink reads it (D4a). Origin is
+// original or recovery when the Proxy honoured the stream identity, and
+// empty otherwise; StreamID names the original stream of an original frame;
+// Payload is the frame's JSON as received.
+type ReplyFrame struct {
+	Sequence uint64
+	Origin   string
+	StreamID string
+	Type     string
+	Text     string
+	Payload  string
+	Final    bool
+}
+
+// FrameSink receives a call's frames in order. ErrDetached ends the read:
+// the caller stops relaying and closes the stream, which never cancels the
+// call (the Proxy reads the provider to its end, DEC-068 Q3).
+type FrameSink func(ReplyFrame) error
+
+// ErrDetached is the frame sink's answer when the reader should stop: the
+// reply is sealed (a stop) and nothing it relays any longer is kept.
+var ErrDetached = errors.New("the frame sink detached from the call's stream")
 
 // Money is a scale-6 integer amount as a decimal string.
 type Money struct {
@@ -107,6 +136,9 @@ type ModelCallResult struct {
 	ErrorCode       string
 	Frames          int
 	Fenced          bool
+	// FrameIdentity reports that the Proxy honoured the frames' stream
+	// identity (D4a): every frame named its origin.
+	FrameIdentity bool
 }
 
 // ModelCaller is the port to the Model Proxy transport.
