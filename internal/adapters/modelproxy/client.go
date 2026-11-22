@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -330,7 +331,16 @@ func (c *Client) CallModel(ctx context.Context, in activities.ModelCallInput, he
 	}
 	ctx, cancel := context.WithTimeout(ctx, bound)
 	defer cancel()
-	resp, err := c.api.CreateModelCall(ctx, req)
+	var editors []modelproxyapi.RequestEditorFn
+	if in.Frames != nil {
+		// D4a: ask for the frames' stream identity; a Proxy before D4a
+		// ignores the parameter and answers the plain type.
+		editors = append(editors, func(_ context.Context, r *http.Request) error {
+			r.Header.Set("Accept", frameIdentityMediaType)
+			return nil
+		})
+	}
+	resp, err := c.api.CreateModelCall(ctx, req, editors...)
 	if err != nil {
 		return activities.ModelCallResult{}, fmt.Errorf("model proxy: %w", err)
 	}
@@ -341,7 +351,8 @@ func (c *Client) CallModel(ctx context.Context, in activities.ModelCallInput, he
 	if !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
 		return activities.ModelCallResult{}, fmt.Errorf("model proxy answered %q, not an event stream", resp.Header.Get("Content-Type"))
 	}
-	out := activities.ModelCallResult{CallID: in.CallID}
+	out := activities.ModelCallResult{CallID: in.CallID, FrameIdentity: in.Frames != nil && carriesFrameIdentity(resp.Header.Get("Content-Type"))}
+	streamID := ""
 	var text strings.Builder
 	next := uint64(0)
 	final := false
@@ -364,6 +375,10 @@ func (c *Client) CallModel(ctx context.Context, in activities.ModelCallInput, he
 		out.Frames++
 		if out.Frames > c.maxFrames {
 			return activities.Refused("INVALID_ARGUMENT", fmt.Errorf("more than %d frames", c.maxFrames))
+		}
+		origin, err := frameOrigin(&f, out.FrameIdentity, &streamID)
+		if err != nil {
+			return activities.Refused("INVALID_ARGUMENT", err)
 		}
 		switch f.Type {
 		case modelproxyapi.StreamFrameTypeAdmitted:
@@ -398,7 +413,17 @@ func (c *Client) CallModel(ctx context.Context, in activities.ModelCallInput, he
 			return activities.Refused("INVALID_ARGUMENT", fmt.Errorf("frame type %q", f.Type))
 		}
 		heartbeat()
-		return nil
+		if in.Frames == nil {
+			return nil
+		}
+		rf := activities.ReplyFrame{Sequence: seq, Origin: origin, Type: string(f.Type), Payload: payload, Final: final}
+		if origin == string(modelproxyapi.Original) {
+			rf.StreamID = streamID
+		}
+		if f.Text != nil {
+			rf.Text = *f.Text
+		}
+		return in.Frames(rf)
 	}
 	// go-sse reads the stream as the protocol states it (fields, multi-line
 	// data joined by newlines, comments dropped); an event larger than the
@@ -444,6 +469,54 @@ func (c *Client) CallModel(ctx context.Context, in activities.ModelCallInput, he
 		}
 	}
 	return out, nil
+}
+
+// frameIdentityMediaType asks for, and names, a stream whose frames carry
+// their stream identity (D4a, createModelCall).
+const frameIdentityMediaType = "text/event-stream; frame-identity=1"
+
+// carriesFrameIdentity reports whether the Proxy answered the stream identity.
+func carriesFrameIdentity(contentType string) bool {
+	media, params, err := mime.ParseMediaType(contentType)
+	return err == nil && media == "text/event-stream" && params["frame-identity"] == "1"
+}
+
+// frameOrigin checks a frame's stream identity (design 0001 §8.2) and answers
+// its origin: on a stream without the identity no frame names one; on a
+// stream with it a recovery frame has no text and names no stream, an
+// original frame names the call's one original stream, and an original frame
+// of a call recorded before D4a names neither (origin "").
+func frameOrigin(f *modelproxyapi.StreamFrame, identity bool, stream *string) (string, error) {
+	if !identity {
+		if f.FrameOrigin != nil || f.OriginalStreamId != nil {
+			return "", errors.New("frame names a stream identity the call did not answer")
+		}
+		return "", nil
+	}
+	switch {
+	case f.FrameOrigin == nil:
+		if f.OriginalStreamId != nil {
+			return "", errors.New("frame names a stream without its origin")
+		}
+		return "", nil
+	case *f.FrameOrigin == modelproxyapi.Recovery:
+		if f.Text != nil || f.OriginalStreamId != nil {
+			return "", errors.New("a recovery frame carries text or names a stream")
+		}
+		return string(modelproxyapi.Recovery), nil
+	case *f.FrameOrigin == modelproxyapi.Original:
+		if f.OriginalStreamId == nil {
+			return "", errors.New("an original frame names no stream")
+		}
+		if *stream == "" {
+			*stream = *f.OriginalStreamId
+		} else if *stream != *f.OriginalStreamId {
+			return "", fmt.Errorf("frames of two original streams %s and %s", *stream, *f.OriginalStreamId)
+		}
+		return string(modelproxyapi.Original), nil
+	default:
+		return "", fmt.Errorf("frame origin %q", *f.FrameOrigin)
+	}
 }
 
 func usageOf(u *modelproxyapi.Usage) *activities.ModelUsage {

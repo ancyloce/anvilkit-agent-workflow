@@ -3,6 +3,7 @@ package modelproxy_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -56,6 +57,10 @@ type fakeProxy struct {
 	// silence, when positive, holds the stream after its first frame for
 	// that long, writing only keepalive comments every keepalive (P1.6).
 	silence, keepalive time.Duration
+	// contentType, when set, answers the stream under it (D4a); accept is
+	// the last call's Accept header.
+	contentType string
+	accept      atomic.Value
 }
 
 // answer writes a non-stream body (an envelope or a record), cut short when cutBody is set.
@@ -74,6 +79,7 @@ func newFakeProxy(t *testing.T) *fakeProxy {
 		f.auth.Store(r.Header.Get("Authorization"))
 		switch {
 		case r.Method == "POST" && r.URL.Path == "/api/v1/model-calls":
+			f.accept.Store(r.Header.Get("Accept"))
 			n := f.posts.Add(1)
 			raw, _ := readAll(r)
 			f.body.Store(raw)
@@ -86,6 +92,9 @@ func newFakeProxy(t *testing.T) *fakeProxy {
 				return
 			}
 			w.Header().Set("Content-Type", "text/event-stream")
+			if f.contentType != "" {
+				w.Header().Set("Content-Type", f.contentType)
+			}
 			w.WriteHeader(200)
 			var out bytes.Buffer
 			if f.raw != "" {
@@ -513,4 +522,86 @@ func TestSilentCallHeartbeatsOnKeepalives(t *testing.T) {
 	}
 	t.Logf("P1.6 AC5: %d heartbeats over %s of model silence, longest gap %s (heartbeat timeout at 2x keepalive: %s)", len(beats), f.silence, gap, 2*keepalive)
 	require.Less(t, gap, 2*keepalive, "no gap between heartbeats reaches the heartbeat timeout")
+}
+
+// D4a (DEC-070, design 0001 §8.2): a call with a frame sink asks for the
+// frames' stream identity; the frames reach the sink in order with their
+// origin and stream; a frame that breaks the identity's rules is refused;
+// a Proxy that does not answer the identity is read as before, and frames
+// that name one without it are refused.
+func TestCallModelFrameIdentity(t *testing.T) {
+	const call = "call_01J9ABCDEF"
+	original := func(seq int, rest string) string {
+		return fmt.Sprintf(`{"callId":"%s","sequence":"%d",%s,"frameOrigin":"original","originalStreamId":"str_a"}`, call, seq, rest)
+	}
+	f := newFakeProxy(t)
+	f.contentType = "text/event-stream; frame-identity=1"
+	f.frames = []string{
+		original(0, `"type":"admitted"`),
+		original(1, `"type":"text","text":"Hello"`),
+		original(2, `"type":"text","text":" world"`),
+		original(3, `"type":"done","outcome":"succeeded","usage":{"inputUnits":"1","outputUnits":"2","reasoningUnits":"0","cachedInputUnits":"0"}`),
+	}
+	f.record = `{"callId":"call_01J9ABCDEF","routeId":"route_planner_default","state":"succeeded","dispatchId":"dsp_01J9ABCDEF","createdAt":"2026-09-14T12:00:00Z","updatedAt":"2026-09-14T12:00:09.5Z"}`
+	c, err := modelproxy.New(modelproxy.Options{BaseURL: f.srv.URL, Token: "workflow-token", Timeout: 10 * time.Second})
+	require.NoError(t, err)
+	var got []activities.ReplyFrame
+	in := input(call)
+	in.Frames = func(rf activities.ReplyFrame) error { got = append(got, rf); return nil }
+	res, err := c.CallModel(t.Context(), in, func() {})
+	require.NoError(t, err)
+	require.True(t, res.FrameIdentity)
+	require.Equal(t, "text/event-stream; frame-identity=1", f.accept.Load())
+	require.Len(t, got, 4)
+	for i, rf := range got {
+		require.Equal(t, uint64(i), rf.Sequence)
+		require.Equal(t, "original", rf.Origin)
+		require.Equal(t, "str_a", rf.StreamID)
+		require.Equal(t, f.frames[i], rf.Payload, "the payload as received")
+	}
+	require.Equal(t, " world", got[2].Text)
+	require.True(t, got[3].Final)
+
+	// The sink's detach ends the read; the call is never canceled.
+	in.Frames = func(rf activities.ReplyFrame) error {
+		if rf.Sequence == 1 {
+			return activities.ErrDetached
+		}
+		return nil
+	}
+	_, err = c.CallModel(t.Context(), in, func() {})
+	require.ErrorIs(t, err, activities.ErrDetached)
+
+	in.Frames = func(activities.ReplyFrame) error { return nil }
+	for name, bad := range map[string]string{
+		"an original frame naming no stream": fmt.Sprintf(`{"callId":"%s","sequence":"1","type":"text","text":"x","frameOrigin":"original"}`, call),
+		"two original streams":               strings.Replace(original(1, `"type":"text","text":"x"`), "str_a", "str_b", 1),
+		"a recovery frame with text":         fmt.Sprintf(`{"callId":"%s","sequence":"1","type":"text","text":"x","frameOrigin":"recovery"}`, call),
+		"a stream without its origin":        fmt.Sprintf(`{"callId":"%s","sequence":"1","type":"text","text":"x","originalStreamId":"str_a"}`, call),
+	} {
+		f.frames = []string{original(0, `"type":"admitted"`), bad}
+		_, err := c.CallModel(t.Context(), in, func() {})
+		require.Equal(t, "INVALID_ARGUMENT", activities.RefusalCode(err), name)
+	}
+
+	// The plain type: no identity, the frames as before D4a.
+	f.contentType = ""
+	f.frames = []string{
+		fmt.Sprintf(`{"callId":"%s","sequence":"0","type":"admitted"}`, call),
+		fmt.Sprintf(`{"callId":"%s","sequence":"1","type":"done","outcome":"succeeded"}`, call),
+	}
+	got = nil
+	in.Frames = func(rf activities.ReplyFrame) error { got = append(got, rf); return nil }
+	res, err = c.CallModel(t.Context(), in, func() {})
+	require.NoError(t, err)
+	require.False(t, res.FrameIdentity)
+	require.Len(t, got, 2)
+	require.Empty(t, got[0].Origin)
+	f.frames[1] = original(1, `"type":"done","outcome":"succeeded"`)
+	_, err = c.CallModel(t.Context(), in, func() {})
+	require.Equal(t, "INVALID_ARGUMENT", activities.RefusalCode(err), "an identity the call did not answer")
+
+	// A call without a sink asks for nothing.
+	_, _ = c.CallModel(t.Context(), input(call), func() {})
+	require.Empty(t, f.accept.Load())
 }
