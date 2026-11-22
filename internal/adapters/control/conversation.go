@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"strconv"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	controlv1 "github.com/ancyloce/anvilkit-agent-contracts/go/anvilkit/control/v1"
 
 	"github.com/ancyloce/anvilkit-agent-workflow/internal/activities"
@@ -25,7 +28,7 @@ func fromTurn(t *controlv1.Turn) activities.TurnRef {
 	return activities.TurnRef{
 		TurnID: t.GetTurnId(), State: enumWord(t.GetState().String(), "TURN_STATE_"),
 		ContentStatus: enumWord(t.GetContentStatus().String(), "CONTENT_STATUS_"), SenderStatus: enumWord(t.GetSenderStatus().String(), "SENDER_STATUS_"),
-		FailureCode: t.GetFailureCode(),
+		FailureCode: t.GetFailureCode(), AssistantMessageID: t.GetAssistantMessageId(),
 	}
 }
 
@@ -52,7 +55,15 @@ func (c *Client) ClaimReplyWriter(ctx context.Context, in activities.ClaimReplyW
 	if err != nil {
 		return activities.TurnClaim{}, fmt.Errorf("control answered writer epoch %q: %w", resp.GetWriterEpoch(), err)
 	}
-	return activities.TurnClaim{Turn: fromTurn(resp.GetTurn()), WriterEpoch: epoch, Existing: resp.GetExisting()}, nil
+	out := activities.TurnClaim{Turn: fromTurn(resp.GetTurn()), WriterEpoch: epoch, Existing: resp.GetExisting(), OriginalStreamID: resp.GetOriginalStreamId()}
+	if resp.LastProviderSeq != nil {
+		seq, err := strconv.ParseUint(resp.GetLastProviderSeq(), 10, 64)
+		if err != nil {
+			return activities.TurnClaim{}, fmt.Errorf("control answered last provider sequence %q: %w", resp.GetLastProviderSeq(), err)
+		}
+		out.LastProviderSeq = &seq
+	}
+	return out, nil
 }
 
 func (c *Client) GetTurnContext(ctx context.Context, in activities.GetTurnContextInput) (activities.TurnContext, error) {
@@ -82,7 +93,15 @@ func (c *Client) RecordReplyOutcome(ctx context.Context, in activities.RecordRep
 		Command: c.command(in.Binding.TenantID, in.CommandID, in), Binding: replyBinding(in.Binding), TurnId: in.TurnID,
 		WriterEpoch: strconv.FormatUint(in.WriterEpoch, 10), CallId: in.CallID, Outcome: outcome, SenderStatus: sender,
 	}
-	if in.Reply.HasText {
+	switch {
+	case in.FromBatches:
+		// D4a: Control seals the committed batches; the text is not sent.
+		req.FromBatches = true
+		if in.BatchesDigest != "" {
+			digest := in.BatchesDigest
+			req.ContentDigest = &digest
+		}
+	case in.Reply.HasText:
 		text, digest := in.Reply.Text, activities.TextDigest(in.Reply.Text)
 		req.Text, req.ContentDigest = &text, &digest
 	}
@@ -95,4 +114,36 @@ func (c *Client) RecordReplyOutcome(ctx context.Context, in activities.RecordRep
 		return activities.TurnRef{}, nonRetryable(err)
 	}
 	return fromTurn(resp.GetTurn()), nil
+}
+
+// AppendReplyBatch commits one batch of the reply's original frames (D4a,
+// DEC-070). A Control before D4a answers Unimplemented: the port answers
+// ErrBatchesUnavailable, and the Activity records the reply whole.
+func (c *Client) AppendReplyBatch(ctx context.Context, in activities.AppendReplyBatchInput) (activities.BatchReceipt, error) {
+	req := &controlv1.AppendReplyBatchRequest{
+		Command: c.command(in.Binding.TenantID, in.CommandID, in), Binding: replyBinding(in.Binding), TurnId: in.TurnID,
+		WriterEpoch: strconv.FormatUint(in.WriterEpoch, 10), CallId: in.CallID, OriginalStreamId: in.OriginalStreamID,
+		FromProviderSeq: strconv.FormatUint(in.From, 10), ThroughProviderSeq: strconv.FormatUint(in.Through, 10),
+		SourceFramesDigest: in.SourceFramesDigest,
+	}
+	if in.HasText {
+		text, digest := in.Text, activities.TextDigest(in.Text)
+		req.Text, req.TextDigest = &text, &digest
+	}
+	resp, err := c.conversations().AppendReplyBatch(ctx, req)
+	if err != nil {
+		if status.Code(err) == codes.Unimplemented {
+			return activities.BatchReceipt{}, activities.Refused("UNIMPLEMENTED", fmt.Errorf("%w: %w", activities.ErrBatchesUnavailable, err))
+		}
+		return activities.BatchReceipt{}, nonRetryable(err)
+	}
+	out := activities.BatchReceipt{Turn: fromTurn(resp.GetTurn()), Existing: resp.GetExisting(), Sealed: resp.GetSealed()}
+	if resp.ChunkSeq != nil {
+		chunk, err := strconv.ParseUint(resp.GetChunkSeq(), 10, 64)
+		if err != nil {
+			return activities.BatchReceipt{}, fmt.Errorf("control answered chunk sequence %q: %w", resp.GetChunkSeq(), err)
+		}
+		out.ChunkSeq = chunk
+	}
+	return out, nil
 }
