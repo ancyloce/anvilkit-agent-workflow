@@ -3,7 +3,7 @@ module github.com/ancyloce/anvilkit-agent-workflow
 go 1.27.0
 
 require (
-	github.com/ancyloce/anvilkit-agent-contracts/go v0.1.51
+	github.com/ancyloce/anvilkit-agent-contracts/go v0.1.52
 	github.com/getkin/kin-openapi v0.149.0
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/knadh/koanf/parsers/yaml v1.1.0
@@ -11,6 +11,7 @@ require (
 	github.com/knadh/koanf/providers/file v1.2.0
 	github.com/knadh/koanf/v2 v2.3.6
 	github.com/prometheus/client_golang v1.24.1
+	github.com/prometheus/client_model v0.6.2
 	github.com/stretchr/testify v1.12.1
 	github.com/tmaxmax/go-sse v0.11.0
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.71.0
@@ -78,7 +79,6 @@ require (
 	github.com/oapi-codegen/runtime v1.7.0 // indirect
 	github.com/oasdiff/yaml v0.1.1 // indirect
 	github.com/oasdiff/yaml3 v0.0.14 // indirect
-	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.70.1 // indirect
 	github.com/prometheus/otlptranslator v1.0.0 // indirect
 	github.com/prometheus/procfs v0.21.1 // indirect
